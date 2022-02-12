@@ -230,6 +230,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cw721"
+version = "0.9.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "44a81e5d775c056f5c1dd5eaaf68b82599cbc21d21c9a38eca0b74808d934806"
+dependencies = [
+ "cosmwasm-std",
+ "cw0",
+ "schemars",
+ "serde",
+]
+
+[[package]]
 name = "der"
 version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -400,6 +412,21 @@ name = "libc"
 version = "0.2.117"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e74d72e0f9b65b5b4ca49a346af3976df0f9c61d550727f349ecd559f251a26c"
+
+[[package]]
+name = "multisender"
+version = "0.9.0"
+dependencies = [
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-storage-plus 0.9.1",
+ "cw20",
+ "cw20-base",
+ "cw721",
+ "schemars",
+ "serde",
+ "thiserror",
+]
 
 [[package]]
 name = "my-first-contract"

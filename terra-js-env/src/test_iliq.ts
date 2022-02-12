@@ -8,7 +8,6 @@ async function main(){
 
 	// Uploading the contract code
 	let iliq_codeId: string[] = await handler.uploadContract("../artifacts/iliq_token.wasm");
-	let multisender_codeId: string[] = await handler.uploadContract("../artifacts/multisender.wasm");
 
 	// Instantiating the contract
 	let iliqInitMsg = {
@@ -25,45 +24,22 @@ async function main(){
 	}
 	let iliq = await handler.instantiateContract(+iliq_codeId[0],iliqInitMsg);
 
-	let multisenderInitMsg = {
-		name:"MULTISENDER",
-	}
-	let multisender = await handler.instantiateContract(+multisender_codeId[0],multisenderInitMsg);
 
-
-	// Approving the multisender
-	let response = await iliq.execute.increase_allowance({
-		spender: multisender.address,
-		amount: "1000"
-	});
+	// Testing the send function
+	let response = await handler.send(handler.getAddress(),{ uluna:"500000", uusd:"500000"})
 	console.log(response);
 
-	// Testing the multisender
-	let multi_response = await multisender.execute.send({
-		to_send:[
-		{
-			cw20_coin:{
-				address: iliq.address,
-				amount:"500"
-			}
-		},
-		{
-			cw20_coin:{
-				address: iliq.address,
-				amount:"500"
-			}
-		}
-		],
-		receivers:["terra1vchq78v89nydypd3xn8hc6s2a28ks80fhtulfr","terra1vchq78v89nydypd3xn8hc6s2a28ks80fhtulfr"]
-	});
-	console.log(multi_response);
-	console.log("AIURYIAUFYIDUVKQJDBsdghsgdfjhsgfsdf\nskdfjghsdkfguztriuazr")
+	// Testing the query function
+	response = await iliq.query.balance({address:handler.getAddress()})
+	console.log(response);
 
+	// Testing the execute function
+	response = await iliq.execute.burn({ amount:"500000"})
+	console.log(response);
 
 	// Asserting side effects
 	response = await iliq.query.balance({address:handler.getAddress()})
 	console.log(response);
-	
 }
 
 main().then(resp => {

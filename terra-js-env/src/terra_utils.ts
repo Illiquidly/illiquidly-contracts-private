@@ -20,15 +20,15 @@ class LCDClientWrapper{
 /// Execute Msg Handler
 /// Removes a lot of code overhead
 class Transaction extends LCDClientWrapper{
-	async signAndBroadcast(msgs: any[], memo: string){
-		const tx = await this.wallet.createAndSignTx({
-		  msgs: msgs,
-		  memo: memo
-		});
+	async post(msgs: any[]){
+		let post_msg = {msgs:msgs}
+		const tx = await this.wallet.createAndSignTx(post_msg);
 		return await this.terra.tx.broadcast(tx);
 	}
 	async execute(msgName:string, msgArgs: Object){
-		let msg = {[msgName]:{...msgArgs
+		let msg = {
+			[msgName]:{
+				...msgArgs
 			}
 		}
 		const execute = new MsgExecuteContract(
@@ -36,7 +36,7 @@ class Transaction extends LCDClientWrapper{
 		  this.contractAddress, // contract account address
 		  { ...msg }, // handle msg
 		);
-		let response = await this.signAndBroadcast([execute],"")
+		let response = await this.post([execute])
 		.catch((response: any)=>{
 			if (isTxError(response)) {
 			  throw new Error(
@@ -71,10 +71,12 @@ interface Interface {
 class Contract {
 	execute: Interface;
 	query: Interface;
+	address: string;
 
 	constructor(handler: Address, contractAddress: string ){
 		this.execute = createWrapperProxy(new Transaction(handler.terra, handler.wallet, contractAddress));
 		this.query = createWrapperProxy(new Query(handler.terra, handler.wallet, contractAddress));
+		this.address = contractAddress;
 	}
 }
 
@@ -92,11 +94,9 @@ export class Address {
 		});
 		this.wallet = this.terra.wallet(mk);
 	}
-	async signAndBroadcast(msgs: any[], memo: string=""){
-		const tx = await this.wallet.createAndSignTx({
-		  msgs: msgs,
-		  memo: memo
-		});
+	async post(msgs: any[]){
+		let post_msg = {msgs:msgs};
+		const tx = await this.wallet.createAndSignTx(post_msg);
 		return await this.terra.tx.broadcast(tx);
 	}
 	getAddress(): string{
@@ -111,14 +111,14 @@ export class Address {
 		  address,
 		  coins
 		);
-		return await this.signAndBroadcast([send],"Pas de memo");
+		return await this.post([send]);
 	}
 	async uploadContract(binaryFile: string){
 		const storeCode = new MsgStoreCode(
 		  this.wallet.key.accAddress,
 		  fs.readFileSync(binaryFile).toString('base64')
 		);
-		let storeCodeTxResult = await this.signAndBroadcast([storeCode]);
+		let storeCodeTxResult = await this.post([storeCode]);
 
 		if (isTxError(storeCodeTxResult)) {
 		  throw new Error(
@@ -138,7 +138,7 @@ export class Address {
 		  initMsg,
 		  { }, // init coins
 		);
-		const instantiateTxResult = await this.signAndBroadcast([instantiate])
+		const instantiateTxResult = await this.post([instantiate])
 
 		if (isTxError(instantiateTxResult)) {
 		  throw new Error(
