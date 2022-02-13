@@ -1,4 +1,20 @@
 import { createApp } from 'vue';
 import App from './App.vue';
 
-createApp(App).mount('#app');
+    $(function () {
+    	// @ts-ignore
+      $('.wallet-possibility').tooltip({
+         container: 'body',
+      }); 
+      // @ts-ignore
+      $('[data-toggle="tooltip"]').tooltip({
+         container: 'body'
+      }); 
+      // @ts-ignore
+      $('[data-toggle="popover"]').popover({
+          container: 'body'
+        });
+    })
+
+createApp(App)
+.mount('#app');
