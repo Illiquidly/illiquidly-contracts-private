@@ -1,25 +1,21 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult, StdError
+    to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult,
 };
 
-use cw20_base::allowances::{
-    query_allowance,
-};
+use cw20_base::allowances::query_allowance;
 use cw20_base::contract::{
-    query_balance, query_token_info, query_minter, 
-    query_marketing_info, query_download_logo
+    query_balance, query_download_logo, query_marketing_info, query_minter, query_token_info,
 };
 
+use cw20::Cw20ExecuteMsg;
 use cw20_base::enumerable::{query_all_accounts, query_all_allowances};
 use cw20_base::ContractError;
-use cw20::Cw20ExecuteMsg;
 use cw721::Cw721ExecuteMsg;
 
-
-use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, TokenToSend, into_cosmos_msg};
-use crate::state::{TOKEN_INFO, ContractInfo};
+use crate::msg::{into_cosmos_msg, ExecuteMsg, InstantiateMsg, QueryMsg, TokenToSend};
+use crate::state::{ContractInfo, TOKEN_INFO};
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -28,17 +24,13 @@ pub fn instantiate(
     _info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
-
     // Verify the contract name
 
     msg.validate()?;
     // store token info
-    let data = ContractInfo {
-        name: msg.name,
-    };
+    let data = ContractInfo { name: msg.name };
     TOKEN_INFO.save(deps.storage, &data)?;
-    Ok(Response::default()
-        .add_attribute("multisender", "init"))
+    Ok(Response::default().add_attribute("multisender", "init"))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -49,9 +41,7 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::Send { to_send, receivers } => {
-            send(deps, env, info, to_send, receivers)
-        }
+        ExecuteMsg::Send { to_send, receivers } => send(deps, env, info, to_send, receivers),
     }
 }
 
@@ -60,9 +50,8 @@ pub fn send(
     _env: Env,
     info: MessageInfo,
     to_send: Vec<TokenToSend>,
-    receivers: Vec<String>
+    receivers: Vec<String>,
 ) -> Result<Response, ContractError> {
-    
     if to_send.len() != receivers.len() {
         return Err(ContractError::Std(StdError::generic_err(
             "You need to have either as much receivers as tokens to send or just the one",
@@ -75,21 +64,21 @@ pub fn send(
     for it in to_send.iter().zip(receivers.iter()) {
         let (token, receiver) = it;
         match token {
-            TokenToSend::Cw20Coin( token ) =>{
-                let message = Cw20ExecuteMsg::TransferFrom{
+            TokenToSend::Cw20Coin(token) => {
+                let message = Cw20ExecuteMsg::TransferFrom {
                     owner: info.sender.clone().into(),
                     recipient: receiver.clone(),
-                    amount: token.amount
+                    amount: token.amount,
                 };
-                res = res.add_message(into_cosmos_msg(message,token.address.clone())?);
-            },
-            TokenToSend::Cw721Coin( token ) => {
-                let message = Cw721ExecuteMsg::TransferNft{
+                res = res.add_message(into_cosmos_msg(message, token.address.clone())?);
+            }
+            TokenToSend::Cw721Coin(token) => {
+                let message = Cw721ExecuteMsg::TransferNft {
                     recipient: receiver.clone(),
-                    token_id: token.token_id.clone()
+                    token_id: token.token_id.clone(),
                 };
-                res = res.add_message(into_cosmos_msg(message,token.address.clone())?);
-            },
+                res = res.add_message(into_cosmos_msg(message, token.address.clone())?);
+            }
         }
     }
     Ok(res)

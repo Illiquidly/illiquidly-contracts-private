@@ -1,11 +1,10 @@
 use cosmwasm_std::{StdError, StdResult, Uint128};
-use cw20::{MinterResponse};
+use cw20::MinterResponse;
+use cw20_base::msg::InstantiateMarketingInfo;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use cw20_base::msg::{InstantiateMarketingInfo};
 
 pub use cw20::Cw20ExecuteMsg as ExecuteMsg;
-
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
 pub struct InstantiateMsg {

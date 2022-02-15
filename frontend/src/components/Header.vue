@@ -34,14 +34,14 @@
 <template>
   <div class="header-container"> 
     <img class="header-logo" src="/banner.png" height="45"/>
-    <div class="input-group trade-search ml-md-1 ml-lg-5 col-md-6 col-lg-7 d-sm-none d-md-flex">
+    <div class="input-group trade-search  ml-auto col-md-5 col-lg-7 d-none d-md-flex">
       <input type="text" class="form-control" aria-label="Amount (to the nearest dollar)"/>
       <div class="input-group-append">
         <button class="btn btn-outline-secondary search-button" type="button"><i class="gg-search"></i></button>
       </div>
     </div>
     <div 
-      class="wallet-container" 
+      class="wallet-container pl-3 pr-3 pr-lg-1" 
       type="button"
       data-toggle="modal" 
       data-target="#walletModal" 
@@ -52,11 +52,13 @@
           
         </path>
       </svg>
-      <span v-if="!connectedWallet" class="wallet-text">
-        Connect Wallet
-      </span>
-      <span v-else class="wallet-text">
-        {{ formatAddress(connectedWallet.terraAddress) }} &nbsp;| &nbsp;{{ capitalizeFirstLetter(networkName) }}
+      <span class="d-none d-md-inline-block">
+        <span v-if="!connectedWallet" class="wallet-text">
+          Connect Wallet
+        </span>
+        <span v-else class="wallet-text">
+          {{ formatAddress(connectedWallet.terraAddress) }} &nbsp;| &nbsp;{{ capitalizeFirstLetter(networkName) }}
+        </span>
       </span>
     </div>
   </div>
@@ -79,7 +81,7 @@
     margin-left: auto;
     margin-right: 13px;
     display: block;
-    padding: 10px;
+    padding: 10px 10px 10px 20px;
     border-radius: 15px;
     cursor: pointer;
     background-color: #88a9ce;
@@ -98,9 +100,6 @@
     color: #fcfffe;
     vertical-align: middle;
     padding: 10px 10px;
-  }
-  .trade-search{
-    margin-left: 50px;
   }
   .form-control{
     border-radius: 20px;

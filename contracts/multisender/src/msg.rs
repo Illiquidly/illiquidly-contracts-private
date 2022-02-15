@@ -1,7 +1,7 @@
-use cosmwasm_std::{StdResult,StdError, CosmosMsg, WasmMsg, Binary, to_binary};
+use cosmwasm_std::{to_binary, Binary, CosmosMsg, StdError, StdResult, WasmMsg};
+use cw20::Cw20Coin;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use cw20::Cw20Coin;
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
 pub struct InstantiateMsg {
@@ -29,29 +29,26 @@ fn is_valid_name(name: &str) -> bool {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub struct Cw721Coin{
+pub struct Cw721Coin {
     pub address: String,
     pub token_id: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum TokenToSend{
+pub enum TokenToSend {
     Cw20Coin(Cw20Coin),
-    Cw721Coin(Cw721Coin)
+    Cw721Coin(Cw721Coin),
 }
-
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
     Send {
         to_send: Vec<TokenToSend>,
-        receivers: Vec<String>
-    }
+        receivers: Vec<String>,
+    },
 }
-
-
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -97,13 +94,14 @@ pub enum QueryMsg {
     DownloadLogo {},
 }
 
-
 pub fn into_binary<M: Serialize>(msg: M) -> StdResult<Binary> {
     to_binary(&msg)
 }
 
-
- pub fn into_cosmos_msg<M: Serialize,T: Into<String>>(message: M, contract_addr: T) -> StdResult<CosmosMsg> {
+pub fn into_cosmos_msg<M: Serialize, T: Into<String>>(
+    message: M,
+    contract_addr: T,
+) -> StdResult<CosmosMsg> {
     let msg = into_binary(message)?;
     let execute = WasmMsg::Execute {
         contract_addr: contract_addr.into(),
