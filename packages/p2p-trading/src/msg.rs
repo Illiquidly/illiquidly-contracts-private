@@ -45,6 +45,7 @@ pub enum TokenToSend {
 #[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
 pub struct InstantiateMsg {
     pub name: String,
+    pub owner: Option<String>,
 }
 
 impl InstantiateMsg {
@@ -84,7 +85,7 @@ pub enum ExecuteMsg {
     /// Can be used to initiate Counter Trade, but also to add new tokens to it
     SuggestCounterTrade {
         trade_id: u64,
-        confirm: Option<bool>
+        confirm: Option<bool>,
     },
     AddFundsToCounterTrade {
         trade_id: u64,
@@ -102,18 +103,19 @@ pub enum ExecuteMsg {
         counter_id: u64,
     },
     /// Refuse the Trade plain and simple, no madam, I'm not interested in your tokens !
-    RefuseTrade {
+    RefuseCounterTrade {
         trade_id: u64,
         counter_id: u64,
     },
     /// Some parts of the traded tokens were interesting, but you can't accept the trade as is
-    ReviewTrade {
+    ReviewCounterTrade {
         trade_id: u64,
         counter_id: u64,
+        comment: Option<String>,
     },
     /// You can Withdraw funds only at specific steps of the trade, but you're allowed to try anytime !
     WithdrawPendingFunds {
-        trade_id: Option<u64>,
+        trade_id: u64,
     },
 }
 
@@ -166,4 +168,22 @@ pub enum QueryMsg {
     /// contract.
     /// Return type: DownloadLogoResponse.
     DownloadLogo {},
+
+
+    /*
+    GetAllActiveTrades{}
+    GetTradeInfo{
+        trade_id: u64,
+    }
+    GetCounterTrades{
+        trade_id:u64,
+    },
+    GetCounterTradeInfo{
+        trade_id: u64,
+        counter_id: u64
+    }
+    GetAllActiveCounterTrades{}
+
+
+    */
 }

@@ -7,8 +7,7 @@ use cw20::Cw20Coin;
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "snake_case")]
-pub enum FundsInfo {
-    Coin(Coin),
+pub enum AssetInfo {
     Cw20Coin(Cw20Coin),
     Cw721Coin(Cw721Coin),
 }
@@ -20,7 +19,10 @@ pub enum TradeState {
     Published,
     Acknowledged,
     Countered,
+    Refused,
     Accepted,
+    Cancelled,
+    Withdrawn,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -37,14 +39,26 @@ pub enum CounterTradeState {
 #[serde(rename_all = "snake_case")]
 pub struct ContractInfo {
     pub name: String,
-    pub last_trade_id: u64,
+    pub owner: String,
+    pub last_trade_id: Option<u64>,
+}
+
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[serde(rename_all = "snake_case")]
+pub struct AcceptedTradeInfo {
+    pub trade_id: u64,
+    pub counter_id: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "snake_case")]
 pub struct TradeInfo {
     pub owner: Addr,
-    pub associated_funds: Vec<FundsInfo>,
+    pub associated_assets: Vec<AssetInfo>,
+    pub associated_funds: Vec<Coin>,
     pub state: TradeState,
-    pub last_counter_id: Option<u64>
+    pub last_counter_id: Option<u64>,
+    pub comment: Option<String>,
+    pub accepted_info: Option<AcceptedTradeInfo>
 }
