@@ -1,9 +1,9 @@
-use cosmwasm_std::{DepsMut, Env, MessageInfo, Response, StdError, Uint128};
+use cosmwasm_std::{DepsMut, Env, MessageInfo, Response, Uint128};
 
 use crate::error::ContractError;
 use crate::state::{
     add_cw20_coin, add_cw721_coin, add_funds, can_suggest_counter_trade, is_counter_trader,
-    COUNTER_TRADE_INFO, TRADE_INFO,
+    COUNTER_TRADE_INFO, TRADE_INFO, load_trade
 };
 use p2p_trading_export::state::{TradeInfo, TradeState};
 
@@ -31,31 +31,23 @@ pub fn suggest_counter_trade(
                         }
                         None => trade_info.last_counter_id = Some(0),
                     }
-                    if trade_info.state != TradeState::Published
-                        && trade_info.state != TradeState::Countered
-                        && trade_info.state != TradeState::Acknowledged
-                    {
-                        return Err(ContractError::CantChangeTradeState {
-                            from: trade_info.state,
-                            to: TradeState::Acknowledged,
-                        });
-                    }
                     if trade_info.state == TradeState::Published {
                         trade_info.state = TradeState::Acknowledged;
                     }
                     Ok(trade_info)
                 }
-                _ => Err(ContractError::Std(StdError::generic_err(
-                    "Error not reachable (in suggest counter trade)",
-                ))),
+                //TARPAULIN : Unreachable
+                None => return Err(ContractError::NotFoundInTradeInfo{}), 
             }
         },
     )?;
 
     let counter_id = new_trade_info.last_counter_id.unwrap(); // This is safe, as per the statement above.
 
-    // If the counter trade id already exists, we have a problem !!!
-    // (we do not want to overwrite existing data)
+    // If the trade id already exists, the contract is faulty
+    // Or an external error happened, or whatever...
+    // In that case, we emit an error
+    // The priority is : We do not want to overwrite existing data
     if COUNTER_TRADE_INFO.has(
         deps.storage,
         (&trade_id.to_be_bytes(), &counter_id.to_be_bytes()),
@@ -181,27 +173,27 @@ pub fn confirm_counter_trade(
     trade_id: u64,
     counter_id: u64,
 ) -> Result<Response, ContractError> {
+
+    let mut trade_info = load_trade(deps.storage, trade_id)?;
+
     is_counter_trader(deps.storage, &info.sender, trade_id, counter_id)?;
 
+    if trade_info.state != TradeState::Acknowledged && trade_info.state != TradeState::Countered {
+        return Err(ContractError::CantChangeTradeState {
+            from: trade_info.state,
+            to: TradeState::Countered,
+        });
+    }
+    trade_info.state = TradeState::Countered;
+    
+
+
+
     // We update the trade_info to show there are some suggested counters
-    TRADE_INFO.update(
+    TRADE_INFO.save(
         deps.storage,
         &trade_id.to_be_bytes(),
-        |d: Option<TradeInfo>| -> Result<TradeInfo, ContractError> {
-            match d {
-                Some(mut one) => {
-                    if one.state != TradeState::Acknowledged && one.state != TradeState::Countered {
-                        return Err(ContractError::CantChangeTradeState {
-                            from: one.state,
-                            to: TradeState::Countered,
-                        });
-                    }
-                    one.state = TradeState::Countered;
-                    Ok(one)
-                }
-                None => Err(ContractError::NotFoundInTradeInfo {}),
-            }
-        },
+        &trade_info
     )?;
 
     // We update the counter_trade_info to indicate it is published and ready to be accepted
@@ -214,13 +206,14 @@ pub fn confirm_counter_trade(
                     if one.state != TradeState::Created {
                         return Err(ContractError::CantChangeCounterTradeState {
                             from: one.state,
-                            to: TradeState::Countered,
+                            to: TradeState::Published,
                         });
                     }
                     one.state = TradeState::Published;
                     Ok(one)
                 }
-                None => Err(ContractError::NotFoundInCounterTradeInfo {}),
+                //TARPAULIN : Unreachable
+                None => Err(ContractError::NotFoundInCounterTradeInfo {}), 
             }
         },
     )?;

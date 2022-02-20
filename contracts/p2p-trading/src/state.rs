@@ -1,11 +1,9 @@
 use cw_storage_plus::{Item, Map};
 
 use cosmwasm_std::{Addr, Coin, StdError, StdResult, Storage, Uint128};
-use cw20::Cw20Coin;
 
 use crate::error::ContractError;
-use p2p_trading_export::msg::Cw721Coin;
-use p2p_trading_export::state::{ContractInfo, AssetInfo, TradeInfo, TradeState};
+use p2p_trading_export::state::{ContractInfo, AssetInfo, TradeInfo, TradeState, Cw721Coin, Cw20Coin};
 
 pub const CONTRACT_INFO: Item<ContractInfo> = Item::new("contract_info");
 
@@ -22,6 +20,7 @@ pub fn add_funds(funds: Vec<Coin>) -> impl FnOnce(Option<TradeInfo>) -> StdResul
                 );
                 Ok(one)
             }
+            //TARPAULIN : Unreachable in current code state
             None => Err(StdError::GenericErr {
                 msg: "Trade Id not found !".to_string(),
             }),
@@ -42,6 +41,7 @@ pub fn add_cw20_coin(
                 }));
                 Ok(one)
             }
+            //TARPAULIN : Unreachable in current code state
             None => Err(StdError::GenericErr {
                 msg: "Trade Id not found !".to_string(),
             }),
@@ -62,6 +62,7 @@ pub fn add_cw721_coin(
                 }));
                 Ok(one)
             }
+            //TARPAULIN : Unreachable in current code state
             None => Err(StdError::GenericErr {
                 msg: "Trade Id not found !".to_string(),
             }),
@@ -70,14 +71,12 @@ pub fn add_cw721_coin(
 }
 
 pub fn is_trader(storage: &dyn Storage, sender: &Addr, trade_id: u64) -> Result<(), ContractError> {
-    if let Ok(Some(trade)) = TRADE_INFO.may_load(storage, &trade_id.to_be_bytes()) {
-        if trade.owner == sender.clone() {
-            Ok(())
-        } else {
-            Err(ContractError::TraderNotCreator {})
-        }
+    let trade = load_trade(storage, trade_id)?;
+
+    if trade.owner == sender.clone() {
+        Ok(())
     } else {
-        Err(ContractError::NotFoundInTradeInfo {})
+        Err(ContractError::TraderNotCreator {})
     }
 }
 
@@ -87,17 +86,12 @@ pub fn is_counter_trader(
     trade_id: u64,
     counter_id: u64,
 ) -> Result<(), ContractError> {
-    if let Ok(Some(trade)) = COUNTER_TRADE_INFO.may_load(
-        storage,
-        (&trade_id.to_be_bytes(), &counter_id.to_be_bytes()),
-    ) {
-        if trade.owner == sender.clone() {
-            Ok(())
-        } else {
-            Err(ContractError::CounterTraderNotCreator {})
-        }
+    let trade = load_counter_trade(storage, trade_id, counter_id)?;
+    
+    if trade.owner == sender.clone() {
+        Ok(())
     } else {
-        Err(ContractError::NotFoundInCounterTradeInfo {})
+        Err(ContractError::CounterTraderNotCreator {})
     }
 }
 
@@ -112,6 +106,18 @@ pub fn load_counter_trade(
             (&trade_id.to_be_bytes(), &counter_id.to_be_bytes()),
         )
         .map_err(|_| ContractError::NotFoundInCounterTradeInfo {})
+}
+
+pub fn load_trade(
+    storage: &dyn Storage,
+    trade_id: u64,
+) -> Result<TradeInfo, ContractError> {
+    TRADE_INFO
+        .load(
+            storage,
+            &trade_id.to_be_bytes(),
+        )
+        .map_err(|_| ContractError::NotFoundInTradeInfo {})
 }
 
 pub fn can_suggest_counter_trade(

@@ -25,7 +25,6 @@ pub enum ContractError {
     #[error("Minting cannot exceed the cap")]
     CannotExceedCap {},
 
-
     #[error("An unplanned bug just happened :/")]
     ContractBug{},
 
@@ -50,13 +49,13 @@ pub enum ContractError {
     #[error("Trade cannot be countered, it is not ready or is already cancelled/terminated")]
     NotCounterable {},
 
-    #[error("Wrong state of the trade for the current operation")]
+    #[error("Wrong state of the trade for the current operation : {state:?}")]
     WrongTradeState{state:TradeState},
 
-    #[error("Can change the state of the trade")]
+    #[error("Can change the state of the trade from {from:?} to {to:?}")]
     CantChangeTradeState { from: TradeState, to: TradeState },
 
-    #[error("Can change the state of the counter-trade")]
+    #[error("Can change the state of the counter-trade from {from:?} to {to:?}")]
     CantChangeCounterTradeState { from: TradeState, to: TradeState },
 
     #[error("Sorry, you can't accept a counter trade that is not published yet")]
@@ -70,4 +69,10 @@ pub enum ContractError {
 
     #[error("Sorry, this trade is cancelled")]
     TradeCancelled {},
+
+    #[error("Assets were already withdrawn, don't try to scam the platform please")]
+    TradeAlreadyWithdrawn {},
+
+    #[error("Only the trader or the counter-trader can withdraw assets, don't try to scam the platform please")]
+    NotWithdrawableByYou {},
 }

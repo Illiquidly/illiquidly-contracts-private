@@ -15,7 +15,7 @@ pub fn review_counter_trade(
     is_trader(deps.storage, &info.sender, trade_id)?;
 
     // We check the counter trade exists !
-    load_counter_trade(deps.storage, trade_id, counter_id)?;
+    let counter_info = load_counter_trade(deps.storage, trade_id, counter_id)?;
 
     let mut trade_info = TRADE_INFO.load(deps.storage, &trade_id.to_be_bytes())?;
     if trade_info.state == TradeState::Accepted {
@@ -25,8 +25,16 @@ pub fn review_counter_trade(
         return Err(ContractError::TradeCancelled {});
     }
 
+    // Only a published counter trade can be reviewed
+    if counter_info.state != TradeState::Published{
+        return Err(ContractError::CantChangeCounterTradeState {
+            from: counter_info.state,
+            to: TradeState::Created,
+        });
+    }
+
+
     // We go through all counter trades, to un-publish the counter_id and to update the current trade state
-    let mut is_acknowledged = false;
     let mut is_countered = false;
 
     // We get all the counter trades for this trade
@@ -35,7 +43,6 @@ pub fn review_counter_trade(
         .keys(deps.storage, None, None, Order::Ascending)
         .collect();
 
-    // We go through all of them and change their status
     for key in counter_trade_keys {
         COUNTER_TRADE_INFO.update(
             deps.storage,
@@ -47,24 +54,22 @@ pub fn review_counter_trade(
                         if id == counter_id.to_be_bytes() {
                             one.state = TradeState::Created;
                             one.comment = comment.clone();
-                        } else if one.state == TradeState::Created {
-                            is_acknowledged = true;
-                        } else if one.state == TradeState::Published {
+                        }else if one.state == TradeState::Published {
                             is_countered = true;
                         }
                         Ok(one)
                     }
+                    // TARPAULIN : Unreachable code
                     None => Err(ContractError::NotFoundInCounterTradeInfo {}),
                 }
             },
         )?;
     }
 
-    if is_acknowledged {
-        trade_info.state = TradeState::Acknowledged;
-    }
     if is_countered {
         trade_info.state = TradeState::Countered;
+    }else{
+        trade_info.state = TradeState::Acknowledged;
     }
 
     // Then we need to change the trade status that we may have changed
