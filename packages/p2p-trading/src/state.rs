@@ -1,3 +1,5 @@
+use std::fmt::{Display, Formatter, Result};
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -37,6 +39,12 @@ pub enum TradeState {
     Withdrawn,
 }
 
+impl Display for TradeState {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "{:?}", self)
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "snake_case")]
 pub struct ContractInfo {
@@ -44,7 +52,6 @@ pub struct ContractInfo {
     pub owner: String,
     pub last_trade_id: Option<u64>,
 }
-
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "snake_case")]
@@ -62,5 +69,5 @@ pub struct TradeInfo {
     pub state: TradeState,
     pub last_counter_id: Option<u64>,
     pub comment: Option<String>,
-    pub accepted_info: Option<AcceptedTradeInfo>
+    pub accepted_info: Option<AcceptedTradeInfo>,
 }

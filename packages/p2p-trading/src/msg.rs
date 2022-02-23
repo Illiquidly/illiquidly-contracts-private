@@ -27,7 +27,6 @@ pub fn into_cosmos_msg<M: Serialize, T: Into<String>>(
     Ok(execute.into())
 }
 
-
 #[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
 pub struct InstantiateMsg {
     pub name: String,
@@ -119,25 +118,27 @@ pub enum ReceiveMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
-    ContractInfo{
-
-    },
-    TradeInfo{
+    ContractInfo {},
+    TradeInfo {
         trade_id: u64,
     },
-    CounterTradeInfo{
+    CounterTradeInfo {
         trade_id: u64,
-        counter_id: u64
-    }
-      /*
-    }
-    GetAllActiveTrades{}
-   
-    GetCounterTrades{
-        trade_id:u64,
+        counter_id: u64,
     },
-    GetAllActiveCounterTrades{}
-
-
-    */
+    GetAllTrades {
+        start_after: Option<String>,
+        limit: Option<u32>,
+        states: Option<Vec<String>>,
+        owner: Option<String>
+    },
+    GetCounterTrades {
+        trade_id: u64,
+    },
+    GetAllCounterTrades {
+        start_after: Option<String>, // use composite key here as continuation key
+        limit: Option<u32>,
+        states: Option<Vec<String>>,
+        owner: Option<String>,
+    },
 }
