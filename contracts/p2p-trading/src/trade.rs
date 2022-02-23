@@ -2,6 +2,9 @@ use cosmwasm_std::{
     BankMsg, Coin, DepsMut, Env, MessageInfo, Response, StdError, StdResult, Uint128,
 };
 
+use std::collections::HashSet;
+use std::iter::FromIterator;
+
 use crate::error::ContractError;
 use crate::state::{
     add_cw20_coin, add_cw721_coin, add_funds, is_trader, load_counter_trade, CONTRACT_INFO,
@@ -14,8 +17,9 @@ use p2p_trading_export::state::{AcceptedTradeInfo, AssetInfo, TradeInfo, TradeSt
 
 pub fn create_trade(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
+    whitelisted_users: Option<Vec<String>>
 ) -> Result<Response, ContractError> {
     // We start by creating a new trade_id (simply incremented from the last id)
     let trade_id: u64 = CONTRACT_INFO
@@ -44,15 +48,20 @@ pub fn create_trade(
             &TradeInfo {
                 owner: info.sender.clone(),
                 // We add the funds sent along with this transaction
-                associated_funds: info.funds,
+                associated_funds: info.funds.clone(),
                 associated_assets: vec![],
                 state: TradeState::Created,
                 last_counter_id: None,
+                whitelisted_users: HashSet::new(),
                 comment: None,
                 accepted_info: None,
                 assets_withdrawn: false,
             },
         )?;
+    }
+
+    if let Some(whitelist) = whitelisted_users{
+        add_whitelisted_users(deps,env,info,trade_id,whitelist)?;
     }
 
     Ok(Response::new()
@@ -148,6 +157,53 @@ pub fn add_nft_to_trade(
         .add_attribute("nft", info.sender.to_string())
         .add_attribute("token_id", token_id))
 }
+
+pub fn add_whitelisted_users(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    trade_id: u64,
+    whitelisted_users: Vec<String>
+)-> Result<Response, ContractError>{
+    let mut trade_info = is_trader(deps.storage, &info.sender, trade_id)?;
+    if trade_info.state != TradeState::Created {
+        return Err(ContractError::WrongTradeState {
+            state: trade_info.state,
+        });
+    } 
+    
+    let hash_set: HashSet<String> = HashSet::from_iter(whitelisted_users);
+    trade_info.whitelisted_users = trade_info.whitelisted_users.union(&hash_set).cloned().collect();
+    
+    TRADE_INFO.save(deps.storage, &trade_id.to_be_bytes(), &trade_info)?;
+
+    Ok(Response::new()
+        .add_attribute("added","whitelisted_users"))
+}
+
+pub fn remove_whitelisted_users(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    trade_id: u64,
+    whitelisted_users: Vec<String>
+)-> Result<Response, ContractError>{
+    let mut trade_info = is_trader(deps.storage, &info.sender, trade_id)?;
+    if trade_info.state != TradeState::Created {
+        return Err(ContractError::WrongTradeState {
+            state: trade_info.state,
+        });
+    }
+    for user in whitelisted_users{
+        trade_info.whitelisted_users.remove(&user);
+    }
+    
+    TRADE_INFO.save(deps.storage, &trade_id.to_be_bytes(), &trade_info)?;
+
+    Ok(Response::new()
+        .add_attribute("removed","whitelisted_users"))
+}
+
 
 pub fn confirm_trade(
     deps: DepsMut,

@@ -21,7 +21,7 @@ use crate::counter_trade::{
 use crate::trade::{
     accept_trade, add_funds_to_trade, add_nft_to_trade, add_token_to_trade, cancel_trade,
     confirm_trade, create_trade, create_withdraw_messages, refuse_counter_trade,
-    withdraw_trade_assets_while_creating,
+    withdraw_trade_assets_while_creating, add_whitelisted_users, remove_whitelisted_users
 };
 
 use crate::messages::review_counter_trade;
@@ -68,7 +68,7 @@ pub fn execute(
         } => receive_nft(deps, env, info, sender, token_id, msg),
 
         // Trade Creation Messages
-        ExecuteMsg::CreateTrade {} => create_trade(deps, env, info),
+        ExecuteMsg::CreateTrade {whitelisted_users} => create_trade(deps, env, info, whitelisted_users),
         ExecuteMsg::AddFundsToTrade { trade_id, confirm } => {
             add_funds_to_trade(deps, env, info, trade_id, confirm)
         }
@@ -77,6 +77,17 @@ pub fn execute(
             assets,
             funds,
         } => withdraw_trade_assets_while_creating(deps, env, info, trade_id, assets, funds),
+
+        ExecuteMsg::AddWhitelistedUsers {
+            trade_id,
+            whitelisted_users,
+        } => add_whitelisted_users(deps,env,info,trade_id,whitelisted_users),
+
+        ExecuteMsg::RemoveWhitelistedUsers {
+            trade_id,
+            whitelisted_users,
+        } => remove_whitelisted_users(deps,env,info,trade_id,whitelisted_users),
+
 
         ExecuteMsg::ConfirmTrade { trade_id } => confirm_trade(deps, env, info, trade_id),
 
@@ -382,7 +393,31 @@ pub mod tests {
         let info = mock_info("creator", &[]);
         let env = mock_env();
 
-        let res = execute(deps, env, info, ExecuteMsg::CreateTrade {}).unwrap();
+        let res = execute(deps, env, info, ExecuteMsg::CreateTrade { whitelisted_users: Some(vec![])}).unwrap();
+        return res;
+    }
+
+    fn create_private_trade_helper(deps: DepsMut, users: Vec<String>) -> Response {
+        let info = mock_info("creator", &[]);
+        let env = mock_env();
+
+        let res = execute(deps, env, info, ExecuteMsg::CreateTrade { whitelisted_users: Some(users)}).unwrap();
+        return res;
+    }
+
+    fn add_whitelisted_users(deps: DepsMut, trade_id: u64, users: Vec<String>) -> Result<Response, ContractError> {
+        let info = mock_info("creator", &[]);
+        let env = mock_env();
+
+        let res = execute(deps, env, info, ExecuteMsg::AddWhitelistedUsers { trade_id, whitelisted_users: users});
+        return res;
+    }
+
+    fn remove_whitelisted_users(deps: DepsMut, trade_id: u64, users: Vec<String>) -> Result<Response, ContractError> {
+        let info = mock_info("creator", &[]);
+        let env = mock_env();
+
+        let res = execute(deps, env, info, ExecuteMsg::RemoveWhitelistedUsers { trade_id, whitelisted_users: users});
         return res;
     }
 
@@ -545,6 +580,7 @@ pub mod tests {
 
     pub mod trade_tests {
         use super::*;
+        use std::collections::HashSet;
         use cosmwasm_std::{coin, SubMsg};
         use p2p_trading_export::state::AcceptedTradeInfo;
 
@@ -1478,6 +1514,49 @@ pub mod tests {
                 withdraw_aborted_counter_helper(deps.as_mut(), "counterer", 0, 0).unwrap_err();
             assert_eq!(err, ContractError::TradeAlreadyWithdrawn {});
         }
+
+        #[test]
+        fn private() {
+            let mut deps = mock_dependencies(&[]);
+            init_helper(deps.as_mut());
+            create_private_trade_helper(deps.as_mut(),vec!["whitelist".to_string()]);
+            add_funds_to_trade_helper(deps.as_mut(), "creator", 0, &coins(5, "lunas"), None)
+                .unwrap();
+            add_cw20_to_trade_helper(deps.as_mut(), "token", "creator".to_string(), 0).unwrap();
+            add_cw721_to_trade_helper(deps.as_mut(), "nft", "creator".to_string(), 0).unwrap();
+            confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
+
+            let err = suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, Some(false)).unwrap_err();
+            assert_eq!(err, ContractError::AddressNotWhitelisted {});
+
+            suggest_counter_trade_helper(deps.as_mut(), "whitelist", 0, Some(false)).unwrap();
+            
+            let err = remove_whitelisted_users(deps.as_mut(), 0, vec!["whitelist".to_string()]).unwrap_err();
+            assert_eq!(err, ContractError::WrongTradeState { state: TradeState::Countered });
+
+            let err = add_whitelisted_users(deps.as_mut(), 0, vec!["whitelist".to_string()]).unwrap_err();
+            assert_eq!(err, ContractError::WrongTradeState { state: TradeState::Countered });
+
+            create_private_trade_helper(deps.as_mut(),vec!["whitelist".to_string()]);
+
+            remove_whitelisted_users(deps.as_mut(), 1, vec!["whitelist".to_string()]).unwrap();
+            let info = TRADE_INFO.load(&deps.storage, &1_u64.to_be_bytes()).unwrap();
+            let hash_set = HashSet::new();
+            assert_eq!(info.whitelisted_users, hash_set);
+
+            add_whitelisted_users(deps.as_mut(), 1, vec!["whitelist-1".to_string(),"whitelist".to_string()]).unwrap();
+            add_whitelisted_users(deps.as_mut(), 1, vec!["whitelist-2".to_string(),"whitelist".to_string()]).unwrap();
+            let info = TRADE_INFO.load(&deps.storage, &1_u64.to_be_bytes()).unwrap();
+            let mut hash_set = HashSet::new();
+            hash_set.insert("whitelist".to_string());
+            hash_set.insert("whitelist-1".to_string());
+            hash_set.insert("whitelist-2".to_string());
+            assert_eq!(info.whitelisted_users, hash_set);
+
+
+        }
+
+
     }
 
     fn suggest_counter_trade_helper(

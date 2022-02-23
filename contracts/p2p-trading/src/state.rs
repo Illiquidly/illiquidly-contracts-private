@@ -121,12 +121,21 @@ pub fn load_trade(storage: &dyn Storage, trade_id: u64) -> Result<TradeInfo, Con
 pub fn can_suggest_counter_trade(
     storage: &dyn Storage,
     trade_id: u64,
+    sender: &String
 ) -> Result<(), ContractError> {
     if let Ok(Some(trade)) = TRADE_INFO.may_load(storage, &trade_id.to_be_bytes()) {
         if (trade.state == TradeState::Published)
             | (trade.state == TradeState::Countered)
         {
-            Ok(())
+            if !trade.whitelisted_users.is_empty(){
+                if !trade.whitelisted_users.contains(sender){
+                    Err(ContractError::AddressNotWhitelisted {})
+                }else{
+                    Ok(())
+                }
+            }else{
+                Ok(())
+            }
         } else {
             Err(ContractError::NotCounterable {})
         }

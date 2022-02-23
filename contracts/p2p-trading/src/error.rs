@@ -72,4 +72,7 @@ pub enum ContractError {
 
     #[error("Only the trader or the counter-trader can withdraw assets, don't try to scam the platform please")]
     NotWithdrawableByYou {},
+
+    #[error("This trade is only allowed to a selected few, sorry :/")]
+    AddressNotWhitelisted {},
 }

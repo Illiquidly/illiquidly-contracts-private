@@ -58,7 +58,9 @@ pub enum ExecuteMsg {
         token_id: String,
         msg: Binary,
     },
-    CreateTrade {},
+    CreateTrade {
+        whitelisted_users: Option<Vec<String>>,
+    },
     AddFundsToTrade {
         trade_id: u64,
         confirm: Option<bool>,
@@ -67,6 +69,14 @@ pub enum ExecuteMsg {
         trade_id: u64,
         assets: Vec<(usize, AssetInfo)>,
         funds: Vec<(usize, Coin)>,
+    },
+    AddWhitelistedUsers{
+        trade_id: u64,
+        whitelisted_users: Vec<String>,
+    },
+    RemoveWhitelistedUsers{
+        trade_id: u64,
+        whitelisted_users: Vec<String>,
     },
     /// Is used by the Trader to confirm they completed their end of the trade.
     ConfirmTrade {

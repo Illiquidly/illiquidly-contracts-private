@@ -1,7 +1,7 @@
 use crate::error::ContractError;
 use crate::state::{is_trader, load_counter_trade, COUNTER_TRADE_INFO, TRADE_INFO};
-use cosmwasm_std::{DepsMut, Env, MessageInfo, Order, Response};
-use p2p_trading_export::state::{TradeInfo, TradeState};
+use cosmwasm_std::{DepsMut, Env, MessageInfo,  Response};
+use p2p_trading_export::state::{TradeState};
 
 pub fn review_counter_trade(
     deps: DepsMut,
@@ -12,7 +12,7 @@ pub fn review_counter_trade(
     comment: Option<String>,
 ) -> Result<Response, ContractError> {
     // Only the initial trader can cancel the trade !
-    let mut trade_info = is_trader(deps.storage, &info.sender, trade_id)?;
+    let trade_info = is_trader(deps.storage, &info.sender, trade_id)?;
 
     // We check the counter trade exists !
     let mut counter_info = load_counter_trade(deps.storage, trade_id, counter_id)?;

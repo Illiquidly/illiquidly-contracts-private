@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use cosmwasm_std::{Coin, DepsMut, Env, MessageInfo, Response, Uint128};
 
 use crate::error::ContractError;
@@ -18,7 +19,8 @@ pub fn suggest_counter_trade(
 ) -> Result<Response, ContractError> {
     // We start by verifying it is possible to suggest a counter trade to that trade
     // It also checks if the trade exists
-    can_suggest_counter_trade(deps.storage, trade_id)?;
+    // And that the sender is whitelisted (in cas the trade is private)
+    can_suggest_counter_trade(deps.storage, trade_id, &info.sender.clone().into())?;
 
     // We start by creating a new trade_id (simply incremented from the last id)
     let new_trade_info = TRADE_INFO.update(
@@ -66,6 +68,7 @@ pub fn suggest_counter_trade(
                 associated_assets: vec![],
                 state: TradeState::Created,
                 last_counter_id: None,
+                whitelisted_users: HashSet::new(),
                 comment: None,
                 accepted_info: None,
                 assets_withdrawn: false,
