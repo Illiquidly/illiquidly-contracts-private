@@ -29,12 +29,10 @@ pub enum AssetInfo {
 pub enum TradeState {
     Created,
     Published,
-    Acknowledged,
     Countered,
     Refused,
     Accepted,
     Cancelled,
-    Withdrawn,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -44,7 +42,6 @@ pub struct ContractInfo {
     pub owner: String,
     pub last_trade_id: Option<u64>,
 }
-
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "snake_case")]
@@ -62,5 +59,6 @@ pub struct TradeInfo {
     pub state: TradeState,
     pub last_counter_id: Option<u64>,
     pub comment: Option<String>,
-    pub accepted_info: Option<AcceptedTradeInfo>
+    pub accepted_info: Option<AcceptedTradeInfo>,
+    pub assets_withdrawn: bool,
 }

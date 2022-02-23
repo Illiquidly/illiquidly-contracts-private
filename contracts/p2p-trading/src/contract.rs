@@ -1,30 +1,31 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    from_binary, to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult, Uint128, BankMsg, StdError
+    from_binary, to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult,
+    Uint128,
 };
-
 
 use crate::error::ContractError;
 
-use cw721::Cw721ExecuteMsg;
-use cw20::Cw20ExecuteMsg;
-
-use crate::state::{CONTRACT_INFO, TRADE_INFO, COUNTER_TRADE_INFO, load_trade, load_counter_trade};
-use p2p_trading_export::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, ReceiveMsg, into_cosmos_msg};
-use p2p_trading_export::state::{ContractInfo, TradeState, AssetInfo, TradeInfo};
+use crate::state::{
+    is_counter_trader, is_trader, load_counter_trade, load_trade, CONTRACT_INFO,
+    COUNTER_TRADE_INFO, TRADE_INFO,
+};
+use p2p_trading_export::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, ReceiveMsg};
+use p2p_trading_export::state::{ContractInfo, TradeInfo, TradeState};
 
 use crate::counter_trade::{
     add_funds_to_counter_trade, add_nft_to_counter_trade, add_token_to_counter_trade,
-    confirm_counter_trade, suggest_counter_trade,
+    confirm_counter_trade, suggest_counter_trade, withdraw_counter_trade_assets_while_creating,
 };
 use crate::trade::{
-    accept_trade, cancel_trade, add_funds_to_trade, add_nft_to_trade, add_token_to_trade, confirm_trade,
-    create_trade, refuse_counter_trade,
+    accept_trade, add_funds_to_trade, add_nft_to_trade, add_token_to_trade, cancel_trade,
+    confirm_trade, create_trade, create_withdraw_messages, refuse_counter_trade,
+    withdraw_trade_assets_while_creating,
 };
 
 use crate::messages::review_counter_trade;
-use crate::query::{query_contract_info};
+use crate::query::query_contract_info;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -71,6 +72,12 @@ pub fn execute(
         ExecuteMsg::AddFundsToTrade { trade_id, confirm } => {
             add_funds_to_trade(deps, env, info, trade_id, confirm)
         }
+        ExecuteMsg::RemoveFromTrade {
+            trade_id,
+            assets,
+            funds,
+        } => withdraw_trade_assets_while_creating(deps, env, info, trade_id, assets, funds),
+
         ExecuteMsg::ConfirmTrade { trade_id } => confirm_trade(deps, env, info, trade_id),
 
         //Counter Trade Creation Messages
@@ -84,6 +91,15 @@ pub fn execute(
             confirm,
         } => add_funds_to_counter_trade(deps, env, info, trade_id, counter_id, confirm),
 
+        ExecuteMsg::RemoveFromCounterTrade {
+            trade_id,
+            counter_id,
+            assets,
+            funds,
+        } => withdraw_counter_trade_assets_while_creating(
+            deps, env, info, trade_id, counter_id, assets, funds,
+        ),
+
         ExecuteMsg::ConfirmCounterTrade {
             trade_id,
             counter_id,
@@ -96,9 +112,7 @@ pub fn execute(
         } => accept_trade(deps, env, info, trade_id, counter_id),
 
         // After Create Messages
-        ExecuteMsg::CancelTrade {
-            trade_id,
-        } => cancel_trade(deps, env, info, trade_id),
+        ExecuteMsg::CancelTrade { trade_id } => cancel_trade(deps, env, info, trade_id),
 
         ExecuteMsg::RefuseCounterTrade {
             trade_id,
@@ -114,11 +128,20 @@ pub fn execute(
         ExecuteMsg::WithdrawPendingAssets { trade_id } => {
             withdraw_accepted_funds(deps, env, info, trade_id)
         }
-        // Generic (will have to remove at the end of development)
-        /*_ => Err(ContractError::Std(StdError::generic_err(
-            "Ow whaou, please wait just a bit, it's not implemented yet !",
-        ))),
-        */
+
+        ExecuteMsg::WithdrawCancelledTrade { trade_id } => {
+            withdraw_cancelled_trade(deps, env, info, trade_id)
+        }
+
+        ExecuteMsg::WithdrawAbortedCounter {
+            trade_id,
+            counter_id,
+        } => withdraw_aborted_counter(deps, env, info, trade_id, counter_id), /*
+                                                                              // Generic (will have to remove at the end of development)
+                                                                                _ => Err(ContractError::Std(StdError::generic_err(
+                                                                                    "Ow whaou, please wait just a bit, it's not implemented yet !",
+                                                                                ))),
+                                                                              */
     }
 }
 
@@ -131,6 +154,17 @@ pub fn receive(
     msg: Binary,
 ) -> Result<Response, ContractError> {
     let msg: ReceiveMsg = from_binary(&msg)?;
+
+    // TODO
+    // Careful here, as any token can be added to the trade by anyone (and not only the trader)
+    // We have to think about a security mechanism to counter this issue !!!
+    // 1. Make the trade_id and counter_id random
+    //      That is one step, but it's not enough
+    // 2. Approve this contract for all deposited tokens (exaclty the amount we want to transfer !)
+    //      This seems to be the appropriate solution for now
+    //      This doesn't require that much more developing effort
+    // This also applies to the receive_nft function
+
     match msg {
         ReceiveMsg::AddToTrade { trade_id } => {
             add_token_to_trade(deps, env, info, from, trade_id, sent_amount)
@@ -152,11 +186,11 @@ pub fn receive_nft(
     msg: Binary,
 ) -> Result<Response, ContractError> {
     let msg: ReceiveMsg = from_binary(&msg)?;
+
     match msg {
         ReceiveMsg::AddToTrade { trade_id } => {
             add_nft_to_trade(deps, env, info, from, trade_id, token_id)
         }
-
         ReceiveMsg::AddToCounterTrade {
             trade_id,
             counter_id,
@@ -164,43 +198,18 @@ pub fn receive_nft(
     }
 }
 
-pub fn create_withdraw_response(
+pub fn check_and_create_withdraw_messages(
     info: MessageInfo,
-    trade_info: TradeInfo,
-) -> Result<Response, ContractError>{
-
-    if trade_info.state == TradeState::Withdrawn{
+    trade_info: &TradeInfo,
+) -> Result<Response, ContractError> {
+    if trade_info.assets_withdrawn {
         return Err(ContractError::TradeAlreadyWithdrawn {});
     }
-
-    let mut res = Response::new();
-    //We add tokens and nfts
-    for fund in trade_info.associated_assets{
-        match fund {
-            AssetInfo::Cw20Coin(token) => {
-                let message = Cw20ExecuteMsg::Transfer{
-                    recipient: info.sender.to_string(),
-                    amount: token.amount,
-                };
-                res = res.add_message(into_cosmos_msg(message, token.address.clone())?);
-            },
-            AssetInfo::Cw721Coin(nft) =>{
-                let message = Cw721ExecuteMsg::TransferNft{
-                    recipient: info.sender.to_string(),
-                    token_id: nft.token_id,
-                };
-                res = res.add_message(into_cosmos_msg(message, nft.address.clone())?);
-            },
-        }
-    }
-    // We add funds (coins)
-    if !trade_info.associated_funds.is_empty(){
-        res = res.add_message(BankMsg::Send {
-            to_address: info.sender.to_string(),
-            amount: trade_info.associated_funds,
-        });
-    };
-    Ok(res)
+    create_withdraw_messages(
+        info,
+        &trade_info.associated_assets,
+        &trade_info.associated_funds,
+    )
 }
 
 pub fn withdraw_accepted_funds(
@@ -209,64 +218,140 @@ pub fn withdraw_accepted_funds(
     info: MessageInfo,
     trade_id: u64,
 ) -> Result<Response, ContractError> {
-
     //We load the trade and verify it has been accepted
-    let mut trade_info = TRADE_INFO.load(deps.storage, &trade_id.to_be_bytes())?;
-    if trade_info.state != TradeState::Accepted && trade_info.state != TradeState::Withdrawn{
+    let mut trade_info = load_trade(deps.storage, trade_id)?;
+    if trade_info.state != TradeState::Accepted {
         return Err(ContractError::TradeNotAccepted {});
     }
 
-    let counter_id = trade_info.accepted_info.clone().ok_or(ContractError::ContractBug{})?.counter_id;
-    let mut counter_info = COUNTER_TRADE_INFO.load(deps.storage, (&trade_id.to_be_bytes(), &counter_id.to_be_bytes()))?;
+    let counter_id = trade_info
+        .accepted_info
+        .clone()
+        .ok_or(ContractError::ContractBug {})?
+        .counter_id;
+    let mut counter_info = load_counter_trade(deps.storage, trade_id, counter_id)?;
+
     let trade_type: &str;
 
     let res;
 
     // We need to indentify who the transaction sender is (trader or counter-trader)
-    if trade_info.owner == info.sender{
+    if trade_info.owner == info.sender {
         // In case the trader wants to withdraw the exchanged funds
-        res = create_withdraw_response(info,counter_info.clone())?;
-
-        trade_type = "trade";
-        counter_info.state = TradeState::Withdrawn;
-        COUNTER_TRADE_INFO.save(deps.storage, (&trade_id.to_be_bytes(), &counter_id.to_be_bytes()), &counter_info)?;
-    
-    }else if counter_info.owner == info.sender{
-        // In case the counter_trader wants to withdraw the exchanged funds
-        res = create_withdraw_response(info,trade_info.clone())?;
+        res = check_and_create_withdraw_messages(info, &counter_info)?;
 
         trade_type = "counter";
-        trade_info.state = TradeState::Withdrawn;
+        counter_info.assets_withdrawn = true;
+        COUNTER_TRADE_INFO.save(
+            deps.storage,
+            (&trade_id.to_be_bytes(), &counter_id.to_be_bytes()),
+            &counter_info,
+        )?;
+    } else if counter_info.owner == info.sender {
+        // In case the counter_trader wants to withdraw the exchanged funds
+        res = check_and_create_withdraw_messages(info, &trade_info)?;
+
+        trade_type = "trade";
+        trade_info.assets_withdrawn = true;
         TRADE_INFO.save(deps.storage, &trade_id.to_be_bytes(), &trade_info)?;
-    }else{
-        return Err(ContractError::NotWithdrawableByYou{});
+    } else {
+        return Err(ContractError::NotWithdrawableByYou {});
     }
 
     Ok(res
-        .add_attribute("withdraw funds",trade_type)
-        .add_attribute("trade",trade_id.to_string())
-        .add_attribute("counter",counter_id.to_string())
-    )
+        .add_attribute("withdraw funds", trade_type)
+        .add_attribute("trade", trade_id.to_string())
+        .add_attribute("counter", counter_id.to_string()))
+}
+
+pub fn withdraw_cancelled_trade(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    trade_id: u64,
+) -> Result<Response, ContractError> {
+    //We load the trade and verify it has been accepted
+    let mut trade_info = is_trader(deps.storage, &info.sender, trade_id)?;
+    if trade_info.state != TradeState::Cancelled {
+        return Err(ContractError::TradeNotCancelled {});
+    }
+    let res = check_and_create_withdraw_messages(info, &trade_info)?;
+    trade_info.assets_withdrawn = true;
+    TRADE_INFO.save(deps.storage, &trade_id.to_be_bytes(), &trade_info)?;
+
+    Ok(res
+        .add_attribute("withdraw funds", "trade")
+        .add_attribute("trade", trade_id.to_string()))
+}
+
+pub fn withdraw_aborted_counter(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    trade_id: u64,
+    counter_id: u64,
+) -> Result<Response, ContractError> {
+    //We load the trade and verify it has been accepted
+    let trade_info = load_trade(deps.storage, trade_id)?;
+    let mut counter_info = is_counter_trader(deps.storage, &info.sender, trade_id, counter_id)?;
+    
+    // If the associated trade is accepted and the counter was not selected
+    // Or if the counter was refused
+    // Or if the associated trade was cancelled
+    // Or if this counter was cancelled
+    if !(
+            (trade_info.state == TradeState::Accepted && counter_info.state != TradeState::Accepted)
+            ||
+            (counter_info.state == TradeState::Refused)
+            ||
+            (trade_info.state == TradeState::Cancelled)
+            ||
+            (counter_info.state == TradeState::Cancelled)
+        ) {
+        return Err(ContractError::CounterTradeNotAborted {});
+    }
+    let res = check_and_create_withdraw_messages(info, &counter_info)?;
+    counter_info.assets_withdrawn = true;
+    COUNTER_TRADE_INFO.save(
+        deps.storage,
+        (&trade_id.to_be_bytes(), &counter_id.to_be_bytes()),
+        &counter_info,
+    )?;
+
+    Ok(res
+        .add_attribute("withdraw funds", "counter")
+        .add_attribute("trade", trade_id.to_string())
+        .add_attribute("counter", counter_id.to_string()))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::ContractInfo { } => to_binary(&query_contract_info(deps)?),
-        QueryMsg::TradeInfo{ trade_id } => to_binary(&load_trade(deps.storage, trade_id)
-            .map_err(|e|StdError::generic_err(e.to_string()))?),
-        QueryMsg::CounterTradeInfo{ trade_id, counter_id } => to_binary(&load_counter_trade(deps.storage, trade_id, counter_id)
-            .map_err(|e|StdError::generic_err(e.to_string()))?),
+        QueryMsg::ContractInfo {} => to_binary(&query_contract_info(deps)?),
+        QueryMsg::TradeInfo { trade_id } => to_binary(
+            &load_trade(deps.storage, trade_id)
+                .map_err(|e| StdError::generic_err(e.to_string()))?,
+        ),
+        QueryMsg::CounterTradeInfo {
+            trade_id,
+            counter_id,
+        } => to_binary(
+            &load_counter_trade(deps.storage, trade_id, counter_id)
+                .map_err(|e| StdError::generic_err(e.to_string()))?,
+        ),
     }
 }
 
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{coins, Attribute, Coin};
     use crate::state::load_trade;
-    use p2p_trading_export::state::{AssetInfo, Cw721Coin, Cw20Coin};
+    use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
+    use cosmwasm_std::{coins, Attribute, BankMsg, Coin};
+    use cw20::Cw20ExecuteMsg;
+    use cw721::Cw721ExecuteMsg;
+    use p2p_trading_export::msg::into_cosmos_msg;
+    use p2p_trading_export::state::{AssetInfo, Cw20Coin, Cw721Coin};
 
     fn init_helper(deps: DepsMut) {
         let instantiate_msg = InstantiateMsg {
@@ -301,7 +386,13 @@ pub mod tests {
         return res;
     }
 
-    fn add_funds_to_trade_helper(deps: DepsMut, trader: &str, trade_id: u64, coins_to_send: &Vec<Coin>, confirm: Option<bool>) -> Result<Response, ContractError> {
+    fn add_funds_to_trade_helper(
+        deps: DepsMut,
+        trader: &str,
+        trade_id: u64,
+        coins_to_send: &Vec<Coin>,
+        confirm: Option<bool>,
+    ) -> Result<Response, ContractError> {
         let info = mock_info(trader, coins_to_send);
         let env = mock_env();
 
@@ -320,7 +411,7 @@ pub mod tests {
         deps: DepsMut,
         token: &str,
         sender: String,
-        trade_id: u64
+        trade_id: u64,
     ) -> Result<Response, ContractError> {
         let info = mock_info(token, &[]);
         let env = mock_env();
@@ -362,6 +453,28 @@ pub mod tests {
         )
     }
 
+    fn remove_from_trade_helper(
+        deps: DepsMut,
+        sender: &str,
+        trade_id: u64,
+        assets: Vec<(usize, AssetInfo)>,
+        funds: Vec<(usize, Coin)>,
+    ) -> Result<Response, ContractError> {
+        let info = mock_info(sender, &[]);
+        let env = mock_env();
+
+        execute(
+            deps,
+            env,
+            info,
+            ExecuteMsg::RemoveFromTrade {
+                trade_id,
+                assets,
+                funds,
+            },
+        )
+    }
+
     fn confirm_trade_helper(
         deps: DepsMut,
         sender: &str,
@@ -394,10 +507,46 @@ pub mod tests {
         )
     }
 
+    fn withdraw_cancelled_trade_helper(
+        deps: DepsMut,
+        sender: &str,
+        trade_id: u64,
+    ) -> Result<Response, ContractError> {
+        let info = mock_info(sender, &[]);
+        let env = mock_env();
+
+        execute(
+            deps,
+            env,
+            info,
+            ExecuteMsg::WithdrawCancelledTrade { trade_id },
+        )
+    }
+
+    fn withdraw_aborted_counter_helper(
+        deps: DepsMut,
+        sender: &str,
+        trade_id: u64,
+        counter_id: u64,
+    ) -> Result<Response, ContractError> {
+        let info = mock_info(sender, &[]);
+        let env = mock_env();
+
+        execute(
+            deps,
+            env,
+            info,
+            ExecuteMsg::WithdrawAbortedCounter {
+                trade_id,
+                counter_id,
+            },
+        )
+    }
+
     pub mod trade_tests {
         use super::*;
+        use cosmwasm_std::{coin, SubMsg};
         use p2p_trading_export::state::AcceptedTradeInfo;
-        use cosmwasm_std::SubMsg;
 
         #[test]
         fn create_trade() {
@@ -415,8 +564,6 @@ pub mod tests {
                 ]
             );
 
-            // TODO, verify the query
-
             let res = create_trade_helper(deps.as_mut());
 
             assert_eq!(res.messages, vec![]);
@@ -429,7 +576,10 @@ pub mod tests {
             );
 
             let new_trade_info = load_trade(&deps.storage, 0).unwrap();
-            assert_eq!(new_trade_info.state,TradeState::Created{});
+            assert_eq!(new_trade_info.state, TradeState::Created {});
+
+            let new_trade_info = load_trade(&deps.storage, 1).unwrap();
+            assert_eq!(new_trade_info.state, TradeState::Created {});
         }
 
         #[test]
@@ -438,13 +588,29 @@ pub mod tests {
             init_helper(deps.as_mut());
 
             create_trade_helper(deps.as_mut());
-            let res = add_funds_to_trade_helper(deps.as_mut(), "creator", 0, &coins(2, "token"), Some(false)).unwrap();
+            let res = add_funds_to_trade_helper(
+                deps.as_mut(),
+                "creator",
+                0,
+                &coins(2, "token"),
+                Some(false),
+            )
+            .unwrap();
             assert_eq!(
                 res.attributes,
                 vec![
                     Attribute::new("added funds", "trade"),
                     Attribute::new("trade_id", "0"),
                 ]
+            );
+
+            let new_trade_info = load_trade(&deps.storage, 0).unwrap();
+            assert_eq!(
+                new_trade_info.associated_funds,
+                vec![Coin {
+                    amount: Uint128::from(2u64),
+                    denom: "token".to_string()
+                }]
             );
         }
 
@@ -454,7 +620,14 @@ pub mod tests {
             init_helper(deps.as_mut());
 
             create_trade_helper(deps.as_mut());
-            let res = add_funds_to_trade_helper(deps.as_mut(), "creator", 0, &coins(2, "token"), Some(true)).unwrap();
+            let res = add_funds_to_trade_helper(
+                deps.as_mut(),
+                "creator",
+                0,
+                &coins(2, "token"),
+                Some(true),
+            )
+            .unwrap();
             assert_eq!(
                 res.attributes,
                 vec![
@@ -463,7 +636,7 @@ pub mod tests {
                 ]
             );
             let new_trade_info = load_trade(&deps.storage, 0).unwrap();
-            assert_eq!(new_trade_info.state,TradeState::Published{});
+            assert_eq!(new_trade_info.state, TradeState::Published {});
         }
 
         #[test]
@@ -485,7 +658,14 @@ pub mod tests {
                 ]
             );
 
-            // TODO, verify the query
+            let new_trade_info = load_trade(&deps.storage, 0).unwrap();
+            assert_eq!(
+                new_trade_info.associated_assets,
+                vec![AssetInfo::Cw20Coin(Cw20Coin {
+                    amount: Uint128::from(100u64),
+                    address: "token".to_string()
+                })]
+            );
 
             // This triggers an error, the creator is not the same as the sender
             let err = add_cw20_to_trade_helper(deps.as_mut(), "token", "bad_person".to_string(), 0)
@@ -502,24 +682,336 @@ pub mod tests {
             create_trade_helper(deps.as_mut());
 
             let res =
-                add_cw721_to_trade_helper(deps.as_mut(), "token", "creator".to_string(), 0).unwrap();
+                add_cw721_to_trade_helper(deps.as_mut(), "nft", "creator".to_string(), 0).unwrap();
 
             assert_eq!(
                 res.attributes,
                 vec![
                     Attribute::new("added token", "trade"),
-                    Attribute::new("nft", "token"),
+                    Attribute::new("nft", "nft"),
                     Attribute::new("token_id", "58"),
                 ]
             );
 
-            // TODO, verify the query
+            let new_trade_info = load_trade(&deps.storage, 0).unwrap();
+            assert_eq!(
+                new_trade_info.associated_assets,
+                vec![AssetInfo::Cw721Coin(Cw721Coin {
+                    token_id: "58".to_string(),
+                    address: "nft".to_string()
+                })]
+            );
 
             // This triggers an error, the creator is not the same as the sender
-            let err = add_cw721_to_trade_helper(deps.as_mut(), "token", "bad_person".to_string(), 0)
-                .unwrap_err();
+            let err =
+                add_cw721_to_trade_helper(deps.as_mut(), "token", "bad_person".to_string(), 0)
+                    .unwrap_err();
 
             assert_eq!(err, ContractError::TraderNotCreator {});
+        }
+
+        #[test]
+        fn create_trade_add_remove_tokens() {
+            let mut deps = mock_dependencies(&[]);
+            init_helper(deps.as_mut());
+
+            create_trade_helper(deps.as_mut());
+
+            add_cw721_to_trade_helper(deps.as_mut(), "nft", "creator".to_string(), 0).unwrap();
+            add_cw721_to_trade_helper(deps.as_mut(), "nft-2", "creator".to_string(), 0).unwrap();
+            add_cw20_to_trade_helper(deps.as_mut(), "token", "creator".to_string(), 0).unwrap();
+            add_funds_to_trade_helper(
+                deps.as_mut(),
+                "creator",
+                0,
+                &coins(100, "luna"),
+                Some(false),
+            )
+            .unwrap();
+
+            let res = remove_from_trade_helper(
+                deps.as_mut(),
+                "creator",
+                0,
+                vec![
+                    (
+                        0,
+                        AssetInfo::Cw721Coin(Cw721Coin {
+                            address: "nft".to_string(),
+                            token_id: "58".to_string(),
+                        }),
+                    ),
+                    (
+                        2,
+                        AssetInfo::Cw20Coin(Cw20Coin {
+                            address: "token".to_string(),
+                            amount: Uint128::from(58u64),
+                        }),
+                    ),
+                ],
+                vec![(0, coin(58, "luna"))],
+            )
+            .unwrap();
+
+            assert_eq!(
+                res.attributes,
+                vec![Attribute::new("remove from", "trade"),]
+            );
+            assert_eq!(
+                res.messages,
+                vec![
+                    SubMsg::new(
+                        into_cosmos_msg(
+                            Cw721ExecuteMsg::TransferNft {
+                                recipient: "creator".to_string(),
+                                token_id: "58".to_string()
+                            },
+                            "nft"
+                        )
+                        .unwrap()
+                    ),
+                    SubMsg::new(
+                        into_cosmos_msg(
+                            Cw20ExecuteMsg::Transfer {
+                                recipient: "creator".to_string(),
+                                amount: Uint128::from(58u64)
+                            },
+                            "token"
+                        )
+                        .unwrap()
+                    ),
+                    SubMsg::new(BankMsg::Send {
+                        to_address: "creator".to_string(),
+                        amount: coins(58, "luna"),
+                    })
+                ]
+            );
+
+            let new_trade_info = load_trade(&deps.storage, 0).unwrap();
+            assert_eq!(
+                new_trade_info.associated_assets,
+                vec![
+                    AssetInfo::Cw721Coin(Cw721Coin {
+                        token_id: "58".to_string(),
+                        address: "nft-2".to_string()
+                    }),
+                    AssetInfo::Cw20Coin(Cw20Coin {
+                        amount: Uint128::from(42u64),
+                        address: "token".to_string()
+                    })
+                ],
+            );
+            assert_eq!(new_trade_info.associated_funds, vec![coin(42, "luna")],);
+
+            remove_from_trade_helper(
+                deps.as_mut(),
+                "creator",
+                0,
+                vec![(
+                    1,
+                    AssetInfo::Cw20Coin(Cw20Coin {
+                        address: "token".to_string(),
+                        amount: Uint128::from(42u64),
+                    }),
+                )],
+                vec![(0, coin(42, "luna"))],
+            )
+            .unwrap();
+
+            let new_trade_info = load_trade(&deps.storage, 0).unwrap();
+            assert_eq!(
+                new_trade_info.associated_assets,
+                vec![AssetInfo::Cw721Coin(Cw721Coin {
+                    token_id: "58".to_string(),
+                    address: "nft-2".to_string()
+                }),],
+            );
+
+            // This triggers an error, the creator is not the same as the sender
+            let err = remove_from_trade_helper(
+                deps.as_mut(),
+                "bad_person",
+                0,
+                vec![(
+                    0,
+                    AssetInfo::Cw721Coin(Cw721Coin {
+                        address: "nft-2".to_string(),
+                        token_id: "58".to_string(),
+                    }),
+                )],
+                vec![],
+            )
+            .unwrap_err();
+
+            assert_eq!(err, ContractError::TraderNotCreator {});
+
+            // This triggers an error, no matching funds were found
+            let err = remove_from_trade_helper(
+                deps.as_mut(),
+                "creator",
+                0,
+                vec![(
+                    1,
+                    AssetInfo::Cw721Coin(Cw721Coin {
+                        address: "nft-2".to_string(),
+                        token_id: "58".to_string(),
+                    }),
+                )],
+                vec![],
+            )
+            .unwrap_err();
+
+            assert_eq!(
+                err,
+                ContractError::Std(StdError::generic_err(
+                    "assets position does not exist in array"
+                ))
+            );
+
+            // This triggers an error, no matching funds were found
+            let err = remove_from_trade_helper(
+                deps.as_mut(),
+                "creator",
+                0,
+                vec![(
+                    0,
+                    AssetInfo::Cw721Coin(Cw721Coin {
+                        address: "nft-1".to_string(),
+                        token_id: "58".to_string(),
+                    }),
+                )],
+                vec![],
+            )
+            .unwrap_err();
+
+            assert_eq!(
+                err,
+                ContractError::Std(StdError::generic_err("Wrong nft address at position 0"))
+            );
+
+            // This triggers an error, no matching funds were found
+            let err = remove_from_trade_helper(
+                deps.as_mut(),
+                "creator",
+                0,
+                vec![(
+                    0,
+                    AssetInfo::Cw721Coin(Cw721Coin {
+                        address: "nft-2".to_string(),
+                        token_id: "42".to_string(),
+                    }),
+                )],
+                vec![],
+            )
+            .unwrap_err();
+
+            assert_eq!(
+                err,
+                ContractError::Std(StdError::generic_err(
+                    "Wrong nft id at position 0, wanted: 42, found: 58"
+                ))
+            );
+        }
+
+        #[test]
+        fn create_trade_add_remove_tokens_errors() {
+            let mut deps = mock_dependencies(&[]);
+            init_helper(deps.as_mut());
+
+            create_trade_helper(deps.as_mut());
+
+            add_cw721_to_trade_helper(deps.as_mut(), "nft", "creator".to_string(), 0).unwrap();
+            add_cw721_to_trade_helper(deps.as_mut(), "nft-2", "creator".to_string(), 0).unwrap();
+            add_cw20_to_trade_helper(deps.as_mut(), "token", "creator".to_string(), 0).unwrap();
+            add_funds_to_trade_helper(
+                deps.as_mut(),
+                "creator",
+                0,
+                &coins(100, "luna"),
+                Some(false),
+            )
+            .unwrap();
+
+            let err = remove_from_trade_helper(
+                deps.as_mut(),
+                "creator",
+                0,
+                vec![(
+                    2,
+                    AssetInfo::Cw20Coin(Cw20Coin {
+                        address: "token".to_string(),
+                        amount: Uint128::from(101u64),
+                    }),
+                )],
+                vec![],
+            )
+            .unwrap_err();
+
+            assert_eq!(
+                err,
+                ContractError::Std(StdError::generic_err(
+                    "You can't withdraw that much token, wanted: 101, available: 100"
+                ))
+            );
+
+            let err = remove_from_trade_helper(
+                deps.as_mut(),
+                "creator",
+                0,
+                vec![(
+                    0,
+                    AssetInfo::Cw20Coin(Cw20Coin {
+                        address: "token".to_string(),
+                        amount: Uint128::from(101u64),
+                    }),
+                )],
+                vec![],
+            )
+            .unwrap_err();
+
+            assert_eq!(
+                err,
+                ContractError::Std(StdError::generic_err("Wrong token type at position 0"))
+            );
+
+            let err = remove_from_trade_helper(
+                deps.as_mut(),
+                "creator",
+                0,
+                vec![(
+                    2,
+                    AssetInfo::Cw20Coin(Cw20Coin {
+                        address: "wrong-token".to_string(),
+                        amount: Uint128::from(101u64),
+                    }),
+                )],
+                vec![],
+            )
+            .unwrap_err();
+
+            assert_eq!(
+                err,
+                ContractError::Std(StdError::generic_err("Wrong token address at position 2"))
+            );
+
+            confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
+
+            let err = remove_from_trade_helper(
+                deps.as_mut(),
+                "creator",
+                0,
+                vec![(
+                    2,
+                    AssetInfo::Cw20Coin(Cw20Coin {
+                        address: "token".to_string(),
+                        amount: Uint128::from(58u64),
+                    }),
+                )],
+                vec![],
+            )
+            .unwrap_err();
+
+            assert_eq!(err, ContractError::TradeAlreadyPublished {});
         }
 
         #[test]
@@ -547,11 +1039,17 @@ pub mod tests {
             );
 
             let new_trade_info = load_trade(&deps.storage, 0).unwrap();
-            assert_eq!(new_trade_info.state,TradeState::Published{});
+            assert_eq!(new_trade_info.state, TradeState::Published {});
 
-            //Already confirmed 
+            //Already confirmed
             let err = confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap_err();
-            assert_eq!(err, ContractError::CantChangeTradeState {from: TradeState::Published, to: TradeState::Published});
+            assert_eq!(
+                err,
+                ContractError::CantChangeTradeState {
+                    from: TradeState::Published,
+                    to: TradeState::Published
+                }
+            );
         }
 
         #[test]
@@ -562,22 +1060,37 @@ pub mod tests {
             create_trade_helper(deps.as_mut());
 
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
-            
+
             // This triggers an error, we can't send funds to confirmed trade
-            let err = add_funds_to_trade_helper(deps.as_mut(), "creator", 0,&coins(2, "token"), None)
-                .unwrap_err();
-            assert_eq!(err, ContractError::WrongTradeState{state: TradeState::Published});
+            let err =
+                add_funds_to_trade_helper(deps.as_mut(), "creator", 0, &coins(2, "token"), None)
+                    .unwrap_err();
+            assert_eq!(
+                err,
+                ContractError::WrongTradeState {
+                    state: TradeState::Published
+                }
+            );
 
             // This triggers an error, we can't send tokens to confirmed trade
             let err = add_cw20_to_trade_helper(deps.as_mut(), "token", "creator".to_string(), 0)
                 .unwrap_err();
-            assert_eq!(err, ContractError::WrongTradeState{state: TradeState::Published});
+            assert_eq!(
+                err,
+                ContractError::WrongTradeState {
+                    state: TradeState::Published
+                }
+            );
 
             // This triggers an error, we can't send nfts to confirmed trade
             let err = add_cw721_to_trade_helper(deps.as_mut(), "token", "creator".to_string(), 0)
                 .unwrap_err();
-            assert_eq!(err, ContractError::WrongTradeState{state: TradeState::Published});
-
+            assert_eq!(
+                err,
+                ContractError::WrongTradeState {
+                    state: TradeState::Published
+                }
+            );
         }
 
         #[test]
@@ -616,14 +1129,17 @@ pub mod tests {
             );
 
             let trade_info = load_trade(&deps.storage, 0).unwrap();
-            assert_eq!(trade_info.state,TradeState::Accepted{});
-            assert_eq!(trade_info.accepted_info.unwrap(),AcceptedTradeInfo{
-                trade_id:0,
-                counter_id:0
-            });
+            assert_eq!(trade_info.state, TradeState::Accepted {});
+            assert_eq!(
+                trade_info.accepted_info.unwrap(),
+                AcceptedTradeInfo {
+                    trade_id: 0,
+                    counter_id: 0
+                }
+            );
 
             let counter_trade_info = load_counter_trade(&deps.storage, 0, 0).unwrap();
-            assert_eq!(counter_trade_info.state,TradeState::Accepted{});
+            assert_eq!(counter_trade_info.state, TradeState::Accepted {});
         }
 
         #[test]
@@ -653,13 +1169,13 @@ pub mod tests {
             );
 
             let trade_info = load_trade(&deps.storage, 0).unwrap();
-            assert_eq!(trade_info.state,TradeState::Accepted{});
+            assert_eq!(trade_info.state, TradeState::Accepted {});
 
             let counter_trade_info = load_counter_trade(&deps.storage, 0, 0).unwrap();
-            assert_eq!(counter_trade_info.state,TradeState::Accepted{});
+            assert_eq!(counter_trade_info.state, TradeState::Accepted {});
 
             let counter_trade_info = load_counter_trade(&deps.storage, 0, 1).unwrap();
-            assert_eq!(counter_trade_info.state,TradeState::Refused{});
+            assert_eq!(counter_trade_info.state, TradeState::Published {});
         }
 
         #[test]
@@ -692,101 +1208,276 @@ pub mod tests {
         }
 
         #[test]
-        fn withdraw_accepted_assets(){
+        fn withdraw_accepted_assets() {
             let mut deps = mock_dependencies(&[]);
             init_helper(deps.as_mut());
             create_trade_helper(deps.as_mut());
-            add_funds_to_trade_helper(deps.as_mut(),"creator",0,&coins(5,"lunas"),None).unwrap();
+            add_funds_to_trade_helper(deps.as_mut(), "creator", 0, &coins(5, "lunas"), None)
+                .unwrap();
             add_cw20_to_trade_helper(deps.as_mut(), "token", "creator".to_string(), 0).unwrap();
             add_cw721_to_trade_helper(deps.as_mut(), "nft", "creator".to_string(), 0).unwrap();
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
-            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, Some(true)).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "other_counterer", 0, Some(false)).unwrap();
+
+            add_cw20_to_counter_trade_helper(
+                deps.as_mut(),
+                "other_counter-token",
+                "other_counterer".to_string(),
+                0,
+                0,
+            )
+            .unwrap();
+            add_cw721_to_counter_trade_helper(
+                deps.as_mut(),
+                "other_counter-nft",
+                "other_counterer".to_string(),
+                0,
+                0,
+            )
+            .unwrap();
+
+            add_funds_to_counter_trade_helper(
+                deps.as_mut(),
+                "other_counterer",
+                0,
+                0,
+                &coins(9, "other_token"),
+                Some(false),
+            )
+            .unwrap();
+
             suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, Some(false)).unwrap();
+            add_cw20_to_counter_trade_helper(
+                deps.as_mut(),
+                "counter-token",
+                "counterer".to_string(),
+                0,
+                1,
+            )
+            .unwrap();
+            add_cw721_to_counter_trade_helper(
+                deps.as_mut(),
+                "counter-nft",
+                "counterer".to_string(),
+                0,
+                1,
+            )
+            .unwrap();
+            add_funds_to_counter_trade_helper(
+                deps.as_mut(),
+                "counterer",
+                0,
+                1,
+                &coins(2, "token"),
+                Some(true),
+            )
+            .unwrap();
 
-            add_funds_to_counter_trade_helper(deps.as_mut(), "counterer", 0, 1 ,Some(true), &coins(2, "token")).unwrap();
-            add_cw20_to_counter_trade_helper(deps.as_mut(), "counter-token", "counterer".to_string(), 0, 1).unwrap();
-            add_cw721_to_counter_trade_helper(deps.as_mut(), "counter-nft", "counterer".to_string(), 0, 1).unwrap();
-
-            // Little test to start with (can't withdraw if the tade is not accepted)
-            let err = withdraw_helper(deps.as_mut(),"anyone",0).unwrap_err();
-            assert_eq!(err,ContractError::TradeNotAccepted{});
+            // Little test to start with (can't withdraw if the trade is not accepted)
+            let err = withdraw_helper(deps.as_mut(), "anyone", 0).unwrap_err();
+            assert_eq!(err, ContractError::TradeNotAccepted {});
 
             accept_trade_helper(deps.as_mut(), "creator", 0, 1).unwrap();
 
             // Withdraw tests
-            let err = withdraw_helper(deps.as_mut(),"bad_person",0).unwrap_err();
-            assert_eq!(err,ContractError::NotWithdrawableByYou{});
+            let err = withdraw_helper(deps.as_mut(), "bad_person", 0).unwrap_err();
+            assert_eq!(err, ContractError::NotWithdrawableByYou {});
 
-            let res = withdraw_helper(deps.as_mut(),"creator",0).unwrap();
-            assert_eq!(res.attributes,
-                vec![
-                    Attribute::new("withdraw funds", "trade"),
-                    Attribute::new("trade", "0"),
-                    Attribute::new("counter", "1"),
-                ]
-            );
-            assert_eq!(res.messages,
-                vec![
-                    SubMsg::new(into_cosmos_msg(
-                        Cw20ExecuteMsg::Transfer{
-                            recipient: "creator".to_string(),
-                            amount: Uint128::from(100u64)
-                        },
-                        "counter-token"
-                    ).unwrap()),
-                    SubMsg::new(into_cosmos_msg(
-                        Cw721ExecuteMsg::TransferNft{
-                            recipient: "creator".to_string(),
-                            token_id: "58".to_string()
-                        },
-                        "counter-nft"
-                    ).unwrap()),
-                    SubMsg::new(BankMsg::Send {
-                        to_address: "creator".to_string(),
-                        amount: coins(2,"token"),
-                    })
-                ]
-            );
-
-            let err = withdraw_helper(deps.as_mut(),"creator",0).unwrap_err();
-            assert_eq!(err,ContractError::TradeAlreadyWithdrawn{});
-
-            let res = withdraw_helper(deps.as_mut(),"counterer",0).unwrap();
-            assert_eq!(res.attributes,
+            let res = withdraw_helper(deps.as_mut(), "creator", 0).unwrap();
+            assert_eq!(
+                res.attributes,
                 vec![
                     Attribute::new("withdraw funds", "counter"),
                     Attribute::new("trade", "0"),
                     Attribute::new("counter", "1"),
                 ]
             );
-            assert_eq!(res.messages,
+            assert_eq!(
+                res.messages,
                 vec![
-                    SubMsg::new(into_cosmos_msg(
-                        Cw20ExecuteMsg::Transfer{
-                            recipient: "counterer".to_string(),
-                            amount: Uint128::from(100u64)
-                        },
-                        "token"
-                    ).unwrap()),
-                    SubMsg::new(into_cosmos_msg(
-                        Cw721ExecuteMsg::TransferNft{
-                            recipient: "counterer".to_string(),
-                            token_id: "58".to_string()
-                        },
-                        "nft"
-                    ).unwrap()),
+                    SubMsg::new(
+                        into_cosmos_msg(
+                            Cw20ExecuteMsg::Transfer {
+                                recipient: "creator".to_string(),
+                                amount: Uint128::from(100u64)
+                            },
+                            "counter-token"
+                        )
+                        .unwrap()
+                    ),
+                    SubMsg::new(
+                        into_cosmos_msg(
+                            Cw721ExecuteMsg::TransferNft {
+                                recipient: "creator".to_string(),
+                                token_id: "58".to_string()
+                            },
+                            "counter-nft"
+                        )
+                        .unwrap()
+                    ),
+                    SubMsg::new(BankMsg::Send {
+                        to_address: "creator".to_string(),
+                        amount: coins(2, "token"),
+                    })
+                ]
+            );
+
+            let err = withdraw_helper(deps.as_mut(), "creator", 0).unwrap_err();
+            assert_eq!(err, ContractError::TradeAlreadyWithdrawn {});
+
+            let res = withdraw_helper(deps.as_mut(), "counterer", 0).unwrap();
+            assert_eq!(
+                res.attributes,
+                vec![
+                    Attribute::new("withdraw funds", "trade"),
+                    Attribute::new("trade", "0"),
+                    Attribute::new("counter", "1"),
+                ]
+            );
+            assert_eq!(
+                res.messages,
+                vec![
+                    SubMsg::new(
+                        into_cosmos_msg(
+                            Cw20ExecuteMsg::Transfer {
+                                recipient: "counterer".to_string(),
+                                amount: Uint128::from(100u64)
+                            },
+                            "token"
+                        )
+                        .unwrap()
+                    ),
+                    SubMsg::new(
+                        into_cosmos_msg(
+                            Cw721ExecuteMsg::TransferNft {
+                                recipient: "counterer".to_string(),
+                                token_id: "58".to_string()
+                            },
+                            "nft"
+                        )
+                        .unwrap()
+                    ),
                     SubMsg::new(BankMsg::Send {
                         to_address: "counterer".to_string(),
-                        amount: coins(5,"lunas"),
+                        amount: coins(5, "lunas"),
                     }),
                 ]
             );
 
-            let err = withdraw_helper(deps.as_mut(),"counterer",0).unwrap_err();
-            assert_eq!(err,ContractError::TradeAlreadyWithdrawn{});
+            let err = withdraw_helper(deps.as_mut(), "counterer", 0).unwrap_err();
+            assert_eq!(err, ContractError::TradeAlreadyWithdrawn {});
+
+            let res =
+                withdraw_aborted_counter_helper(deps.as_mut(), "other_counterer", 0, 0).unwrap();
+            assert_eq!(
+                res.messages,
+                vec![
+                    SubMsg::new(
+                        into_cosmos_msg(
+                            Cw20ExecuteMsg::Transfer {
+                                recipient: "other_counterer".to_string(),
+                                amount: Uint128::from(100u64)
+                            },
+                            "other_counter-token"
+                        )
+                        .unwrap()
+                    ),
+                    SubMsg::new(
+                        into_cosmos_msg(
+                            Cw721ExecuteMsg::TransferNft {
+                                recipient: "other_counterer".to_string(),
+                                token_id: "58".to_string()
+                            },
+                            "other_counter-nft"
+                        )
+                        .unwrap()
+                    ),
+                    SubMsg::new(BankMsg::Send {
+                        to_address: "other_counterer".to_string(),
+                        amount: coins(9, "other_token"),
+                    }),
+                ]
+            );
+
+            let err = withdraw_aborted_counter_helper(deps.as_mut(), "other_counterer", 0, 0)
+                .unwrap_err();
+            assert_eq!(err, ContractError::TradeAlreadyWithdrawn {});
         }
 
+        #[test]
+        fn withdraw_cancelled_trade() {
+            let mut deps = mock_dependencies(&[]);
+            init_helper(deps.as_mut());
+            create_trade_helper(deps.as_mut());
+            add_funds_to_trade_helper(deps.as_mut(), "creator", 0, &coins(5, "lunas"), None)
+                .unwrap();
+            add_cw20_to_trade_helper(deps.as_mut(), "token", "creator".to_string(), 0).unwrap();
+            add_cw721_to_trade_helper(deps.as_mut(), "nft", "creator".to_string(), 0).unwrap();
+            confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, Some(false)).unwrap();
 
+            add_cw20_to_counter_trade_helper(
+                deps.as_mut(),
+                "other_counter-token",
+                "counterer".to_string(),
+                0,
+                0,
+            )
+            .unwrap();
+
+            cancel_trade_helper(deps.as_mut(), "creator", 0).unwrap();
+
+            let res = withdraw_cancelled_trade_helper(deps.as_mut(), "creator", 0).unwrap();
+            assert_eq!(
+                res.messages,
+                vec![SubMsg::new(
+                        into_cosmos_msg(
+                            Cw20ExecuteMsg::Transfer {
+                                recipient: "creator".to_string(),
+                                amount: Uint128::from(100u64)
+                            },
+                            "token"
+                        )
+                        .unwrap()
+                    ),
+                    SubMsg::new(
+                        into_cosmos_msg(
+                            Cw721ExecuteMsg::TransferNft {
+                                recipient: "creator".to_string(),
+                                token_id: "58".to_string()
+                            },
+                            "nft"
+                        )
+                        .unwrap()
+                    ),
+                    SubMsg::new(BankMsg::Send {
+                        to_address: "creator".to_string(),
+                        amount: coins(5, "lunas"),
+                    }),
+                ]
+            );
+            let err = withdraw_cancelled_trade_helper(deps.as_mut(), "creator", 0).unwrap_err();
+            assert_eq!(err, ContractError::TradeAlreadyWithdrawn {});
+
+            let res = withdraw_aborted_counter_helper(deps.as_mut(), "counterer", 0, 0).unwrap();
+            assert_eq!(
+                res.messages,
+                vec![SubMsg::new(
+                    into_cosmos_msg(
+                        Cw20ExecuteMsg::Transfer {
+                            recipient: "counterer".to_string(),
+                            amount: Uint128::from(100u64)
+                        },
+                        "other_counter-token"
+                    )
+                    .unwrap()
+                ),]
+            );
+
+            let err =
+                withdraw_aborted_counter_helper(deps.as_mut(), "counterer", 0, 0).unwrap_err();
+            assert_eq!(err, ContractError::TradeAlreadyWithdrawn {});
+        }
     }
 
     fn suggest_counter_trade_helper(
@@ -814,9 +1505,9 @@ pub mod tests {
         counterer: &str,
         trade_id: u64,
         counter_id: u64,
+        coins_to_send: &Vec<Coin>,
         confirm: Option<bool>,
-        coins_to_send: &Vec<Coin>
-    ) -> Result<Response,ContractError> {
+    ) -> Result<Response, ContractError> {
         let info = mock_info(counterer, coins_to_send);
         let env = mock_env();
 
@@ -837,7 +1528,7 @@ pub mod tests {
         token: &str,
         sender: String,
         trade_id: u64,
-        counter_id: u64
+        counter_id: u64,
     ) -> Result<Response, ContractError> {
         let info = mock_info(token, &[]);
         let env = mock_env();
@@ -864,8 +1555,8 @@ pub mod tests {
         deps: DepsMut,
         token: &str,
         sender: String,
-        trade_id:u64,
-        counter_id:u64
+        trade_id: u64,
+        counter_id: u64,
     ) -> Result<Response, ContractError> {
         let info = mock_info(token, &[]);
         let env = mock_env();
@@ -884,6 +1575,30 @@ pub mod tests {
                 sender: sender,
                 token_id: "58".to_string(),
                 msg: msg,
+            },
+        )
+    }
+
+    fn remove_from_counter_trade_helper(
+        deps: DepsMut,
+        sender: &str,
+        trade_id: u64,
+        counter_id: u64,
+        assets: Vec<(usize, AssetInfo)>,
+        funds: Vec<(usize, Coin)>,
+    ) -> Result<Response, ContractError> {
+        let info = mock_info(sender, &[]);
+        let env = mock_env();
+
+        execute(
+            deps,
+            env,
+            info,
+            ExecuteMsg::RemoveFromCounterTrade {
+                trade_id,
+                counter_id,
+                assets,
+                funds,
             },
         )
     }
@@ -924,7 +1639,7 @@ pub mod tests {
             ExecuteMsg::ReviewCounterTrade {
                 trade_id: trade_id,
                 counter_id: counter_id,
-                comment:Some("Shit NFT my girl".to_string()),
+                comment: Some("Shit NFT my girl".to_string()),
             },
         )
     }
@@ -957,14 +1672,7 @@ pub mod tests {
         let info = mock_info(sender, &[]);
         let env = mock_env();
 
-        execute(
-            deps,
-            env,
-            info,
-            ExecuteMsg::CancelTrade {
-                trade_id,
-            },
-        )
+        execute(deps, env, info, ExecuteMsg::CancelTrade { trade_id })
     }
 
     fn refuse_counter_trade_helper(
@@ -989,6 +1697,7 @@ pub mod tests {
 
     pub mod counter_trade_tests {
         use super::*;
+        use cosmwasm_std::{coin, SubMsg};
 
         #[test]
         fn create_counter_trade() {
@@ -997,17 +1706,20 @@ pub mod tests {
 
             create_trade_helper(deps.as_mut());
 
-            let err = suggest_counter_trade_helper(deps.as_mut(),"counterer", 0, Some(false)).unwrap_err();
+            let err = suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, Some(false))
+                .unwrap_err();
 
             assert_eq!(err, ContractError::NotCounterable {});
 
-            let err = suggest_counter_trade_helper(deps.as_mut(),"counterer", 1, Some(false)).unwrap_err();
+            let err = suggest_counter_trade_helper(deps.as_mut(), "counterer", 1, Some(false))
+                .unwrap_err();
 
             assert_eq!(err, ContractError::NotFoundInTradeInfo {});
 
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
 
-            let res = suggest_counter_trade_helper(deps.as_mut(),"counterer", 0, Some(false)).unwrap();
+            let res =
+                suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, Some(false)).unwrap();
 
             assert_eq!(
                 res.attributes,
@@ -1028,7 +1740,15 @@ pub mod tests {
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
             suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
 
-            let res = add_funds_to_counter_trade_helper(deps.as_mut(), "counterer", 0u64, 0u64, Some(false),&coins(2, "token")).unwrap();
+            let res = add_funds_to_counter_trade_helper(
+                deps.as_mut(),
+                "counterer",
+                0u64,
+                0u64,
+                &coins(2, "token"),
+                Some(false),
+            )
+            .unwrap();
 
             assert_eq!(
                 res.attributes,
@@ -1039,9 +1759,9 @@ pub mod tests {
                 ]
             );
 
-            let counter_trade_info = load_counter_trade(&deps.storage, 0,0).unwrap();
+            let counter_trade_info = load_counter_trade(&deps.storage, 0, 0).unwrap();
             assert_eq!(counter_trade_info.state, TradeState::Created);
-            assert_eq!(counter_trade_info.associated_funds,coins(2, "token"));
+            assert_eq!(counter_trade_info.associated_funds, coins(2, "token"));
         }
 
         #[test]
@@ -1053,9 +1773,14 @@ pub mod tests {
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
             suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
 
-            let res =
-                add_cw20_to_counter_trade_helper(deps.as_mut(), "token", "counterer".to_string(), 0, 0)
-                    .unwrap();
+            let res = add_cw20_to_counter_trade_helper(
+                deps.as_mut(),
+                "token",
+                "counterer".to_string(),
+                0,
+                0,
+            )
+            .unwrap();
 
             assert_eq!(
                 res.attributes,
@@ -1066,29 +1791,41 @@ pub mod tests {
                 ]
             );
 
-            let err = add_cw20_to_counter_trade_helper(deps.as_mut(), "token", "counterer".to_string(), 0, 1)
-                    .unwrap_err();
+            let err = add_cw20_to_counter_trade_helper(
+                deps.as_mut(),
+                "token",
+                "counterer".to_string(),
+                0,
+                1,
+            )
+            .unwrap_err();
 
-            assert_eq!(err, ContractError::NotFoundInCounterTradeInfo{});
+            assert_eq!(err, ContractError::NotFoundInCounterTradeInfo {});
 
             // Verifying the state has been changed
             let trade_info = load_trade(&deps.storage, 0).unwrap();
-            assert_eq!(trade_info.state, TradeState::Acknowledged);
-            assert_eq!(trade_info.associated_assets,vec![]);
-
+            assert_eq!(trade_info.state, TradeState::Countered);
+            assert_eq!(trade_info.associated_assets, vec![]);
 
             let counter_trade_info = load_counter_trade(&deps.storage, 0, 0).unwrap();
             assert_eq!(counter_trade_info.state, TradeState::Created);
-            assert_eq!(counter_trade_info.associated_assets,vec![
-                AssetInfo::Cw20Coin(Cw20Coin{
-                    address:"token".to_string(),
+            assert_eq!(
+                counter_trade_info.associated_assets,
+                vec![AssetInfo::Cw20Coin(Cw20Coin {
+                    address: "token".to_string(),
                     amount: Uint128::from(100u64)
-                }),
-            ]);
+                }),]
+            );
 
             // This triggers an error, the creator is not the same as the sender
-            let err = add_cw20_to_counter_trade_helper(deps.as_mut(), "token", "bad_person".to_string(), 0, 0)
-                .unwrap_err();
+            let err = add_cw20_to_counter_trade_helper(
+                deps.as_mut(),
+                "token",
+                "bad_person".to_string(),
+                0,
+                0,
+            )
+            .unwrap_err();
 
             assert_eq!(err, ContractError::CounterTraderNotCreator {});
         }
@@ -1102,9 +1839,14 @@ pub mod tests {
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
             suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
 
-            let res =
-                add_cw721_to_counter_trade_helper(deps.as_mut(), "nft", "counterer".to_string(), 0, 0)
-                    .unwrap();
+            let res = add_cw721_to_counter_trade_helper(
+                deps.as_mut(),
+                "nft",
+                "counterer".to_string(),
+                0,
+                0,
+            )
+            .unwrap();
 
             assert_eq!(
                 res.attributes,
@@ -1117,25 +1859,366 @@ pub mod tests {
 
             // Verifying the state has been changed
             let trade_info = load_trade(&deps.storage, 0).unwrap();
-            assert_eq!(trade_info.state, TradeState::Acknowledged);
-            assert_eq!(trade_info.associated_assets,vec![]);
-
+            assert_eq!(trade_info.state, TradeState::Countered);
+            assert_eq!(trade_info.associated_assets, vec![]);
 
             let counter_trade_info = load_counter_trade(&deps.storage, 0, 0).unwrap();
             assert_eq!(counter_trade_info.state, TradeState::Created);
-            assert_eq!(counter_trade_info.associated_assets,vec![
-                AssetInfo::Cw721Coin(Cw721Coin{
-                    address:"nft".to_string(),
+            assert_eq!(
+                counter_trade_info.associated_assets,
+                vec![AssetInfo::Cw721Coin(Cw721Coin {
+                    address: "nft".to_string(),
                     token_id: "58".to_string()
-                }),
-            ]);
+                }),]
+            );
 
             // This triggers an error, the counter-trade creator is not the same as the sender
-            let err =
-                add_cw721_to_counter_trade_helper(deps.as_mut(), "token", "bad_person".to_string(), 0, 0)
-                    .unwrap_err();
+            let err = add_cw721_to_counter_trade_helper(
+                deps.as_mut(),
+                "token",
+                "bad_person".to_string(),
+                0,
+                0,
+            )
+            .unwrap_err();
 
             assert_eq!(err, ContractError::CounterTraderNotCreator {});
+        }
+
+        #[test]
+        fn create_counter_trade_add_remove_tokens() {
+            let mut deps = mock_dependencies(&[]);
+            init_helper(deps.as_mut());
+
+            create_trade_helper(deps.as_mut());
+            confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
+            add_cw721_to_counter_trade_helper(deps.as_mut(), "nft", "counterer".to_string(), 0, 0)
+                .unwrap();
+            add_cw721_to_counter_trade_helper(
+                deps.as_mut(),
+                "nft-2",
+                "counterer".to_string(),
+                0,
+                0,
+            )
+            .unwrap();
+            add_cw20_to_counter_trade_helper(deps.as_mut(), "token", "counterer".to_string(), 0, 0)
+                .unwrap();
+            add_funds_to_counter_trade_helper(
+                deps.as_mut(),
+                "counterer",
+                0,
+                0,
+                &coins(100, "luna"),
+                Some(false),
+            )
+            .unwrap();
+
+            let res = remove_from_counter_trade_helper(
+                deps.as_mut(),
+                "counterer",
+                0,
+                0,
+                vec![
+                    (
+                        0,
+                        AssetInfo::Cw721Coin(Cw721Coin {
+                            address: "nft".to_string(),
+                            token_id: "58".to_string(),
+                        }),
+                    ),
+                    (
+                        2,
+                        AssetInfo::Cw20Coin(Cw20Coin {
+                            address: "token".to_string(),
+                            amount: Uint128::from(58u64),
+                        }),
+                    ),
+                ],
+                vec![(0, coin(58, "luna"))],
+            )
+            .unwrap();
+
+            assert_eq!(
+                res.attributes,
+                vec![Attribute::new("remove from", "counter"),]
+            );
+            assert_eq!(
+                res.messages,
+                vec![
+                    SubMsg::new(
+                        into_cosmos_msg(
+                            Cw721ExecuteMsg::TransferNft {
+                                recipient: "counterer".to_string(),
+                                token_id: "58".to_string()
+                            },
+                            "nft"
+                        )
+                        .unwrap()
+                    ),
+                    SubMsg::new(
+                        into_cosmos_msg(
+                            Cw20ExecuteMsg::Transfer {
+                                recipient: "counterer".to_string(),
+                                amount: Uint128::from(58u64)
+                            },
+                            "token"
+                        )
+                        .unwrap()
+                    ),
+                    SubMsg::new(BankMsg::Send {
+                        to_address: "counterer".to_string(),
+                        amount: coins(58, "luna"),
+                    })
+                ]
+            );
+
+            let new_trade_info = load_counter_trade(&deps.storage, 0, 0).unwrap();
+            assert_eq!(
+                new_trade_info.associated_assets,
+                vec![
+                    AssetInfo::Cw721Coin(Cw721Coin {
+                        token_id: "58".to_string(),
+                        address: "nft-2".to_string()
+                    }),
+                    AssetInfo::Cw20Coin(Cw20Coin {
+                        amount: Uint128::from(42u64),
+                        address: "token".to_string()
+                    })
+                ],
+            );
+            assert_eq!(new_trade_info.associated_funds, vec![coin(42, "luna")],);
+
+            remove_from_counter_trade_helper(
+                deps.as_mut(),
+                "counterer",
+                0,
+                0,
+                vec![(
+                    1,
+                    AssetInfo::Cw20Coin(Cw20Coin {
+                        address: "token".to_string(),
+                        amount: Uint128::from(42u64),
+                    }),
+                )],
+                vec![(0, coin(42, "luna"))],
+            )
+            .unwrap();
+
+            let new_trade_info = load_counter_trade(&deps.storage, 0, 0).unwrap();
+            assert_eq!(
+                new_trade_info.associated_assets,
+                vec![AssetInfo::Cw721Coin(Cw721Coin {
+                    token_id: "58".to_string(),
+                    address: "nft-2".to_string()
+                }),],
+            );
+
+            // This triggers an error, the counterer is not the same as the sender
+            let err = remove_from_counter_trade_helper(
+                deps.as_mut(),
+                "bad_person",
+                0,
+                0,
+                vec![(
+                    0,
+                    AssetInfo::Cw721Coin(Cw721Coin {
+                        address: "nft-2".to_string(),
+                        token_id: "58".to_string(),
+                    }),
+                )],
+                vec![],
+            )
+            .unwrap_err();
+
+            assert_eq!(err, ContractError::CounterTraderNotCreator {});
+
+            // This triggers an error, no matching funds were found
+            let err = remove_from_counter_trade_helper(
+                deps.as_mut(),
+                "counterer",
+                0,
+                0,
+                vec![(
+                    1,
+                    AssetInfo::Cw721Coin(Cw721Coin {
+                        address: "nft-2".to_string(),
+                        token_id: "58".to_string(),
+                    }),
+                )],
+                vec![],
+            )
+            .unwrap_err();
+
+            assert_eq!(
+                err,
+                ContractError::Std(StdError::generic_err(
+                    "assets position does not exist in array"
+                ))
+            );
+
+            // This triggers an error, no matching funds were found
+            let err = remove_from_counter_trade_helper(
+                deps.as_mut(),
+                "counterer",
+                0,
+                0,
+                vec![(
+                    0,
+                    AssetInfo::Cw721Coin(Cw721Coin {
+                        address: "nft-1".to_string(),
+                        token_id: "58".to_string(),
+                    }),
+                )],
+                vec![],
+            )
+            .unwrap_err();
+
+            assert_eq!(
+                err,
+                ContractError::Std(StdError::generic_err("Wrong nft address at position 0"))
+            );
+
+            // This triggers an error, no matching funds were found
+            let err = remove_from_counter_trade_helper(
+                deps.as_mut(),
+                "counterer",
+                0,
+                0,
+                vec![(
+                    0,
+                    AssetInfo::Cw721Coin(Cw721Coin {
+                        address: "nft-2".to_string(),
+                        token_id: "42".to_string(),
+                    }),
+                )],
+                vec![],
+            )
+            .unwrap_err();
+
+            assert_eq!(
+                err,
+                ContractError::Std(StdError::generic_err(
+                    "Wrong nft id at position 0, wanted: 42, found: 58"
+                ))
+            );
+        }
+
+        #[test]
+        fn create_trade_add_remove_tokens_errors() {
+            let mut deps = mock_dependencies(&[]);
+            init_helper(deps.as_mut());
+
+            create_trade_helper(deps.as_mut());
+            confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
+            add_cw721_to_counter_trade_helper(deps.as_mut(), "nft", "counterer".to_string(), 0, 0)
+                .unwrap();
+            add_cw721_to_counter_trade_helper(
+                deps.as_mut(),
+                "nft-2",
+                "counterer".to_string(),
+                0,
+                0,
+            )
+            .unwrap();
+            add_cw20_to_counter_trade_helper(deps.as_mut(), "token", "counterer".to_string(), 0, 0)
+                .unwrap();
+            add_funds_to_counter_trade_helper(
+                deps.as_mut(),
+                "counterer",
+                0,
+                0,
+                &coins(100, "luna"),
+                Some(false),
+            )
+            .unwrap();
+
+            let err = remove_from_counter_trade_helper(
+                deps.as_mut(),
+                "counterer",
+                0,
+                0,
+                vec![(
+                    2,
+                    AssetInfo::Cw20Coin(Cw20Coin {
+                        address: "token".to_string(),
+                        amount: Uint128::from(101u64),
+                    }),
+                )],
+                vec![],
+            )
+            .unwrap_err();
+
+            assert_eq!(
+                err,
+                ContractError::Std(StdError::generic_err(
+                    "You can't withdraw that much token, wanted: 101, available: 100"
+                ))
+            );
+
+            let err = remove_from_counter_trade_helper(
+                deps.as_mut(),
+                "counterer",
+                0,
+                0,
+                vec![(
+                    0,
+                    AssetInfo::Cw20Coin(Cw20Coin {
+                        address: "token".to_string(),
+                        amount: Uint128::from(101u64),
+                    }),
+                )],
+                vec![],
+            )
+            .unwrap_err();
+
+            assert_eq!(
+                err,
+                ContractError::Std(StdError::generic_err("Wrong token type at position 0"))
+            );
+
+            let err = remove_from_counter_trade_helper(
+                deps.as_mut(),
+                "counterer",
+                0,
+                0,
+                vec![(
+                    2,
+                    AssetInfo::Cw20Coin(Cw20Coin {
+                        address: "wrong-token".to_string(),
+                        amount: Uint128::from(101u64),
+                    }),
+                )],
+                vec![],
+            )
+            .unwrap_err();
+
+            assert_eq!(
+                err,
+                ContractError::Std(StdError::generic_err("Wrong token address at position 2"))
+            );
+
+            confirm_counter_trade_helper(deps.as_mut(), "counterer", 0, 0).unwrap();
+
+            let err = remove_from_counter_trade_helper(
+                deps.as_mut(),
+                "counterer",
+                0,
+                0,
+                vec![(
+                    2,
+                    AssetInfo::Cw20Coin(Cw20Coin {
+                        address: "token".to_string(),
+                        amount: Uint128::from(58u64),
+                    }),
+                )],
+                vec![],
+            )
+            .unwrap_err();
+
+            assert_eq!(err, ContractError::CounterTradeAlreadyPublished {});
         }
 
         #[test]
@@ -1170,10 +2253,16 @@ pub mod tests {
                 ]
             );
 
-            //Already confirmed 
+            //Already confirmed
             let err = confirm_counter_trade_helper(deps.as_mut(), "counterer", 0, 0).unwrap_err();
-            assert_eq!(err, ContractError::CantChangeCounterTradeState {from: TradeState::Published, to: TradeState::Published});
-        } 
+            assert_eq!(
+                err,
+                ContractError::CantChangeCounterTradeState {
+                    from: TradeState::Published,
+                    to: TradeState::Published
+                }
+            );
+        }
 
         #[test]
         fn review_counter_trade() {
@@ -1197,9 +2286,15 @@ pub mod tests {
             assert_eq!(err, ContractError::TraderNotCreator {});
 
             let err = review_counter_trade_helper(deps.as_mut(), "creator", 0, 0).unwrap_err();
-            assert_eq!(err, ContractError::CantChangeCounterTradeState {from: TradeState::Created, to: TradeState::Created});
+            assert_eq!(
+                err,
+                ContractError::CantChangeCounterTradeState {
+                    from: TradeState::Created,
+                    to: TradeState::Created
+                }
+            );
 
-            confirm_counter_trade_helper(deps.as_mut(),"counterer",0,0).unwrap();
+            confirm_counter_trade_helper(deps.as_mut(), "counterer", 0, 0).unwrap();
 
             // This time, it has to work fine
             let res = review_counter_trade_helper(deps.as_mut(), "creator", 0, 0).unwrap();
@@ -1214,7 +2309,7 @@ pub mod tests {
 
             // Because this was the only counter
             let new_trade_info = load_trade(&deps.storage, 0).unwrap();
-            assert_eq!(new_trade_info.state,TradeState::Acknowledged{});
+            assert_eq!(new_trade_info.state, TradeState::Countered {});
         }
 
         #[test]
@@ -1270,8 +2365,7 @@ pub mod tests {
             );
 
             let new_trade_info = load_trade(&deps.storage, 0).unwrap();
-            assert_eq!(new_trade_info.state,TradeState::Countered{});
-
+            assert_eq!(new_trade_info.state, TradeState::Countered {});
         }
 
         #[test]
@@ -1282,7 +2376,7 @@ pub mod tests {
             create_trade_helper(deps.as_mut());
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
             suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
-            let res = refuse_counter_trade_helper(deps.as_mut(),"creator", 0, 0).unwrap();
+            let res = refuse_counter_trade_helper(deps.as_mut(), "creator", 0, 0).unwrap();
             assert_eq!(
                 res.attributes,
                 vec![
@@ -1306,8 +2400,7 @@ pub mod tests {
             // We suggest one more counter
             suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, Some(false)).unwrap();
 
-
-            let res = refuse_counter_trade_helper(deps.as_mut(),"creator", 0, 0).unwrap();
+            let res = refuse_counter_trade_helper(deps.as_mut(), "creator", 0, 0).unwrap();
             assert_eq!(
                 res.attributes,
                 vec![
@@ -1329,8 +2422,8 @@ pub mod tests {
 
             confirm_counter_trade_helper(deps.as_mut(), "counterer", 0, 0).unwrap();
             accept_trade_helper(deps.as_mut(), "creator", 0, 0).unwrap();
-            let err = refuse_counter_trade_helper(deps.as_mut(),"creator", 0, 0).unwrap_err();
-            assert_eq!(err,ContractError::TradeAlreadyAccepted{});
+            let err = refuse_counter_trade_helper(deps.as_mut(), "creator", 0, 0).unwrap_err();
+            assert_eq!(err, ContractError::TradeAlreadyAccepted {});
         }
 
         #[test]
@@ -1344,8 +2437,14 @@ pub mod tests {
 
             confirm_counter_trade_helper(deps.as_mut(), "counterer", 0, 0).unwrap();
             accept_trade_helper(deps.as_mut(), "creator", 0, 0).unwrap();
-            let err = cancel_trade_helper(deps.as_mut(),"creator", 0).unwrap_err();
-            assert_eq!(err,ContractError::CantChangeTradeState {from: TradeState::Accepted, to: TradeState::Cancelled});
+            let err = cancel_trade_helper(deps.as_mut(), "creator", 0).unwrap_err();
+            assert_eq!(
+                err,
+                ContractError::CantChangeTradeState {
+                    from: TradeState::Accepted,
+                    to: TradeState::Cancelled
+                }
+            );
         }
 
         #[test]
@@ -1359,9 +2458,15 @@ pub mod tests {
             confirm_counter_trade_helper(deps.as_mut(), "counterer", 0, 0).unwrap();
             accept_trade_helper(deps.as_mut(), "creator", 0, 0).unwrap();
 
-            //Already confirmed 
+            //Already confirmed
             let err = confirm_counter_trade_helper(deps.as_mut(), "counterer", 0, 0).unwrap_err();
-            assert_eq!(err, ContractError::CantChangeTradeState {from: TradeState::Accepted, to: TradeState::Countered});
-        } 
+            assert_eq!(
+                err,
+                ContractError::CantChangeTradeState {
+                    from: TradeState::Accepted,
+                    to: TradeState::Countered
+                }
+            );
+        }
     }
 }

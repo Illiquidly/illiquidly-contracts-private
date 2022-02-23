@@ -1,11 +1,13 @@
-use cosmwasm_std::{DepsMut, Env, MessageInfo, Response, Uint128};
+use cosmwasm_std::{Coin, DepsMut, Env, MessageInfo, Response, Uint128};
 
 use crate::error::ContractError;
 use crate::state::{
     add_cw20_coin, add_cw721_coin, add_funds, can_suggest_counter_trade, is_counter_trader,
-    COUNTER_TRADE_INFO, TRADE_INFO, load_trade
+    load_trade, COUNTER_TRADE_INFO, TRADE_INFO,
 };
-use p2p_trading_export::state::{TradeInfo, TradeState};
+use p2p_trading_export::state::{AssetInfo, TradeInfo, TradeState};
+
+use crate::trade::{are_assets_in_trade, create_withdraw_messages, try_withdraw_assets_unsafe};
 
 pub fn suggest_counter_trade(
     deps: DepsMut,
@@ -32,12 +34,12 @@ pub fn suggest_counter_trade(
                         None => trade_info.last_counter_id = Some(0),
                     }
                     if trade_info.state == TradeState::Published {
-                        trade_info.state = TradeState::Acknowledged;
+                        trade_info.state = TradeState::Countered;
                     }
                     Ok(trade_info)
                 }
                 //TARPAULIN : Unreachable
-                None => return Err(ContractError::NotFoundInTradeInfo{}), 
+                None => return Err(ContractError::NotFoundInTradeInfo {}),
             }
         },
     )?;
@@ -65,7 +67,8 @@ pub fn suggest_counter_trade(
                 state: TradeState::Created,
                 last_counter_id: None,
                 comment: None,
-                accepted_info:None
+                accepted_info: None,
+                assets_withdrawn: false,
             },
         )?;
     }
@@ -90,7 +93,12 @@ pub fn add_funds_to_counter_trade(
     counter_id: u64,
     confirm: Option<bool>,
 ) -> Result<Response, ContractError> {
-    is_counter_trader(deps.storage, &info.sender, trade_id, counter_id)?;
+    let counter_info = is_counter_trader(deps.storage, &info.sender, trade_id, counter_id)?;
+    if counter_info.state != TradeState::Created {
+        return Err(ContractError::WrongTradeState {
+            state: counter_info.state,
+        });
+    }
 
     COUNTER_TRADE_INFO.update(
         deps.storage,
@@ -119,12 +127,17 @@ pub fn add_token_to_counter_trade(
     counter_id: u64,
     sent_amount: Uint128,
 ) -> Result<Response, ContractError> {
-    is_counter_trader(
+    let counter_info = is_counter_trader(
         deps.storage,
         &deps.api.addr_validate(&trader)?,
         trade_id,
         counter_id,
     )?;
+    if counter_info.state != TradeState::Created {
+        return Err(ContractError::WrongTradeState {
+            state: counter_info.state,
+        });
+    }
 
     COUNTER_TRADE_INFO.update(
         deps.storage,
@@ -147,12 +160,17 @@ pub fn add_nft_to_counter_trade(
     counter_id: u64,
     token_id: String,
 ) -> Result<Response, ContractError> {
-    is_counter_trader(
+    let counter_info = is_counter_trader(
         deps.storage,
         &deps.api.addr_validate(&trader)?,
         trade_id,
         counter_id,
     )?;
+    if counter_info.state != TradeState::Created {
+        return Err(ContractError::WrongTradeState {
+            state: counter_info.state,
+        });
+    }
 
     COUNTER_TRADE_INFO.update(
         deps.storage,
@@ -173,28 +191,20 @@ pub fn confirm_counter_trade(
     trade_id: u64,
     counter_id: u64,
 ) -> Result<Response, ContractError> {
-
     let mut trade_info = load_trade(deps.storage, trade_id)?;
 
     is_counter_trader(deps.storage, &info.sender, trade_id, counter_id)?;
 
-    if trade_info.state != TradeState::Acknowledged && trade_info.state != TradeState::Countered {
+    if trade_info.state != TradeState::Countered {
         return Err(ContractError::CantChangeTradeState {
             from: trade_info.state,
             to: TradeState::Countered,
         });
     }
     trade_info.state = TradeState::Countered;
-    
-
-
 
     // We update the trade_info to show there are some suggested counters
-    TRADE_INFO.save(
-        deps.storage,
-        &trade_id.to_be_bytes(),
-        &trade_info
-    )?;
+    TRADE_INFO.save(deps.storage, &trade_id.to_be_bytes(), &trade_info)?;
 
     // We update the counter_trade_info to indicate it is published and ready to be accepted
     COUNTER_TRADE_INFO.update(
@@ -213,7 +223,7 @@ pub fn confirm_counter_trade(
                     Ok(one)
                 }
                 //TARPAULIN : Unreachable
-                None => Err(ContractError::NotFoundInCounterTradeInfo {}), 
+                None => Err(ContractError::NotFoundInCounterTradeInfo {}),
             }
         },
     )?;
@@ -222,4 +232,37 @@ pub fn confirm_counter_trade(
         .add_attribute("confirmed", "counter")
         .add_attribute("trade", trade_id.to_string())
         .add_attribute("counter", counter_id.to_string()))
+}
+
+pub fn withdraw_counter_trade_assets_while_creating(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    trade_id: u64,
+    counter_id: u64,
+    assets: Vec<(usize, AssetInfo)>,
+    funds: Vec<(usize, Coin)>,
+) -> Result<Response, ContractError> {
+    let mut counter_info = is_counter_trader(deps.storage, &info.sender, trade_id, counter_id)?;
+
+    if counter_info.state != TradeState::Created {
+        return Err(ContractError::CounterTradeAlreadyPublished {});
+    }
+
+    are_assets_in_trade(&counter_info, &assets, &funds)?;
+
+    try_withdraw_assets_unsafe(&mut counter_info, &assets, &funds)?;
+
+    COUNTER_TRADE_INFO.save(
+        deps.storage,
+        (&trade_id.to_be_bytes(), &counter_id.to_be_bytes()),
+        &counter_info,
+    )?;
+
+    let res = create_withdraw_messages(
+        info.clone(),
+        &assets.iter().map(|x| x.1.clone()).collect(),
+        &funds.iter().map(|x| x.1.clone()).collect(),
+    )?;
+    Ok(res.add_attribute("remove from", "counter"))
 }

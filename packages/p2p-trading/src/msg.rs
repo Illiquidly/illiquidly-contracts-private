@@ -1,7 +1,7 @@
-use cosmwasm_std::{to_binary, Binary, CosmosMsg, StdError, StdResult, Uint128, WasmMsg};
+use crate::state::AssetInfo;
+use cosmwasm_std::{to_binary, Binary, Coin, CosmosMsg, StdError, StdResult, Uint128, WasmMsg};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-
 fn is_valid_name(name: &str) -> bool {
     let bytes = name.as_bytes();
     if bytes.len() < 3 || bytes.len() > 50 {
@@ -26,7 +26,6 @@ pub fn into_cosmos_msg<M: Serialize, T: Into<String>>(
     };
     Ok(execute.into())
 }
-
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
 pub struct InstantiateMsg {
@@ -64,6 +63,11 @@ pub enum ExecuteMsg {
         trade_id: u64,
         confirm: Option<bool>,
     },
+    RemoveFromTrade {
+        trade_id: u64,
+        assets: Vec<(usize, AssetInfo)>,
+        funds: Vec<(usize, Coin)>,
+    },
     /// Is used by the Trader to confirm they completed their end of the trade.
     ConfirmTrade {
         trade_id: u64,
@@ -77,6 +81,12 @@ pub enum ExecuteMsg {
         trade_id: u64,
         counter_id: u64,
         confirm: Option<bool>,
+    },
+    RemoveFromCounterTrade {
+        trade_id: u64,
+        counter_id: u64,
+        assets: Vec<(usize, AssetInfo)>,
+        funds: Vec<(usize, Coin)>,
     },
     /// Is used by the Client to confirm they completed their end of the trade.
     ConfirmCounterTrade {
@@ -107,6 +117,15 @@ pub enum ExecuteMsg {
     WithdrawPendingAssets {
         trade_id: u64,
     },
+    /// You can Withdraw funds only at specific steps of the trade, but you're allowed to try anytime !
+    WithdrawCancelledTrade {
+        trade_id: u64,
+    },
+    /// You can Withdraw funds when your counter trade is aborted (refused or cancelled)
+    WithdrawAbortedCounter {
+        trade_id: u64,
+        counter_id: u64,
+    },
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Clone, Debug)]
@@ -119,25 +138,17 @@ pub enum ReceiveMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
-    ContractInfo{
+    ContractInfo {},
+    TradeInfo { trade_id: u64 },
+    CounterTradeInfo { trade_id: u64, counter_id: u64 }, /*
+                                                         }
+                                                         GetAllActiveTrades{}
 
-    },
-    TradeInfo{
-        trade_id: u64,
-    },
-    CounterTradeInfo{
-        trade_id: u64,
-        counter_id: u64
-    }
-      /*
-    }
-    GetAllActiveTrades{}
-   
-    GetCounterTrades{
-        trade_id:u64,
-    },
-    GetAllActiveCounterTrades{}
+                                                         GetCounterTrades{
+                                                             trade_id:u64,
+                                                         },
+                                                         GetAllActiveCounterTrades{}
 
 
-    */
+                                                         */
 }

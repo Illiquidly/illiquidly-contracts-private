@@ -26,16 +26,12 @@ pub fn review_counter_trade(
     }
 
     // Only a published counter trade can be reviewed
-    if counter_info.state != TradeState::Published{
+    if counter_info.state != TradeState::Published {
         return Err(ContractError::CantChangeCounterTradeState {
             from: counter_info.state,
             to: TradeState::Created,
         });
     }
-
-
-    // We go through all counter trades, to un-publish the counter_id and to update the current trade state
-    let mut is_countered = false;
 
     // We get all the counter trades for this trade
     let counter_trade_keys: Vec<Vec<u8>> = COUNTER_TRADE_INFO
@@ -54,8 +50,6 @@ pub fn review_counter_trade(
                         if id == counter_id.to_be_bytes() {
                             one.state = TradeState::Created;
                             one.comment = comment.clone();
-                        }else if one.state == TradeState::Published {
-                            is_countered = true;
                         }
                         Ok(one)
                     }
@@ -66,12 +60,8 @@ pub fn review_counter_trade(
         )?;
     }
 
-    if is_countered {
-        trade_info.state = TradeState::Countered;
-    }else{
-        trade_info.state = TradeState::Acknowledged;
-    }
-
+    trade_info.state = TradeState::Countered;
+  
     // Then we need to change the trade status that we may have changed
     TRADE_INFO.save(deps.storage, &trade_id.to_be_bytes(), &trade_info)?;
 
