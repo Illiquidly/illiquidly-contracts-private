@@ -136,7 +136,7 @@ pub enum QueryMsg {
         trade_id: u64,
     },
     GetAllCounterTrades {
-        start_after: Option<String>, // use composite key here as continuation key
+        start_after: Option<String>, // use composite_id here as continuation key
         limit: Option<u32>,
         states: Option<Vec<String>>,
         owner: Option<String>,
