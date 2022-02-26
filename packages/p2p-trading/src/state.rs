@@ -2,8 +2,9 @@ use std::fmt::{Display, Formatter, Result};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-
 use cosmwasm_std::{Addr, Coin, Uint128};
+
+use std::collections::HashSet;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -31,12 +32,10 @@ pub enum AssetInfo {
 pub enum TradeState {
     Created,
     Published,
-    Acknowledged,
     Countered,
     Refused,
     Accepted,
     Cancelled,
-    Withdrawn,
 }
 
 impl Display for TradeState {
@@ -68,6 +67,8 @@ pub struct TradeInfo {
     pub associated_funds: Vec<Coin>,
     pub state: TradeState,
     pub last_counter_id: Option<u64>,
+    pub whitelisted_users: HashSet<String>,
     pub comment: Option<String>,
     pub accepted_info: Option<AcceptedTradeInfo>,
+    pub assets_withdrawn: bool,
 }

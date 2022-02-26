@@ -10,23 +10,8 @@ pub enum ContractError {
     #[error("Unauthorized")]
     Unauthorized {},
 
-    #[error("Cannot set to own account")]
-    CannotSetOwnAccount {},
-
-    #[error("Invalid zero amount")]
-    InvalidZeroAmount {},
-
-    #[error("Allowance is expired")]
-    Expired {},
-
-    #[error("No allowance for this account")]
-    NoAllowance {},
-
-    #[error("Minting cannot exceed the cap")]
-    CannotExceedCap {},
-
     #[error("An unplanned bug just happened :/")]
-    ContractBug{},
+    ContractBug {},
 
     #[error("Key already exists in TradeInfo")]
     ExistsInTradeInfo {},
@@ -50,7 +35,7 @@ pub enum ContractError {
     NotCounterable {},
 
     #[error("Wrong state of the trade for the current operation : {state:?}")]
-    WrongTradeState{state:TradeState},
+    WrongTradeState { state: TradeState },
 
     #[error("Can change the state of the trade from {from:?} to {to:?}")]
     CantChangeTradeState { from: TradeState, to: TradeState },
@@ -64,15 +49,30 @@ pub enum ContractError {
     #[error("Sorry, you can't accept a counter trade that is not published yet")]
     TradeAlreadyAccepted {},
 
+    #[error("Sorry, the trade is published, you can't modify it. You can cancel it if you're not satisfied")]
+    TradeAlreadyPublished {},
+
+    #[error("Sorry, the counter trade is published, you can't modify it. You can cancel it if you're not satisfied")]
+    CounterTradeAlreadyPublished {},
+
+    #[error("Sorry, the trade has to be refused or cancelled to withdraw your funds")]
+    CounterTradeNotAborted {},
+
     #[error("Sorry, this trade is not accepted yet")]
     TradeNotAccepted {},
 
     #[error("Sorry, this trade is cancelled")]
     TradeCancelled {},
 
+    #[error("Sorry, this trade is not cancelled")]
+    TradeNotCancelled {},
+
     #[error("Assets were already withdrawn, don't try to scam the platform please")]
     TradeAlreadyWithdrawn {},
 
     #[error("Only the trader or the counter-trader can withdraw assets, don't try to scam the platform please")]
     NotWithdrawableByYou {},
+
+    #[error("This trade is only allowed to a selected few, sorry :/")]
+    AddressNotWhitelisted {},
 }
