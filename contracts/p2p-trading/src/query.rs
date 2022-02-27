@@ -87,7 +87,6 @@ pub fn query_all_trades(
         .filter(|response| {
             let trade = response.as_ref().unwrap();
 
-            // Owner defined here, allow owner user to query his own trades and by state of his trades
             return (match &states {
                 Some(state) => state.contains(&trade.state),
                 None => true,
@@ -161,7 +160,6 @@ pub fn query_all_counter_trades(
         .filter(|response| {
             let trade = response.as_ref().unwrap();
 
-            // Owner defined here, allow owner user to query his own trades and by state of his trades
             return (match &states {
                 Some(state) => state.contains(&trade.state),
                 None => true,
