@@ -87,21 +87,14 @@ pub fn query_all_trades(
         .filter(|response| {
             let trade = response.as_ref().unwrap();
 
-            // Owner not provided check if states are, and query only by states.
-            if owner.is_none() {
-                return match &states {
-                    Some(state) => state.contains(&trade.state),
-                    None => true, // No states defined return all items
-                };
-            }
-
             // Owner defined here, allow owner user to query his own trades and by state of his trades
-            match &states {
-                Some(state) => {
-                    state.contains(&trade.state) && trade.owner == owner.clone().unwrap_or_default()
-                }
-                None => trade.owner == owner.clone().unwrap_or_default(), // Only query owner in case when owner is defined and states are not
-            }
+            return (match &states {
+                Some(state) => state.contains(&trade.state),
+                None => true,
+            } && match &owner {
+                Some(owner) => trade.owner == owner.clone(),
+                None => true,
+            });
         })
         .take(limit)
         .collect();
@@ -168,21 +161,14 @@ pub fn query_all_counter_trades(
         .filter(|response| {
             let trade = response.as_ref().unwrap();
 
-            // Owner not provided check if states are, and query only by states.
-            if owner.is_none() {
-                return match &states {
-                    Some(state) => state.contains(&trade.state),
-                    None => true, // No states defined return all items
-                };
-            }
-
             // Owner defined here, allow owner user to query his own trades and by state of his trades
-            match &states {
-                Some(state) => {
-                    state.contains(&trade.state) && trade.owner == owner.clone().unwrap_or_default()
-                }
-                None => trade.owner == owner.clone().unwrap_or_default(), // Only query owner in case when owner is defined and states are not
-            }
+            return (match &states {
+                Some(state) => state.contains(&trade.state),
+                None => true,
+            } && match &owner {
+                Some(owner) => trade.owner == owner.clone(),
+                None => true,
+            });
         })
         .take(limit)
         .collect();
@@ -203,7 +189,6 @@ fn parse_counter_trades(
         let mut composite_id: [u8; 16] = [Default::default(); 16];
         composite_id[..[trade_k.clone(), k.clone()].concat().len()]
             .copy_from_slice(&[trade_k.clone(), k.clone()].concat());
-
 
         let mut trade_id: [u8; 8] = [Default::default(); 8];
         trade_id[..trade_k.len()].copy_from_slice(&trade_k);
