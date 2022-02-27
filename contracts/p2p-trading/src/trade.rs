@@ -104,10 +104,10 @@ pub fn add_funds_to_trade(
 
 pub fn add_token_to_trade(
     deps: DepsMut,
-    _env: Env,
-    info: MessageInfo,
+    env: Env,
     trader: String,
     trade_id: u64,
+    token: String,
     sent_amount: Uint128,
 ) -> Result<Response, ContractError> {
     let trade_info = is_trader(deps.storage, &deps.api.addr_validate(&trader)?, trade_id)?;
@@ -121,21 +121,30 @@ pub fn add_token_to_trade(
     TRADE_INFO.update(
         deps.storage,
         &trade_id.to_be_bytes(),
-        add_cw20_coin(info.sender.clone(), sent_amount),
+        add_cw20_coin(token.clone(), sent_amount),
     )?;
 
+    // Now we need to transfer the token
+    let message = Cw20ExecuteMsg::TransferFrom {
+        owner: trader,
+        recipient: env.contract.address.into(),
+        amount: sent_amount,
+    };
+
     Ok(Response::new()
+        .add_message(into_cosmos_msg(message, token.clone())?)
         .add_attribute("added token", "trade")
-        .add_attribute("token", info.sender.to_string())
-        .add_attribute("amount", sent_amount.to_string()))
+        .add_attribute("token", token.to_string())
+        .add_attribute("amount", sent_amount.to_string())
+    )
 }
 
 pub fn add_nft_to_trade(
     deps: DepsMut,
-    _env: Env,
-    info: MessageInfo,
+    env: Env,
     trader: String,
     trade_id: u64,
+    token: String,
     token_id: String,
 ) -> Result<Response, ContractError> {
     let trade_info = is_trader(deps.storage, &deps.api.addr_validate(&trader)?, trade_id)?;
@@ -149,12 +158,19 @@ pub fn add_nft_to_trade(
     TRADE_INFO.update(
         deps.storage,
         &trade_id.to_be_bytes(),
-        add_cw721_coin(info.sender.clone(), token_id.clone()),
-    )?;
+        add_cw721_coin(token.clone(), token_id.clone()),
+    )?; 
+
+    // Now we need to transfer the nft
+    let message = Cw721ExecuteMsg::TransferNft {
+        recipient: env.contract.address.into(),
+        token_id: token_id.clone(),
+    };
 
     Ok(Response::new()
+        .add_message(into_cosmos_msg(message, token.clone())?)
         .add_attribute("added token", "trade")
-        .add_attribute("nft", info.sender.to_string())
+        .add_attribute("nft", token.to_string())
         .add_attribute("token_id", token_id))
 }
 

@@ -1,11 +1,15 @@
 use std::collections::HashSet;
 use cosmwasm_std::{Coin, DepsMut, Env, MessageInfo, Response, Uint128};
 
+use cw20::Cw20ExecuteMsg;
+use cw721::Cw721ExecuteMsg;
+
 use crate::error::ContractError;
 use crate::state::{
     add_cw20_coin, add_cw721_coin, add_funds, can_suggest_counter_trade, is_counter_trader,
     load_trade, COUNTER_TRADE_INFO, TRADE_INFO,
 };
+use p2p_trading_export::msg::into_cosmos_msg;
 use p2p_trading_export::state::{AssetInfo, TradeInfo, TradeState};
 
 use crate::trade::{are_assets_in_trade, create_withdraw_messages, try_withdraw_assets_unsafe};
@@ -123,11 +127,11 @@ pub fn add_funds_to_counter_trade(
 
 pub fn add_token_to_counter_trade(
     deps: DepsMut,
-    _env: Env,
-    info: MessageInfo,
+    env: Env,
     trader: String,
     trade_id: u64,
     counter_id: u64,
+    token: String,
     sent_amount: Uint128,
 ) -> Result<Response, ContractError> {
     let counter_info = is_counter_trader(
@@ -145,22 +149,30 @@ pub fn add_token_to_counter_trade(
     COUNTER_TRADE_INFO.update(
         deps.storage,
         (&trade_id.to_be_bytes(), &counter_id.to_be_bytes()),
-        add_cw20_coin(info.sender.clone(), sent_amount),
+        add_cw20_coin(token.clone(), sent_amount),
     )?;
 
+    // Now we need to transfer the token
+    let message = Cw20ExecuteMsg::TransferFrom {
+        owner: trader,
+        recipient: env.contract.address.into(),
+        amount: sent_amount,
+    };
+
     Ok(Response::new()
+        .add_message(into_cosmos_msg(message, token.clone())?)
         .add_attribute("added token", "counter")
-        .add_attribute("token", info.sender.to_string())
+        .add_attribute("token", token.to_string())
         .add_attribute("amount", sent_amount.to_string()))
 }
 
 pub fn add_nft_to_counter_trade(
     deps: DepsMut,
-    _env: Env,
-    info: MessageInfo,
+    env: Env,
     trader: String,
     trade_id: u64,
     counter_id: u64,
+    token: String,
     token_id: String,
 ) -> Result<Response, ContractError> {
     let counter_info = is_counter_trader(
@@ -178,12 +190,19 @@ pub fn add_nft_to_counter_trade(
     COUNTER_TRADE_INFO.update(
         deps.storage,
         (&trade_id.to_be_bytes(), &counter_id.to_be_bytes()),
-        add_cw721_coin(info.sender.clone(), token_id.clone()),
+        add_cw721_coin(token.clone(), token_id.clone()),
     )?;
 
+    // Now we need to transfer the nft
+    let message = Cw721ExecuteMsg::TransferNft {
+        recipient: env.contract.address.into(),
+        token_id: token_id.clone(),
+    };
+
     Ok(Response::new()
+        .add_message(into_cosmos_msg(message, token.clone())?)
         .add_attribute("added token", "counter")
-        .add_attribute("nft", info.sender.to_string())
+        .add_attribute("nft", token.to_string())
         .add_attribute("token_id", token_id))
 }
 
@@ -235,6 +254,33 @@ pub fn confirm_counter_trade(
         .add_attribute("confirmed", "counter")
         .add_attribute("trade", trade_id.to_string())
         .add_attribute("counter", counter_id.to_string()))
+}
+
+pub fn cancel_counter_trade(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    trade_id: u64,
+    counter_id: u64,
+) -> Result<Response, ContractError> {
+    // Only the initial trader can cancel the trade
+    let mut counter_info = is_counter_trader(deps.storage, &info.sender, trade_id, counter_id)?;
+
+    if counter_info.state == TradeState::Accepted {
+        return Err(ContractError::CantChangeCounterTradeState {
+            from: counter_info.state,
+            to: TradeState::Cancelled,
+        });
+    }
+    counter_info.state = TradeState::Cancelled;
+
+    // We store the new trade status
+    COUNTER_TRADE_INFO.save(deps.storage, (&trade_id.to_be_bytes(),&counter_id.to_be_bytes()), &counter_info)?;
+
+    Ok(Response::new()
+        .add_attribute("cancelled", "counter")
+        .add_attribute("trade", trade_id.to_string())
+    )
 }
 
 pub fn withdraw_counter_trade_assets_while_creating(

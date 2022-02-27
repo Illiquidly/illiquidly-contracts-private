@@ -29,7 +29,7 @@ pub fn add_funds(funds: Vec<Coin>) -> impl FnOnce(Option<TradeInfo>) -> StdResul
 }
 
 pub fn add_cw20_coin(
-    address: Addr,
+    address: String,
     sent_amount: Uint128,
 ) -> impl FnOnce(Option<TradeInfo>) -> StdResult<TradeInfo> {
     move |d: Option<TradeInfo>| -> StdResult<TradeInfo> {
@@ -50,7 +50,7 @@ pub fn add_cw20_coin(
 }
 
 pub fn add_cw721_coin(
-    address: Addr,
+    address: String,
     token_id: String,
 ) -> impl FnOnce(Option<TradeInfo>) -> StdResult<TradeInfo> {
     move |d: Option<TradeInfo>| -> StdResult<TradeInfo> {

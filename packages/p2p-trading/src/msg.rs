@@ -48,22 +48,24 @@ impl InstantiateMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
-    Receive {
-        sender: String,
-        amount: Uint128,
-        msg: Binary,
-    },
-    ReceiveNft {
-        sender: String,
-        token_id: String,
-        msg: Binary,
-    },
     CreateTrade {
         whitelisted_users: Option<Vec<String>>,
     },
     AddFundsToTrade {
         trade_id: u64,
         confirm: Option<bool>,
+    },
+    AddCw20{
+        trade_id: u64,
+        counter_id: Option<u64>,
+        address: String,
+        amount: Uint128
+    },
+    AddCw721{
+        trade_id: u64,
+        counter_id: Option<u64>,
+        address: String,
+        token_id: String
     },
     RemoveFromTrade {
         trade_id: u64,
@@ -108,9 +110,14 @@ pub enum ExecuteMsg {
         trade_id: u64,
         counter_id: u64,
     },
-    /// Accept the Trade plain and simple, swap it up !
+    /// Cancel the Trade :/ No luck there mate ?
     CancelTrade {
         trade_id: u64,
+    },
+    /// Cancel the Counter Trade :/ No luck there mate ?
+    CancelCounterTrade { 
+        trade_id: u64,
+        counter_id: u64
     },
     /// Refuse the Trade plain and simple, no madam, I'm not interested in your tokens !
     RefuseCounterTrade {
@@ -136,13 +143,6 @@ pub enum ExecuteMsg {
         trade_id: u64,
         counter_id: u64,
     },
-}
-
-#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug)]
-#[serde(rename_all = "snake_case")]
-pub enum ReceiveMsg {
-    AddToTrade { trade_id: u64 },
-    AddToCounterTrade { trade_id: u64, counter_id: u64 },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

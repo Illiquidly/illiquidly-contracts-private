@@ -1,8 +1,7 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    from_binary, to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult,
-    Uint128,
+    to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult,
 };
 
 use crate::error::ContractError;
@@ -11,15 +10,15 @@ use crate::state::{
     is_counter_trader, is_trader, load_counter_trade, load_trade, CONTRACT_INFO,
     COUNTER_TRADE_INFO, TRADE_INFO,
 };
-use p2p_trading_export::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, ReceiveMsg};
+use p2p_trading_export::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use p2p_trading_export::state::{ContractInfo, TradeInfo, TradeState};
 
 use crate::counter_trade::{
-    add_funds_to_counter_trade, add_nft_to_counter_trade, add_token_to_counter_trade,
+    add_funds_to_counter_trade, add_nft_to_counter_trade, add_token_to_counter_trade,cancel_counter_trade,
     confirm_counter_trade, suggest_counter_trade, withdraw_counter_trade_assets_while_creating,
 };
 use crate::trade::{
-    accept_trade, add_funds_to_trade, add_nft_to_trade, add_token_to_trade, cancel_trade,
+    accept_trade, add_funds_to_trade, add_nft_to_trade, add_token_to_trade, cancel_trade, 
     confirm_trade, create_trade, create_withdraw_messages, refuse_counter_trade,
     withdraw_trade_assets_while_creating, add_whitelisted_users, remove_whitelisted_users
 };
@@ -55,23 +54,37 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        //Register Receive messages
-        ExecuteMsg::Receive {
-            sender,
-            amount,
-            msg,
-        } => receive(deps, env, info, sender, amount, msg),
-        ExecuteMsg::ReceiveNft {
-            sender,
-            token_id,
-            msg,
-        } => receive_nft(deps, env, info, sender, token_id, msg),
-
+       
         // Trade Creation Messages
         ExecuteMsg::CreateTrade {whitelisted_users} => create_trade(deps, env, info, whitelisted_users),
         ExecuteMsg::AddFundsToTrade { trade_id, confirm } => {
             add_funds_to_trade(deps, env, info, trade_id, confirm)
-        }
+        },
+        ExecuteMsg::AddCw20{
+            trade_id,
+            counter_id,
+            address,
+            amount
+        } => {
+            if let Some(counter) = counter_id{
+                add_token_to_counter_trade(deps, env, info.sender.into(), trade_id, counter, address, amount)
+            }else{
+                add_token_to_trade(deps, env, info.sender.into(), trade_id, address, amount)
+            }
+        },
+
+        ExecuteMsg::AddCw721{
+            trade_id,
+            counter_id,
+            address,
+            token_id
+        } => {
+            if let Some(counter) = counter_id{
+                add_nft_to_counter_trade(deps, env, info.sender.into(), trade_id, counter, address, token_id)
+            }else{
+                add_nft_to_trade(deps, env, info.sender.into(), trade_id, address, token_id)
+            }
+        },
         ExecuteMsg::RemoveFromTrade {
             trade_id,
             assets,
@@ -124,6 +137,7 @@ pub fn execute(
 
         // After Create Messages
         ExecuteMsg::CancelTrade { trade_id } => cancel_trade(deps, env, info, trade_id),
+        ExecuteMsg::CancelCounterTrade { trade_id, counter_id } => cancel_counter_trade(deps, env, info, trade_id, counter_id),
 
         ExecuteMsg::RefuseCounterTrade {
             trade_id,
@@ -153,59 +167,6 @@ pub fn execute(
                                                                                     "Ow whaou, please wait just a bit, it's not implemented yet !",
                                                                                 ))),
                                                                               */
-    }
-}
-
-pub fn receive(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    from: String,
-    sent_amount: Uint128,
-    msg: Binary,
-) -> Result<Response, ContractError> {
-    let msg: ReceiveMsg = from_binary(&msg)?;
-
-    // TODO
-    // Careful here, as any token can be added to the trade by anyone (and not only the trader)
-    // We have to think about a security mechanism to counter this issue !!!
-    // 1. Make the trade_id and counter_id random
-    //      That is one step, but it's not enough
-    // 2. Approve this contract for all deposited tokens (exaclty the amount we want to transfer !)
-    //      This seems to be the appropriate solution for now
-    //      This doesn't require that much more developing effort
-    // This also applies to the receive_nft function
-
-    match msg {
-        ReceiveMsg::AddToTrade { trade_id } => {
-            add_token_to_trade(deps, env, info, from, trade_id, sent_amount)
-        }
-
-        ReceiveMsg::AddToCounterTrade {
-            trade_id,
-            counter_id,
-        } => add_token_to_counter_trade(deps, env, info, from, trade_id, counter_id, sent_amount),
-    }
-}
-
-pub fn receive_nft(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    from: String,
-    token_id: String,
-    msg: Binary,
-) -> Result<Response, ContractError> {
-    let msg: ReceiveMsg = from_binary(&msg)?;
-
-    match msg {
-        ReceiveMsg::AddToTrade { trade_id } => {
-            add_nft_to_trade(deps, env, info, from, trade_id, token_id)
-        }
-        ReceiveMsg::AddToCounterTrade {
-            trade_id,
-            counter_id,
-        } => add_nft_to_counter_trade(deps, env, info, from, trade_id, counter_id, token_id),
     }
 }
 
@@ -358,7 +319,7 @@ pub mod tests {
     use super::*;
     use crate::state::load_trade;
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{coins, Attribute, BankMsg, Coin};
+    use cosmwasm_std::{coins, Attribute, BankMsg, Coin, Uint128};
     use cw20::Cw20ExecuteMsg;
     use cw721::Cw721ExecuteMsg;
     use p2p_trading_export::msg::into_cosmos_msg;
@@ -445,22 +406,21 @@ pub mod tests {
     fn add_cw20_to_trade_helper(
         deps: DepsMut,
         token: &str,
-        sender: String,
+        sender: &str,
         trade_id: u64,
     ) -> Result<Response, ContractError> {
-        let info = mock_info(token, &[]);
+        let info = mock_info(sender, &[]);
         let env = mock_env();
-
-        let msg = to_binary(&ReceiveMsg::AddToTrade { trade_id }).unwrap();
 
         execute(
             deps,
             env,
             info,
-            ExecuteMsg::Receive {
-                sender: sender,
+            ExecuteMsg::AddCw20 {
+                trade_id,
+                counter_id: None,
+                address: token.to_string(),
                 amount: Uint128::from(100u64),
-                msg: msg,
             },
         )
     }
@@ -468,22 +428,21 @@ pub mod tests {
     fn add_cw721_to_trade_helper(
         deps: DepsMut,
         token: &str,
-        sender: String,
+        sender: &str,
         trade_id: u64,
     ) -> Result<Response, ContractError> {
-        let info = mock_info(token, &[]);
+        let info = mock_info(sender, &[]);
         let env = mock_env();
-
-        let msg = to_binary(&ReceiveMsg::AddToTrade { trade_id }).unwrap();
 
         execute(
             deps,
             env,
             info,
-            ExecuteMsg::ReceiveNft {
-                sender: sender,
+            ExecuteMsg::AddCw721 {
+                trade_id,
+                counter_id: None,
+                address: token.to_string(),
                 token_id: "58".to_string(),
-                msg: msg,
             },
         )
     }
@@ -683,7 +642,7 @@ pub mod tests {
             create_trade_helper(deps.as_mut());
 
             let res =
-                add_cw20_to_trade_helper(deps.as_mut(), "token", "creator".to_string(), 0).unwrap();
+                add_cw20_to_trade_helper(deps.as_mut(), "token", "creator", 0).unwrap();
 
             assert_eq!(
                 res.attributes,
@@ -704,7 +663,7 @@ pub mod tests {
             );
 
             // This triggers an error, the creator is not the same as the sender
-            let err = add_cw20_to_trade_helper(deps.as_mut(), "token", "bad_person".to_string(), 0)
+            let err = add_cw20_to_trade_helper(deps.as_mut(), "token", "bad_person", 0)
                 .unwrap_err();
 
             assert_eq!(err, ContractError::TraderNotCreator {});
@@ -718,7 +677,7 @@ pub mod tests {
             create_trade_helper(deps.as_mut());
 
             let res =
-                add_cw721_to_trade_helper(deps.as_mut(), "nft", "creator".to_string(), 0).unwrap();
+                add_cw721_to_trade_helper(deps.as_mut(), "nft", "creator", 0).unwrap();
 
             assert_eq!(
                 res.attributes,
@@ -740,7 +699,7 @@ pub mod tests {
 
             // This triggers an error, the creator is not the same as the sender
             let err =
-                add_cw721_to_trade_helper(deps.as_mut(), "token", "bad_person".to_string(), 0)
+                add_cw721_to_trade_helper(deps.as_mut(), "token", "bad_person", 0)
                     .unwrap_err();
 
             assert_eq!(err, ContractError::TraderNotCreator {});
@@ -753,9 +712,9 @@ pub mod tests {
 
             create_trade_helper(deps.as_mut());
 
-            add_cw721_to_trade_helper(deps.as_mut(), "nft", "creator".to_string(), 0).unwrap();
-            add_cw721_to_trade_helper(deps.as_mut(), "nft-2", "creator".to_string(), 0).unwrap();
-            add_cw20_to_trade_helper(deps.as_mut(), "token", "creator".to_string(), 0).unwrap();
+            add_cw721_to_trade_helper(deps.as_mut(), "nft", "creator", 0).unwrap();
+            add_cw721_to_trade_helper(deps.as_mut(), "nft-2", "creator", 0).unwrap();
+            add_cw20_to_trade_helper(deps.as_mut(), "token", "creator", 0).unwrap();
             add_funds_to_trade_helper(
                 deps.as_mut(),
                 "creator",
@@ -956,9 +915,9 @@ pub mod tests {
 
             create_trade_helper(deps.as_mut());
 
-            add_cw721_to_trade_helper(deps.as_mut(), "nft", "creator".to_string(), 0).unwrap();
-            add_cw721_to_trade_helper(deps.as_mut(), "nft-2", "creator".to_string(), 0).unwrap();
-            add_cw20_to_trade_helper(deps.as_mut(), "token", "creator".to_string(), 0).unwrap();
+            add_cw721_to_trade_helper(deps.as_mut(), "nft", "creator", 0).unwrap();
+            add_cw721_to_trade_helper(deps.as_mut(), "nft-2", "creator", 0).unwrap();
+            add_cw20_to_trade_helper(deps.as_mut(), "token", "creator", 0).unwrap();
             add_funds_to_trade_helper(
                 deps.as_mut(),
                 "creator",
@@ -1109,7 +1068,7 @@ pub mod tests {
             );
 
             // This triggers an error, we can't send tokens to confirmed trade
-            let err = add_cw20_to_trade_helper(deps.as_mut(), "token", "creator".to_string(), 0)
+            let err = add_cw20_to_trade_helper(deps.as_mut(), "token", "creator", 0)
                 .unwrap_err();
             assert_eq!(
                 err,
@@ -1119,7 +1078,7 @@ pub mod tests {
             );
 
             // This triggers an error, we can't send nfts to confirmed trade
-            let err = add_cw721_to_trade_helper(deps.as_mut(), "token", "creator".to_string(), 0)
+            let err = add_cw721_to_trade_helper(deps.as_mut(), "token", "creator", 0)
                 .unwrap_err();
             assert_eq!(
                 err,
@@ -1250,15 +1209,15 @@ pub mod tests {
             create_trade_helper(deps.as_mut());
             add_funds_to_trade_helper(deps.as_mut(), "creator", 0, &coins(5, "lunas"), None)
                 .unwrap();
-            add_cw20_to_trade_helper(deps.as_mut(), "token", "creator".to_string(), 0).unwrap();
-            add_cw721_to_trade_helper(deps.as_mut(), "nft", "creator".to_string(), 0).unwrap();
+            add_cw20_to_trade_helper(deps.as_mut(), "token", "creator", 0).unwrap();
+            add_cw721_to_trade_helper(deps.as_mut(), "nft", "creator", 0).unwrap();
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
             suggest_counter_trade_helper(deps.as_mut(), "other_counterer", 0, Some(false)).unwrap();
 
             add_cw20_to_counter_trade_helper(
                 deps.as_mut(),
                 "other_counter-token",
-                "other_counterer".to_string(),
+                "other_counterer",
                 0,
                 0,
             )
@@ -1266,7 +1225,7 @@ pub mod tests {
             add_cw721_to_counter_trade_helper(
                 deps.as_mut(),
                 "other_counter-nft",
-                "other_counterer".to_string(),
+                "other_counterer",
                 0,
                 0,
             )
@@ -1286,7 +1245,7 @@ pub mod tests {
             add_cw20_to_counter_trade_helper(
                 deps.as_mut(),
                 "counter-token",
-                "counterer".to_string(),
+                "counterer",
                 0,
                 1,
             )
@@ -1294,7 +1253,7 @@ pub mod tests {
             add_cw721_to_counter_trade_helper(
                 deps.as_mut(),
                 "counter-nft",
-                "counterer".to_string(),
+                "counterer",
                 0,
                 1,
             )
@@ -1447,15 +1406,15 @@ pub mod tests {
             create_trade_helper(deps.as_mut());
             add_funds_to_trade_helper(deps.as_mut(), "creator", 0, &coins(5, "lunas"), None)
                 .unwrap();
-            add_cw20_to_trade_helper(deps.as_mut(), "token", "creator".to_string(), 0).unwrap();
-            add_cw721_to_trade_helper(deps.as_mut(), "nft", "creator".to_string(), 0).unwrap();
+            add_cw20_to_trade_helper(deps.as_mut(), "token", "creator", 0).unwrap();
+            add_cw721_to_trade_helper(deps.as_mut(), "nft", "creator", 0).unwrap();
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
             suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, Some(false)).unwrap();
 
             add_cw20_to_counter_trade_helper(
                 deps.as_mut(),
                 "other_counter-token",
-                "counterer".to_string(),
+                "counterer",
                 0,
                 0,
             )
@@ -1522,8 +1481,8 @@ pub mod tests {
             create_private_trade_helper(deps.as_mut(),vec!["whitelist".to_string()]);
             add_funds_to_trade_helper(deps.as_mut(), "creator", 0, &coins(5, "lunas"), None)
                 .unwrap();
-            add_cw20_to_trade_helper(deps.as_mut(), "token", "creator".to_string(), 0).unwrap();
-            add_cw721_to_trade_helper(deps.as_mut(), "nft", "creator".to_string(), 0).unwrap();
+            add_cw20_to_trade_helper(deps.as_mut(), "token", "creator", 0).unwrap();
+            add_cw721_to_trade_helper(deps.as_mut(), "nft", "creator", 0).unwrap();
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
 
             let err = suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, Some(false)).unwrap_err();
@@ -1605,55 +1564,46 @@ pub mod tests {
     fn add_cw20_to_counter_trade_helper(
         deps: DepsMut,
         token: &str,
-        sender: String,
+        sender: &str,
         trade_id: u64,
         counter_id: u64,
     ) -> Result<Response, ContractError> {
-        let info = mock_info(token, &[]);
+        let info = mock_info(sender, &[]);
         let env = mock_env();
-
-        let msg = to_binary(&ReceiveMsg::AddToCounterTrade {
-            trade_id,
-            counter_id,
-        })
-        .unwrap();
 
         execute(
             deps,
             env,
             info,
-            ExecuteMsg::Receive {
-                sender: sender,
+             ExecuteMsg::AddCw20 {
+                trade_id,
+                counter_id: Some(counter_id),
+                address: token.to_string(),
                 amount: Uint128::from(100u64),
-                msg: msg,
             },
         )
+       
     }
 
     fn add_cw721_to_counter_trade_helper(
         deps: DepsMut,
         token: &str,
-        sender: String,
+        sender: &str,
         trade_id: u64,
         counter_id: u64,
     ) -> Result<Response, ContractError> {
-        let info = mock_info(token, &[]);
+        let info = mock_info(sender, &[]);
         let env = mock_env();
-
-        let msg = to_binary(&ReceiveMsg::AddToCounterTrade {
-            trade_id,
-            counter_id,
-        })
-        .unwrap();
 
         execute(
             deps,
             env,
             info,
-            ExecuteMsg::ReceiveNft {
-                sender: sender,
+            ExecuteMsg::AddCw721 {
+                trade_id,
+                counter_id: Some(counter_id),
+                address: token.to_string(),
                 token_id: "58".to_string(),
-                msg: msg,
             },
         )
     }
@@ -1855,7 +1805,7 @@ pub mod tests {
             let res = add_cw20_to_counter_trade_helper(
                 deps.as_mut(),
                 "token",
-                "counterer".to_string(),
+                "counterer",
                 0,
                 0,
             )
@@ -1873,7 +1823,7 @@ pub mod tests {
             let err = add_cw20_to_counter_trade_helper(
                 deps.as_mut(),
                 "token",
-                "counterer".to_string(),
+                "counterer",
                 0,
                 1,
             )
@@ -1900,7 +1850,7 @@ pub mod tests {
             let err = add_cw20_to_counter_trade_helper(
                 deps.as_mut(),
                 "token",
-                "bad_person".to_string(),
+                "bad_person",
                 0,
                 0,
             )
@@ -1921,7 +1871,7 @@ pub mod tests {
             let res = add_cw721_to_counter_trade_helper(
                 deps.as_mut(),
                 "nft",
-                "counterer".to_string(),
+                "counterer",
                 0,
                 0,
             )
@@ -1955,7 +1905,7 @@ pub mod tests {
             let err = add_cw721_to_counter_trade_helper(
                 deps.as_mut(),
                 "token",
-                "bad_person".to_string(),
+                "bad_person",
                 0,
                 0,
             )
@@ -1972,17 +1922,17 @@ pub mod tests {
             create_trade_helper(deps.as_mut());
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
             suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
-            add_cw721_to_counter_trade_helper(deps.as_mut(), "nft", "counterer".to_string(), 0, 0)
+            add_cw721_to_counter_trade_helper(deps.as_mut(), "nft", "counterer", 0, 0)
                 .unwrap();
             add_cw721_to_counter_trade_helper(
                 deps.as_mut(),
                 "nft-2",
-                "counterer".to_string(),
+                "counterer",
                 0,
                 0,
             )
             .unwrap();
-            add_cw20_to_counter_trade_helper(deps.as_mut(), "token", "counterer".to_string(), 0, 0)
+            add_cw20_to_counter_trade_helper(deps.as_mut(), "token", "counterer", 0, 0)
                 .unwrap();
             add_funds_to_counter_trade_helper(
                 deps.as_mut(),
@@ -2192,17 +2142,17 @@ pub mod tests {
             create_trade_helper(deps.as_mut());
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
             suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
-            add_cw721_to_counter_trade_helper(deps.as_mut(), "nft", "counterer".to_string(), 0, 0)
+            add_cw721_to_counter_trade_helper(deps.as_mut(), "nft", "counterer", 0, 0)
                 .unwrap();
             add_cw721_to_counter_trade_helper(
                 deps.as_mut(),
                 "nft-2",
-                "counterer".to_string(),
+                "counterer",
                 0,
                 0,
             )
             .unwrap();
-            add_cw20_to_counter_trade_helper(deps.as_mut(), "token", "counterer".to_string(), 0, 0)
+            add_cw20_to_counter_trade_helper(deps.as_mut(), "token", "counterer", 0, 0)
                 .unwrap();
             add_funds_to_counter_trade_helper(
                 deps.as_mut(),
@@ -2546,6 +2496,23 @@ pub mod tests {
                     to: TradeState::Countered
                 }
             );
+        }
+    }
+    pub mod change_tests {
+        use super::*;
+        use cosmwasm_std::{coin, SubMsg};
+        use cw_storage_plus::{Map, U64Key};
+
+
+        pub const A: Map<U64Key, String> = Map::new("trade_info_test");
+
+        pub const B: Map<(U64Key, U64Key), String> = Map::new("counter_trade_info_test");
+
+
+        #[test]
+        fn change_test(){
+            let mut deps = mock_dependencies(&[]);
+            A.save(&mut deps.storage, 585u64.into() ,&"Test de ouf".to_string());
         }
     }
 }
