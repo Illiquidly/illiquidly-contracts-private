@@ -451,8 +451,8 @@ pub mod tests {
         deps: DepsMut,
         sender: &str,
         trade_id: u64,
-        assets: Vec<(usize, AssetInfo)>,
-        funds: Vec<(usize, Coin)>,
+        assets: Vec<(u64, AssetInfo)>,
+        funds: Vec<(u64, Coin)>,
     ) -> Result<Response, ContractError> {
         let info = mock_info(sender, &[]);
         let env = mock_env();
@@ -1613,8 +1613,8 @@ pub mod tests {
         sender: &str,
         trade_id: u64,
         counter_id: u64,
-        assets: Vec<(usize, AssetInfo)>,
-        funds: Vec<(usize, Coin)>,
+        assets: Vec<(u64, AssetInfo)>,
+        funds: Vec<(u64, Coin)>,
     ) -> Result<Response, ContractError> {
         let info = mock_info(sender, &[]);
         let env = mock_env();

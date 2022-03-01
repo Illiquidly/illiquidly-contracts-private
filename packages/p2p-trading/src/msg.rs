@@ -69,8 +69,8 @@ pub enum ExecuteMsg {
     },
     RemoveFromTrade {
         trade_id: u64,
-        assets: Vec<(usize, AssetInfo)>,
-        funds: Vec<(usize, Coin)>,
+        assets: Vec<(u16, AssetInfo)>,
+        funds: Vec<(u16, Coin)>,
     },
     AddWhitelistedUsers{
         trade_id: u64,
@@ -97,8 +97,8 @@ pub enum ExecuteMsg {
     RemoveFromCounterTrade {
         trade_id: u64,
         counter_id: u64,
-        assets: Vec<(usize, AssetInfo)>,
-        funds: Vec<(usize, Coin)>,
+        assets: Vec<(u16, AssetInfo)>,
+        funds: Vec<(u16, Coin)>,
     },
     /// Is used by the Client to confirm they completed their end of the trade.
     ConfirmCounterTrade {
@@ -130,7 +130,7 @@ pub enum ExecuteMsg {
         counter_id: u64,
         comment: Option<String>,
     },
-    /// You can Withdraw funds only at specific steps of the trade, but you're allowed to try anytime !
+    /// You can Withdraw funds via this function only whe the trade is accepted.
     WithdrawPendingAssets {
         trade_id: u64,
     },

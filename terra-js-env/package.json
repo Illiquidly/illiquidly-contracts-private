@@ -6,7 +6,11 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build:dev": "tsc --watch --preserveWatchOutput",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "new_token": "node dist/upload_new_token.js",
+    "p2p-test": "node dist/p2p-flow-test.js",
+    "upload-p2p": "node dist/upload_p2p.js",
+    "init": "node dist/send_funds.js"
   },
   "keywords": [
     "terra"
@@ -14,7 +18,7 @@
   "author": "Kayanski",
   "license": "ISC",
   "dependencies": {
-    "@terra-money/terra.js": "^3.0.6"
+    "@terra-money/terra.js": "3.0.0"
   },
   "devDependencies": {
     "typescript": "^4.5.5"

@@ -434,8 +434,8 @@ pub fn withdraw_trade_assets_while_creating(
     _env: Env,
     info: MessageInfo,
     trade_id: u64,
-    assets: Vec<(usize, AssetInfo)>,
-    funds: Vec<(usize, Coin)>,
+    assets: Vec<(u16, AssetInfo)>,
+    funds: Vec<(u16, Coin)>,
 ) -> Result<Response, ContractError> {
     let mut trade_info = is_trader(deps.storage, &info.sender, trade_id)?;
     if trade_info.state != TradeState::Created {
@@ -458,17 +458,19 @@ pub fn withdraw_trade_assets_while_creating(
 
 pub fn are_assets_in_trade(
     trade_info: &TradeInfo,
-    assets: &Vec<(usize, AssetInfo)>,
-    funds: &Vec<(usize, Coin)>,
+    assets: &Vec<(u16, AssetInfo)>,
+    funds: &Vec<(u16, Coin)>,
 ) -> Result<(), ContractError> {
     // We first treat the assets
     for (position, asset) in assets {
-        if *position >= trade_info.associated_assets.len() {
+        let position: usize = (*position).into();
+
+        if position >= trade_info.associated_assets.len() {
             return Err(ContractError::Std(StdError::generic_err(
                 "assets position does not exist in array",
             )));
         }
-        let asset_info: AssetInfo = trade_info.associated_assets[*position].clone();
+        let asset_info: AssetInfo = trade_info.associated_assets[position].clone();
         match asset_info {
             AssetInfo::Cw20Coin(token_info) => {
                 // We check the token is the one we want
@@ -529,12 +531,13 @@ pub fn are_assets_in_trade(
 
     // Then we take care of the funds
     for (position, fund) in funds {
-        if *position >= trade_info.associated_funds.len() {
+        let position: usize = (*position).into();
+        if position >= trade_info.associated_funds.len() {
             return Err(ContractError::Std(StdError::generic_err(
                 "assets position does not exist in array",
             )));
         }
-        let fund_info = trade_info.associated_funds[*position].clone();
+        let fund_info = trade_info.associated_funds[position].clone();
         if fund_info.denom != fund.denom {
             return Err(ContractError::Std(StdError::generic_err(format!(
                 "Wrong fund denom at position {position}",
@@ -557,24 +560,25 @@ pub fn are_assets_in_trade(
 
 pub fn try_withdraw_assets_unsafe(
     trade_info: &mut TradeInfo,
-    assets: &Vec<(usize, AssetInfo)>,
-    funds: &Vec<(usize, Coin)>,
+    assets: &Vec<(u16, AssetInfo)>,
+    funds: &Vec<(u16, Coin)>,
 ) -> Result<(), ContractError> {
     for (position, asset) in assets {
-        let asset_info = trade_info.associated_assets[*position].clone();
+        let position: usize = (*position).into();
+        let asset_info = trade_info.associated_assets[position].clone();
         match asset_info {
             AssetInfo::Cw20Coin(mut token_info) => {
                 // We check the token is the one we want
                 if let AssetInfo::Cw20Coin(token) = asset {
                     token_info.amount -= token.amount;
-                    trade_info.associated_assets[*position] = AssetInfo::Cw20Coin(token_info);
+                    trade_info.associated_assets[position] = AssetInfo::Cw20Coin(token_info);
                 }
             }
             AssetInfo::Cw721Coin(mut nft_info) => {
                 // We check the token is the one we want
                 if let AssetInfo::Cw721Coin(_) = asset {
                     nft_info.address = "".to_string();
-                    trade_info.associated_assets[*position] = AssetInfo::Cw721Coin(nft_info);
+                    trade_info.associated_assets[position] = AssetInfo::Cw721Coin(nft_info);
                 }
             }
         }
@@ -589,11 +593,12 @@ pub fn try_withdraw_assets_unsafe(
     // Then we take care of the wanted funds
     // First, we check funds availability and update their state
     for (position, fund) in funds {
-        let mut fund_info = trade_info.associated_funds[*position].clone();
+        let position: usize = (*position).into();
+        let mut fund_info = trade_info.associated_funds[position].clone();
 
         // If everything is in order, we remove the coin from the trade
         fund_info.amount -= fund.amount;
-        trade_info.associated_funds[*position] = fund_info;
+        trade_info.associated_funds[position] = fund_info;
     }
 
     // Then we remove empty funds

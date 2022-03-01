@@ -23,7 +23,7 @@ pub fn suggest_counter_trade(
 ) -> Result<Response, ContractError> {
     // We start by verifying it is possible to suggest a counter trade to that trade
     // It also checks if the trade exists
-    // And that the sender is whitelisted (in cas the trade is private)
+    // And that the sender is whitelisted (in case the trade is private)
     can_suggest_counter_trade(deps.storage, trade_id, &info.sender.clone().into())?;
 
     // We start by creating a new trade_id (simply incremented from the last id)
@@ -289,8 +289,8 @@ pub fn withdraw_counter_trade_assets_while_creating(
     info: MessageInfo,
     trade_id: u64,
     counter_id: u64,
-    assets: Vec<(usize, AssetInfo)>,
-    funds: Vec<(usize, Coin)>,
+    assets: Vec<(u16, AssetInfo)>,
+    funds: Vec<(u16, Coin)>,
 ) -> Result<Response, ContractError> {
     let mut counter_info = is_counter_trader(deps.storage, &info.sender, trade_id, counter_id)?;
 
