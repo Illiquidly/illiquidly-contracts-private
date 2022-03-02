@@ -18,7 +18,7 @@
   "author": "Kayanski",
   "license": "ISC",
   "dependencies": {
-    "@terra-money/terra.js": "3.0.0"
+    "@terra-money/terra.js": "^3.0.5"
   },
   "devDependencies": {
     "typescript": "^4.5.5"
