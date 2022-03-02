@@ -1,5 +1,5 @@
-use std::collections::HashSet;
 use cosmwasm_std::{Coin, DepsMut, Env, MessageInfo, Response, Uint128};
+use std::collections::HashSet;
 
 use cw20::Cw20ExecuteMsg;
 use cw721::Cw721ExecuteMsg;
@@ -29,7 +29,7 @@ pub fn suggest_counter_trade(
     // We start by creating a new trade_id (simply incremented from the last id)
     let new_trade_info = TRADE_INFO.update(
         deps.storage,
-        &trade_id.to_be_bytes(),
+        trade_id.into(),
         |c| -> Result<TradeInfo, ContractError> {
             match c {
                 Some(mut trade_info) => {
@@ -56,15 +56,12 @@ pub fn suggest_counter_trade(
     // Or an external error happened, or whatever...
     // In that case, we emit an error
     // The priority is : We do not want to overwrite existing data
-    if COUNTER_TRADE_INFO.has(
-        deps.storage,
-        (&trade_id.to_be_bytes(), &counter_id.to_be_bytes()),
-    ) {
+    if COUNTER_TRADE_INFO.has(deps.storage, (trade_id.into(), counter_id.into())) {
         return Err(ContractError::ExistsInCounterTradeInfo {});
     } else {
         COUNTER_TRADE_INFO.save(
             deps.storage,
-            (&trade_id.to_be_bytes(), &counter_id.to_be_bytes()),
+            (trade_id.into(), counter_id.into()),
             &TradeInfo {
                 owner: info.sender.clone(),
                 // We add the funds sent along with this transaction
@@ -109,7 +106,7 @@ pub fn add_funds_to_counter_trade(
 
     COUNTER_TRADE_INFO.update(
         deps.storage,
-        (&trade_id.to_be_bytes(), &counter_id.to_be_bytes()),
+        (trade_id.into(), counter_id.into()),
         add_funds(info.funds.clone()),
     )?;
 
@@ -148,7 +145,7 @@ pub fn add_token_to_counter_trade(
 
     COUNTER_TRADE_INFO.update(
         deps.storage,
-        (&trade_id.to_be_bytes(), &counter_id.to_be_bytes()),
+        (trade_id.into(), counter_id.into()),
         add_cw20_coin(token.clone(), sent_amount),
     )?;
 
@@ -189,7 +186,7 @@ pub fn add_nft_to_counter_trade(
 
     COUNTER_TRADE_INFO.update(
         deps.storage,
-        (&trade_id.to_be_bytes(), &counter_id.to_be_bytes()),
+        (trade_id.into(), counter_id.into()),
         add_cw721_coin(token.clone(), token_id.clone()),
     )?;
 
@@ -226,12 +223,12 @@ pub fn confirm_counter_trade(
     trade_info.state = TradeState::Countered;
 
     // We update the trade_info to show there are some suggested counters
-    TRADE_INFO.save(deps.storage, &trade_id.to_be_bytes(), &trade_info)?;
+    TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
 
     // We update the counter_trade_info to indicate it is published and ready to be accepted
     COUNTER_TRADE_INFO.update(
         deps.storage,
-        (&trade_id.to_be_bytes(), &counter_id.to_be_bytes()),
+        (trade_id.into(), counter_id.into()),
         |d: Option<TradeInfo>| -> Result<TradeInfo, ContractError> {
             match d {
                 Some(mut one) => {
@@ -275,12 +272,15 @@ pub fn cancel_counter_trade(
     counter_info.state = TradeState::Cancelled;
 
     // We store the new trade status
-    COUNTER_TRADE_INFO.save(deps.storage, (&trade_id.to_be_bytes(),&counter_id.to_be_bytes()), &counter_info)?;
+    COUNTER_TRADE_INFO.save(
+        deps.storage,
+        (trade_id.into(), counter_id.into()),
+        &counter_info,
+    )?;
 
     Ok(Response::new()
         .add_attribute("cancelled", "counter")
-        .add_attribute("trade", trade_id.to_string())
-    )
+        .add_attribute("trade", trade_id.to_string()))
 }
 
 pub fn withdraw_counter_trade_assets_while_creating(
@@ -304,7 +304,7 @@ pub fn withdraw_counter_trade_assets_while_creating(
 
     COUNTER_TRADE_INFO.save(
         deps.storage,
-        (&trade_id.to_be_bytes(), &counter_id.to_be_bytes()),
+        (trade_id.into(), counter_id.into()),
         &counter_info,
     )?;
 

@@ -1,4 +1,4 @@
-use cw_storage_plus::{Item, Map};
+use cw_storage_plus::{Item, Map, U64Key};
 
 use cosmwasm_std::{Addr, Coin, StdError, StdResult, Storage, Uint128};
 
@@ -9,16 +9,25 @@ use p2p_trading_export::state::{
 
 pub const CONTRACT_INFO: Item<ContractInfo> = Item::new("contract_info");
 
-pub const TRADE_INFO: Map<&[u8], TradeInfo> = Map::new("trade_info");
+pub const TRADE_INFO: Map<U64Key, TradeInfo> = Map::new("trade_info");
 
-pub const COUNTER_TRADE_INFO: Map<(&[u8], &[u8]), TradeInfo> = Map::new("counter_trade_info");
+pub const COUNTER_TRADE_INFO: Map<(U64Key, U64Key), TradeInfo> = Map::new("counter_trade_info");
 
 pub fn add_funds(funds: Vec<Coin>) -> impl FnOnce(Option<TradeInfo>) -> StdResult<TradeInfo> {
     move |d: Option<TradeInfo>| -> StdResult<TradeInfo> {
         match d {
-            Some(mut one) => {
-                one.associated_funds.extend(funds);
-                Ok(one)
+            Some(mut trade) => {
+                for fund in funds {
+                    let existing_denom = trade.associated_funds
+                        .iter_mut()
+                        .find(|c| c.denom == fund.denom);
+                    if let Some(existing_fund) = existing_denom {
+                        existing_fund.amount += fund.amount
+                    } else {
+                        trade.associated_funds.push(fund)
+                    }
+                }
+                Ok(trade)
             }
             //TARPAULIN : Unreachable in current code state
             None => Err(StdError::GenericErr {
@@ -34,12 +43,37 @@ pub fn add_cw20_coin(
 ) -> impl FnOnce(Option<TradeInfo>) -> StdResult<TradeInfo> {
     move |d: Option<TradeInfo>| -> StdResult<TradeInfo> {
         match d {
-            Some(mut one) => {
-                one.associated_assets.push(AssetInfo::Cw20Coin(Cw20Coin {
-                    address: address.into(),
-                    amount: sent_amount,
-                }));
-                Ok(one)
+            Some(mut trade) => {
+                let existing_token = trade.associated_assets
+                .iter_mut()
+                .find(|c| {
+                    match c{
+                        AssetInfo::Cw20Coin(x) =>{
+                            x.address == address
+                        }
+                        _ => false
+                    }
+
+                });
+                if let Some(existing_token) = existing_token {
+                    let current_amount = match existing_token{
+                        AssetInfo::Cw20Coin(x) =>{
+                            x.amount
+                        }
+                        _ => Uint128::zero()
+                    };
+                    *existing_token = AssetInfo::Cw20Coin(Cw20Coin {
+                        address: address.into(),
+                        amount: current_amount + sent_amount,
+                    })
+                } else {
+                    trade.associated_assets.push(AssetInfo::Cw20Coin(Cw20Coin {
+                        address: address.into(),
+                        amount: sent_amount,
+                    }))
+                }
+
+                Ok(trade)
             }
             //TARPAULIN : Unreachable in current code state
             None => Err(StdError::GenericErr {
@@ -105,35 +139,30 @@ pub fn load_counter_trade(
     counter_id: u64,
 ) -> Result<TradeInfo, ContractError> {
     COUNTER_TRADE_INFO
-        .load(
-            storage,
-            (&trade_id.to_be_bytes(), &counter_id.to_be_bytes()),
-        )
+        .load(storage, (trade_id.into(), counter_id.into()))
         .map_err(|_| ContractError::NotFoundInCounterTradeInfo {})
 }
 
 pub fn load_trade(storage: &dyn Storage, trade_id: u64) -> Result<TradeInfo, ContractError> {
     TRADE_INFO
-        .load(storage, &trade_id.to_be_bytes())
+        .load(storage, trade_id.into())
         .map_err(|_| ContractError::NotFoundInTradeInfo {})
 }
 
 pub fn can_suggest_counter_trade(
     storage: &dyn Storage,
     trade_id: u64,
-    sender: &String
+    sender: &String,
 ) -> Result<(), ContractError> {
-    if let Ok(Some(trade)) = TRADE_INFO.may_load(storage, &trade_id.to_be_bytes()) {
-        if (trade.state == TradeState::Published)
-            | (trade.state == TradeState::Countered)
-        {
-            if !trade.whitelisted_users.is_empty(){
-                if !trade.whitelisted_users.contains(sender){
+    if let Ok(Some(trade)) = TRADE_INFO.may_load(storage, trade_id.into()) {
+        if (trade.state == TradeState::Published) | (trade.state == TradeState::Countered) {
+            if !trade.whitelisted_users.is_empty() {
+                if !trade.whitelisted_users.contains(sender) {
                     Err(ContractError::AddressNotWhitelisted {})
-                }else{
+                } else {
                     Ok(())
                 }
-            }else{
+            } else {
                 Ok(())
             }
         } else {

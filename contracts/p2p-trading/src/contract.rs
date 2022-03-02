@@ -14,17 +14,20 @@ use p2p_trading_export::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use p2p_trading_export::state::{ContractInfo, TradeInfo, TradeState};
 
 use crate::counter_trade::{
-    add_funds_to_counter_trade, add_nft_to_counter_trade, add_token_to_counter_trade,cancel_counter_trade,
-    confirm_counter_trade, suggest_counter_trade, withdraw_counter_trade_assets_while_creating,
+    add_funds_to_counter_trade, add_nft_to_counter_trade, add_token_to_counter_trade,
+    cancel_counter_trade, confirm_counter_trade, suggest_counter_trade,
+    withdraw_counter_trade_assets_while_creating,
 };
 use crate::trade::{
-    accept_trade, add_funds_to_trade, add_nft_to_trade, add_token_to_trade, cancel_trade, 
-    confirm_trade, create_trade, create_withdraw_messages, refuse_counter_trade,
-    withdraw_trade_assets_while_creating, add_whitelisted_users, remove_whitelisted_users
+    accept_trade, add_funds_to_trade, add_nft_to_trade, add_token_to_trade, add_whitelisted_users,
+    cancel_trade, confirm_trade, create_trade, create_withdraw_messages, refuse_counter_trade,
+    remove_whitelisted_users, withdraw_trade_assets_while_creating,
 };
 
 use crate::messages::review_counter_trade;
-use crate::query::{query_contract_info, query_all_counter_trades, query_counter_trades, query_all_trades};
+use crate::query::{
+    query_all_counter_trades, query_all_trades, query_contract_info, query_counter_trades,
+};
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -54,37 +57,54 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-       
         // Trade Creation Messages
-        ExecuteMsg::CreateTrade {whitelisted_users} => create_trade(deps, env, info, whitelisted_users),
+        ExecuteMsg::CreateTrade { whitelisted_users } => {
+            create_trade(deps, env, info, whitelisted_users)
+        }
         ExecuteMsg::AddFundsToTrade { trade_id, confirm } => {
             add_funds_to_trade(deps, env, info, trade_id, confirm)
-        },
-        ExecuteMsg::AddCw20{
+        }
+        ExecuteMsg::AddCw20 {
             trade_id,
             counter_id,
             address,
-            amount
+            amount,
         } => {
-            if let Some(counter) = counter_id{
-                add_token_to_counter_trade(deps, env, info.sender.into(), trade_id, counter, address, amount)
-            }else{
+            if let Some(counter) = counter_id {
+                add_token_to_counter_trade(
+                    deps,
+                    env,
+                    info.sender.into(),
+                    trade_id,
+                    counter,
+                    address,
+                    amount,
+                )
+            } else {
                 add_token_to_trade(deps, env, info.sender.into(), trade_id, address, amount)
             }
-        },
+        }
 
-        ExecuteMsg::AddCw721{
+        ExecuteMsg::AddCw721 {
             trade_id,
             counter_id,
             address,
-            token_id
+            token_id,
         } => {
-            if let Some(counter) = counter_id{
-                add_nft_to_counter_trade(deps, env, info.sender.into(), trade_id, counter, address, token_id)
-            }else{
+            if let Some(counter) = counter_id {
+                add_nft_to_counter_trade(
+                    deps,
+                    env,
+                    info.sender.into(),
+                    trade_id,
+                    counter,
+                    address,
+                    token_id,
+                )
+            } else {
                 add_nft_to_trade(deps, env, info.sender.into(), trade_id, address, token_id)
             }
-        },
+        }
         ExecuteMsg::RemoveFromTrade {
             trade_id,
             assets,
@@ -94,13 +114,12 @@ pub fn execute(
         ExecuteMsg::AddWhitelistedUsers {
             trade_id,
             whitelisted_users,
-        } => add_whitelisted_users(deps,env,info,trade_id,whitelisted_users),
+        } => add_whitelisted_users(deps, env, info, trade_id, whitelisted_users),
 
         ExecuteMsg::RemoveWhitelistedUsers {
             trade_id,
             whitelisted_users,
-        } => remove_whitelisted_users(deps,env,info,trade_id,whitelisted_users),
-
+        } => remove_whitelisted_users(deps, env, info, trade_id, whitelisted_users),
 
         ExecuteMsg::ConfirmTrade { trade_id } => confirm_trade(deps, env, info, trade_id),
 
@@ -137,7 +156,10 @@ pub fn execute(
 
         // After Create Messages
         ExecuteMsg::CancelTrade { trade_id } => cancel_trade(deps, env, info, trade_id),
-        ExecuteMsg::CancelCounterTrade { trade_id, counter_id } => cancel_counter_trade(deps, env, info, trade_id, counter_id),
+        ExecuteMsg::CancelCounterTrade {
+            trade_id,
+            counter_id,
+        } => cancel_counter_trade(deps, env, info, trade_id, counter_id),
 
         ExecuteMsg::RefuseCounterTrade {
             trade_id,
@@ -216,7 +238,7 @@ pub fn withdraw_accepted_funds(
         counter_info.assets_withdrawn = true;
         COUNTER_TRADE_INFO.save(
             deps.storage,
-            (&trade_id.to_be_bytes(), &counter_id.to_be_bytes()),
+            (trade_id.into(), counter_id.into()),
             &counter_info,
         )?;
     } else if counter_info.owner == info.sender {
@@ -225,7 +247,7 @@ pub fn withdraw_accepted_funds(
 
         trade_type = "trade";
         trade_info.assets_withdrawn = true;
-        TRADE_INFO.save(deps.storage, &trade_id.to_be_bytes(), &trade_info)?;
+        TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
     } else {
         return Err(ContractError::NotWithdrawableByYou {});
     }
@@ -249,7 +271,7 @@ pub fn withdraw_cancelled_trade(
     }
     let res = check_and_create_withdraw_messages(info, &trade_info)?;
     trade_info.assets_withdrawn = true;
-    TRADE_INFO.save(deps.storage, &trade_id.to_be_bytes(), &trade_info)?;
+    TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
 
     Ok(res
         .add_attribute("withdraw funds", "trade")
@@ -266,27 +288,23 @@ pub fn withdraw_aborted_counter(
     //We load the trade and verify it has been accepted
     let trade_info = load_trade(deps.storage, trade_id)?;
     let mut counter_info = is_counter_trader(deps.storage, &info.sender, trade_id, counter_id)?;
-    
+
     // If the associated trade is accepted and the counter was not selected
     // Or if the counter was refused
     // Or if the associated trade was cancelled
     // Or if this counter was cancelled
-    if !(
-            (trade_info.state == TradeState::Accepted && counter_info.state != TradeState::Accepted)
-            ||
-            (counter_info.state == TradeState::Refused)
-            ||
-            (trade_info.state == TradeState::Cancelled)
-            ||
-            (counter_info.state == TradeState::Cancelled)
-        ) {
+    if !((trade_info.state == TradeState::Accepted && counter_info.state != TradeState::Accepted)
+        || (counter_info.state == TradeState::Refused)
+        || (trade_info.state == TradeState::Cancelled)
+        || (counter_info.state == TradeState::Cancelled))
+    {
         return Err(ContractError::CounterTradeNotAborted {});
     }
     let res = check_and_create_withdraw_messages(info, &counter_info)?;
     counter_info.assets_withdrawn = true;
     COUNTER_TRADE_INFO.save(
         deps.storage,
-        (&trade_id.to_be_bytes(), &counter_id.to_be_bytes()),
+        (trade_id.into(), counter_id.into()),
         &counter_info,
     )?;
 
@@ -375,7 +393,15 @@ pub mod tests {
         let info = mock_info(creator, &[]);
         let env = mock_env();
 
-        let res = execute(deps, env, info, ExecuteMsg::CreateTrade { whitelisted_users: Some(vec![])}).unwrap();
+        let res = execute(
+            deps,
+            env,
+            info,
+            ExecuteMsg::CreateTrade {
+                whitelisted_users: Some(vec![]),
+            },
+        )
+        .unwrap();
         return res;
     }
 
@@ -383,23 +409,55 @@ pub mod tests {
         let info = mock_info("creator", &[]);
         let env = mock_env();
 
-        let res = execute(deps, env, info, ExecuteMsg::CreateTrade { whitelisted_users: Some(users)}).unwrap();
+        let res = execute(
+            deps,
+            env,
+            info,
+            ExecuteMsg::CreateTrade {
+                whitelisted_users: Some(users),
+            },
+        )
+        .unwrap();
         return res;
     }
 
-    fn add_whitelisted_users(deps: DepsMut, trade_id: u64, users: Vec<String>) -> Result<Response, ContractError> {
+    fn add_whitelisted_users(
+        deps: DepsMut,
+        trade_id: u64,
+        users: Vec<String>,
+    ) -> Result<Response, ContractError> {
         let info = mock_info("creator", &[]);
         let env = mock_env();
 
-        let res = execute(deps, env, info, ExecuteMsg::AddWhitelistedUsers { trade_id, whitelisted_users: users});
+        let res = execute(
+            deps,
+            env,
+            info,
+            ExecuteMsg::AddWhitelistedUsers {
+                trade_id,
+                whitelisted_users: users,
+            },
+        );
         return res;
     }
 
-    fn remove_whitelisted_users(deps: DepsMut, trade_id: u64, users: Vec<String>) -> Result<Response, ContractError> {
+    fn remove_whitelisted_users(
+        deps: DepsMut,
+        trade_id: u64,
+        users: Vec<String>,
+    ) -> Result<Response, ContractError> {
         let info = mock_info("creator", &[]);
         let env = mock_env();
 
-        let res = execute(deps, env, info, ExecuteMsg::RemoveWhitelistedUsers { trade_id, whitelisted_users: users});
+        let res = execute(
+            deps,
+            env,
+            info,
+            ExecuteMsg::RemoveWhitelistedUsers {
+                trade_id,
+                whitelisted_users: users,
+            },
+        );
         return res;
     }
 
@@ -559,12 +617,11 @@ pub mod tests {
     }
 
     pub mod trade_tests {
-        use crate::query::{query_counter_trades, CounterTradeResponse, TradeResponse};
-
         use super::*;
-        use std::collections::HashSet;
+        use crate::query::{query_counter_trades, TradeResponse};
         use cosmwasm_std::{coin, SubMsg};
-        use p2p_trading_export::state::AcceptedTradeInfo;
+        use p2p_trading_export::state::CounterTradeInfo;
+        use std::collections::HashSet;
 
         #[test]
         fn create_trade() {
@@ -605,7 +662,8 @@ pub mod tests {
                 vec![
                     {
                         TradeResponse {
-                            trade_id: "0".to_string(),
+                            trade_id: 0,
+                            counter_id: None,
                             owner: "creator".to_string(),
                             associated_assets: vec![],
                             associated_funds: vec![],
@@ -617,7 +675,8 @@ pub mod tests {
                     },
                     {
                         TradeResponse {
-                            trade_id: "1".to_string(),
+                            trade_id: 1,
+                            counter_id: None,
                             owner: "creator".to_string(),
                             associated_assets: vec![],
                             associated_funds: vec![],
@@ -680,7 +739,8 @@ pub mod tests {
                 vec![
                     {
                         TradeResponse {
-                            trade_id: "0".to_string(),
+                            trade_id: 0,
+                            counter_id: None,
                             owner: "creator".to_string(),
                             associated_assets: vec![],
                             associated_funds: vec![],
@@ -692,7 +752,8 @@ pub mod tests {
                     },
                     {
                         TradeResponse {
-                            trade_id: "1".to_string(),
+                            trade_id: 1,
+                            counter_id: None,
                             owner: "creator2".to_string(),
                             associated_assets: vec![],
                             associated_funds: vec![],
@@ -708,7 +769,7 @@ pub mod tests {
             // Verify that pagination by trade_id works
             let res = query_all_trades(
                 deps.as_ref(),
-                Some("0".to_string()),
+                Some(0),
                 None,
                 Some(vec![TradeState::Created.to_string()]),
                 None,
@@ -719,7 +780,8 @@ pub mod tests {
                 res.trades,
                 vec![{
                     TradeResponse {
-                        trade_id: "1".to_string(),
+                        trade_id: 1,
+                        counter_id: None,
                         owner: "creator2".to_string(),
                         associated_assets: vec![],
                         associated_funds: vec![],
@@ -745,7 +807,8 @@ pub mod tests {
                 res.trades,
                 vec![{
                     TradeResponse {
-                        trade_id: "1".to_string(),
+                        trade_id: 1,
+                        counter_id: None,
                         owner: "creator2".to_string(),
                         associated_assets: vec![],
                         associated_funds: vec![],
@@ -771,7 +834,8 @@ pub mod tests {
                 res.trades,
                 vec![{
                     TradeResponse {
-                        trade_id: "1".to_string(),
+                        trade_id: 1,
+                        counter_id: None,
                         owner: "creator2".to_string(),
                         associated_assets: vec![],
                         associated_funds: vec![],
@@ -804,6 +868,7 @@ pub mod tests {
                 Some("creator2".to_string()),
             )
             .unwrap();
+            assert_eq!(res.trades, vec![]);
         }
 
         #[test]
@@ -828,13 +893,31 @@ pub mod tests {
                 ]
             );
 
+            add_funds_to_trade_helper(deps.as_mut(), "creator", 0, &coins(2, "token"), Some(false))
+                .unwrap();
+
+            add_funds_to_trade_helper(
+                deps.as_mut(),
+                "creator",
+                0,
+                &coins(2, "other_token"),
+                Some(false),
+            )
+            .unwrap();
+
             let new_trade_info = load_trade(&deps.storage, 0).unwrap();
             assert_eq!(
                 new_trade_info.associated_funds,
-                vec![Coin {
-                    amount: Uint128::from(2u64),
-                    denom: "token".to_string()
-                }]
+                vec![
+                    Coin {
+                        amount: Uint128::from(4u64),
+                        denom: "token".to_string()
+                    },
+                    Coin {
+                        amount: Uint128::from(2u64),
+                        denom: "other_token".to_string()
+                    }
+                ]
             );
         }
 
@@ -870,8 +953,7 @@ pub mod tests {
 
             create_trade_helper(deps.as_mut(), "creator");
 
-            let res =
-                add_cw20_to_trade_helper(deps.as_mut(), "token", "creator", 0).unwrap();
+            let res = add_cw20_to_trade_helper(deps.as_mut(), "token", "creator", 0).unwrap();
 
             assert_eq!(
                 res.attributes,
@@ -882,18 +964,25 @@ pub mod tests {
                 ]
             );
 
+            add_cw20_to_trade_helper(deps.as_mut(), "token", "creator", 0).unwrap();
+            add_cw20_to_trade_helper(deps.as_mut(), "other_token", "creator", 0).unwrap();
+
+
             let new_trade_info = load_trade(&deps.storage, 0).unwrap();
             assert_eq!(
                 new_trade_info.associated_assets,
                 vec![AssetInfo::Cw20Coin(Cw20Coin {
-                    amount: Uint128::from(100u64),
+                    amount: Uint128::from(200u64),
                     address: "token".to_string()
+                }),AssetInfo::Cw20Coin(Cw20Coin {
+                    amount: Uint128::from(100u64),
+                    address: "other_token".to_string()
                 })]
             );
 
             // This triggers an error, the creator is not the same as the sender
-            let err = add_cw20_to_trade_helper(deps.as_mut(), "token", "bad_person", 0)
-                .unwrap_err();
+            let err =
+                add_cw20_to_trade_helper(deps.as_mut(), "token", "bad_person", 0).unwrap_err();
 
             assert_eq!(err, ContractError::TraderNotCreator {});
         }
@@ -905,8 +994,7 @@ pub mod tests {
 
             create_trade_helper(deps.as_mut(), "creator");
 
-            let res =
-                add_cw721_to_trade_helper(deps.as_mut(), "nft", "creator", 0).unwrap();
+            let res = add_cw721_to_trade_helper(deps.as_mut(), "nft", "creator", 0).unwrap();
 
             assert_eq!(
                 res.attributes,
@@ -928,8 +1016,7 @@ pub mod tests {
 
             // This triggers an error, the creator is not the same as the sender
             let err =
-                add_cw721_to_trade_helper(deps.as_mut(), "token", "bad_person", 0)
-                    .unwrap_err();
+                add_cw721_to_trade_helper(deps.as_mut(), "token", "bad_person", 0).unwrap_err();
 
             assert_eq!(err, ContractError::TraderNotCreator {});
         }
@@ -1276,7 +1363,8 @@ pub mod tests {
                 res.trades,
                 vec![{
                     TradeResponse {
-                        trade_id: "0".to_string(),
+                        trade_id: 0,
+                        counter_id: None,
                         owner: "creator".to_string(),
                         associated_assets: vec![],
                         associated_funds: vec![],
@@ -1323,8 +1411,7 @@ pub mod tests {
             );
 
             // This triggers an error, we can't send tokens to confirmed trade
-            let err = add_cw20_to_trade_helper(deps.as_mut(), "token", "creator", 0)
-                .unwrap_err();
+            let err = add_cw20_to_trade_helper(deps.as_mut(), "token", "creator", 0).unwrap_err();
             assert_eq!(
                 err,
                 ContractError::WrongTradeState {
@@ -1333,8 +1420,7 @@ pub mod tests {
             );
 
             // This triggers an error, we can't send nfts to confirmed trade
-            let err = add_cw721_to_trade_helper(deps.as_mut(), "token", "creator", 0)
-                .unwrap_err();
+            let err = add_cw721_to_trade_helper(deps.as_mut(), "token", "creator", 0).unwrap_err();
             assert_eq!(
                 err,
                 ContractError::WrongTradeState {
@@ -1352,8 +1438,6 @@ pub mod tests {
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
 
             suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, Some(false)).unwrap();
-
- 
 
             let err = accept_trade_helper(deps.as_mut(), "creator", 0, 5).unwrap_err();
             assert_eq!(err, ContractError::NotFoundInCounterTradeInfo {});
@@ -1384,7 +1468,7 @@ pub mod tests {
             assert_eq!(trade_info.state, TradeState::Accepted {});
             assert_eq!(
                 trade_info.accepted_info.unwrap(),
-                AcceptedTradeInfo {
+                CounterTradeInfo {
                     trade_id: 0,
                     counter_id: 0
                 }
@@ -1407,16 +1491,17 @@ pub mod tests {
                 res.trades,
                 vec![{
                     TradeResponse {
-                        trade_id: "0".to_string(),
+                        trade_id: 0,
+                        counter_id: None,
                         owner: "creator".to_string(),
                         associated_assets: vec![],
                         associated_funds: vec![],
                         state: TradeState::Accepted.to_string(),
                         last_counter_id: Some(0),
                         comment: None,
-                        accepted_info: Some(AcceptedTradeInfo {
+                        accepted_info: Some(CounterTradeInfo {
                             trade_id: 0,
-                            counter_id: 0
+                            counter_id: 0,
                         }),
                     }
                 }]
@@ -1428,10 +1513,9 @@ pub mod tests {
             assert_eq!(
                 res.counter_trades,
                 vec![{
-                    CounterTradeResponse {
-                        counter_id: "0".to_string(),
-                        composite_id: "0".to_string(),
-                        trade_id: "0".to_string(),
+                    TradeResponse {
+                        counter_id: Some(0),
+                        trade_id: 0,
                         owner: "counterer".to_string(),
                         associated_assets: vec![],
                         associated_funds: vec![],
@@ -1449,10 +1533,9 @@ pub mod tests {
             assert_eq!(
                 res.counter_trades,
                 vec![{
-                    CounterTradeResponse {
-                        counter_id: "0".to_string(),
-                        composite_id: "0".to_string(),
-                        trade_id: "0".to_string(),
+                    TradeResponse {
+                        counter_id: Some(0),
+                        trade_id: 0,
                         owner: "counterer".to_string(),
                         associated_assets: vec![],
                         associated_funds: vec![],
@@ -1517,10 +1600,9 @@ pub mod tests {
                 res.counter_trades,
                 vec![
                     {
-                        CounterTradeResponse {
-                            counter_id: "0".to_string(),
-                            composite_id: "0".to_string(),
-                            trade_id: "0".to_string(),
+                        TradeResponse {
+                            counter_id: Some(0),
+                            trade_id: 0,
                             owner: "counterer".to_string(),
                             associated_assets: vec![],
                             associated_funds: vec![],
@@ -1531,10 +1613,9 @@ pub mod tests {
                         }
                     },
                     {
-                        CounterTradeResponse {
-                            counter_id: "1".to_string(),
-                            composite_id: "1".to_string(),
-                            trade_id: "0".to_string(),
+                        TradeResponse {
+                            counter_id: Some(1),
+                            trade_id: 0,
                             owner: "counterer".to_string(),
                             associated_assets: vec![],
                             associated_funds: vec![],
@@ -1550,7 +1631,10 @@ pub mod tests {
             // Check that both Accepted and Published counter queries exist, paginate to skip first counter trade
             let res = query_all_counter_trades(
                 deps.as_ref(),
-                Some("0".to_string()),
+                Some(CounterTradeInfo {
+                    trade_id: 0,
+                    counter_id: 0,
+                }),
                 None,
                 Some(vec![
                     TradeState::Accepted.to_string(),
@@ -1563,10 +1647,9 @@ pub mod tests {
             assert_eq!(
                 res.counter_trades,
                 vec![{
-                    CounterTradeResponse {
-                        counter_id: "1".to_string(),
-                        composite_id: "1".to_string(),
-                        trade_id: "0".to_string(),
+                    TradeResponse {
+                        counter_id: Some(1),
+                        trade_id: 0,
                         owner: "counterer".to_string(),
                         associated_assets: vec![],
                         associated_funds: vec![],
@@ -1613,10 +1696,9 @@ pub mod tests {
             assert_eq!(
                 res.counter_trades,
                 vec![{
-                    CounterTradeResponse {
-                        counter_id: "0".to_string(),
-                        composite_id: "0".to_string(),
-                        trade_id: "0".to_string(),
+                    TradeResponse {
+                        counter_id: Some(0),
+                        trade_id: 0,
                         owner: "counterer".to_string(),
                         associated_assets: vec![],
                         associated_funds: vec![],
@@ -1664,7 +1746,10 @@ pub mod tests {
             // Query all after last one, should return empty array
             let res = query_all_counter_trades(
                 deps.as_ref(),
-                Some("73786976294838206464".to_string()),
+                Some(CounterTradeInfo {
+                    trade_id: 4,
+                    counter_id: 0,
+                }),
                 None,
                 None,
                 Some("counterer2".to_string()),
@@ -1673,10 +1758,9 @@ pub mod tests {
 
             assert_eq!(
                 res.counter_trades,
-                vec![CounterTradeResponse {
-                    composite_id: "73786976294838206465".to_string(),
-                    trade_id: "4".to_string(),
-                    counter_id: "1".to_string(),
+                vec![TradeResponse {
+                    trade_id: 4,
+                    counter_id: Some(1),
                     owner: "counterer2".to_string(),
                     associated_assets: vec![],
                     associated_funds: vec![],
@@ -1690,7 +1774,10 @@ pub mod tests {
             // Query all after last one, should return empty array
             let res = query_all_counter_trades(
                 deps.as_ref(),
-                Some("73786976294838206465".to_string()),
+                Some(CounterTradeInfo {
+                    trade_id: 4,
+                    counter_id: 1,
+                }),
                 None,
                 None,
                 Some("counterer2".to_string()),
@@ -1716,29 +1803,30 @@ pub mod tests {
 
             assert_eq!(
                 res.counter_trades,
-                vec![CounterTradeResponse {
-                    composite_id: "73786976294838206464".to_string(),
-                    trade_id: "4".to_string(),
-                    counter_id: "0".to_string(),
-                    owner: "counterer".to_string(),
-                    associated_assets: vec![],
-                    associated_funds: vec![],
-                    state: TradeState::Created.to_string(),
-                    last_counter_id: None,
-                    comment: None,
-                    accepted_info: None
-                },CounterTradeResponse {
-                    composite_id: "73786976294838206465".to_string(),
-                    trade_id: "4".to_string(),
-                    counter_id: "1".to_string(),
-                    owner: "counterer2".to_string(),
-                    associated_assets: vec![],
-                    associated_funds: vec![],
-                    state: TradeState::Created.to_string(),
-                    last_counter_id: None,
-                    comment: None,
-                    accepted_info: None
-                }]
+                vec![
+                    TradeResponse {
+                        trade_id: 4,
+                        counter_id: Some(0),
+                        owner: "counterer".to_string(),
+                        associated_assets: vec![],
+                        associated_funds: vec![],
+                        state: TradeState::Created.to_string(),
+                        last_counter_id: None,
+                        comment: None,
+                        accepted_info: None
+                    },
+                    TradeResponse {
+                        trade_id: 4,
+                        counter_id: Some(1),
+                        owner: "counterer2".to_string(),
+                        associated_assets: vec![],
+                        associated_funds: vec![],
+                        state: TradeState::Created.to_string(),
+                        last_counter_id: None,
+                        comment: None,
+                        accepted_info: None
+                    }
+                ]
             );
         }
 
@@ -1782,22 +1870,10 @@ pub mod tests {
             .unwrap();
 
             suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, Some(false)).unwrap();
-            add_cw20_to_counter_trade_helper(
-                deps.as_mut(),
-                "counter-token",
-                "counterer",
-                0,
-                1,
-            )
-            .unwrap();
-            add_cw721_to_counter_trade_helper(
-                deps.as_mut(),
-                "counter-nft",
-                "counterer",
-                0,
-                1,
-            )
-            .unwrap();
+            add_cw20_to_counter_trade_helper(deps.as_mut(), "counter-token", "counterer", 0, 1)
+                .unwrap();
+            add_cw721_to_counter_trade_helper(deps.as_mut(), "counter-nft", "counterer", 0, 1)
+                .unwrap();
             add_funds_to_counter_trade_helper(
                 deps.as_mut(),
                 "counterer",
@@ -1965,7 +2041,8 @@ pub mod tests {
             let res = withdraw_cancelled_trade_helper(deps.as_mut(), "creator", 0).unwrap();
             assert_eq!(
                 res.messages,
-                vec![SubMsg::new(
+                vec![
+                    SubMsg::new(
                         into_cosmos_msg(
                             Cw20ExecuteMsg::Transfer {
                                 recipient: "creator".to_string(),
@@ -2018,41 +2095,62 @@ pub mod tests {
         fn private() {
             let mut deps = mock_dependencies(&[]);
             init_helper(deps.as_mut());
-            create_private_trade_helper(deps.as_mut(),vec!["whitelist".to_string()]);
+            create_private_trade_helper(deps.as_mut(), vec!["whitelist".to_string()]);
             add_funds_to_trade_helper(deps.as_mut(), "creator", 0, &coins(5, "lunas"), None)
                 .unwrap();
             add_cw20_to_trade_helper(deps.as_mut(), "token", "creator", 0).unwrap();
             add_cw721_to_trade_helper(deps.as_mut(), "nft", "creator", 0).unwrap();
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
 
-            let err = suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, Some(false)).unwrap_err();
+            let err = suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, Some(false))
+                .unwrap_err();
             assert_eq!(err, ContractError::AddressNotWhitelisted {});
 
             suggest_counter_trade_helper(deps.as_mut(), "whitelist", 0, Some(false)).unwrap();
-            
-            let err = remove_whitelisted_users(deps.as_mut(), 0, vec!["whitelist".to_string()]).unwrap_err();
-            assert_eq!(err, ContractError::WrongTradeState { state: TradeState::Countered });
 
-            let err = add_whitelisted_users(deps.as_mut(), 0, vec!["whitelist".to_string()]).unwrap_err();
-            assert_eq!(err, ContractError::WrongTradeState { state: TradeState::Countered });
+            let err = remove_whitelisted_users(deps.as_mut(), 0, vec!["whitelist".to_string()])
+                .unwrap_err();
+            assert_eq!(
+                err,
+                ContractError::WrongTradeState {
+                    state: TradeState::Countered
+                }
+            );
 
-            create_private_trade_helper(deps.as_mut(),vec!["whitelist".to_string()]);
+            let err =
+                add_whitelisted_users(deps.as_mut(), 0, vec!["whitelist".to_string()]).unwrap_err();
+            assert_eq!(
+                err,
+                ContractError::WrongTradeState {
+                    state: TradeState::Countered
+                }
+            );
+
+            create_private_trade_helper(deps.as_mut(), vec!["whitelist".to_string()]);
 
             remove_whitelisted_users(deps.as_mut(), 1, vec!["whitelist".to_string()]).unwrap();
-            let info = TRADE_INFO.load(&deps.storage, &1_u64.to_be_bytes()).unwrap();
+            let info = TRADE_INFO.load(&deps.storage, 1_u64.into()).unwrap();
             let hash_set = HashSet::new();
             assert_eq!(info.whitelisted_users, hash_set);
 
-            add_whitelisted_users(deps.as_mut(), 1, vec!["whitelist-1".to_string(),"whitelist".to_string()]).unwrap();
-            add_whitelisted_users(deps.as_mut(), 1, vec!["whitelist-2".to_string(),"whitelist".to_string()]).unwrap();
-            let info = TRADE_INFO.load(&deps.storage, &1_u64.to_be_bytes()).unwrap();
+            add_whitelisted_users(
+                deps.as_mut(),
+                1,
+                vec!["whitelist-1".to_string(), "whitelist".to_string()],
+            )
+            .unwrap();
+            add_whitelisted_users(
+                deps.as_mut(),
+                1,
+                vec!["whitelist-2".to_string(), "whitelist".to_string()],
+            )
+            .unwrap();
+            let info = TRADE_INFO.load(&deps.storage, 1_u64.into()).unwrap();
             let mut hash_set = HashSet::new();
             hash_set.insert("whitelist".to_string());
             hash_set.insert("whitelist-1".to_string());
             hash_set.insert("whitelist-2".to_string());
             assert_eq!(info.whitelisted_users, hash_set);
-
-
         }
     }
 
@@ -2113,14 +2211,13 @@ pub mod tests {
             deps,
             env,
             info,
-             ExecuteMsg::AddCw20 {
+            ExecuteMsg::AddCw20 {
                 trade_id,
                 counter_id: Some(counter_id),
                 address: token.to_string(),
                 amount: Uint128::from(100u64),
             },
         )
-       
     }
 
     fn add_cw721_to_counter_trade_helper(
@@ -2340,14 +2437,8 @@ pub mod tests {
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
             suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
 
-            let res = add_cw20_to_counter_trade_helper(
-                deps.as_mut(),
-                "token",
-                "counterer",
-                0,
-                0,
-            )
-            .unwrap();
+            let res = add_cw20_to_counter_trade_helper(deps.as_mut(), "token", "counterer", 0, 0)
+                .unwrap();
 
             assert_eq!(
                 res.attributes,
@@ -2358,14 +2449,8 @@ pub mod tests {
                 ]
             );
 
-            let err = add_cw20_to_counter_trade_helper(
-                deps.as_mut(),
-                "token",
-                "counterer",
-                0,
-                1,
-            )
-            .unwrap_err();
+            let err = add_cw20_to_counter_trade_helper(deps.as_mut(), "token", "counterer", 0, 1)
+                .unwrap_err();
 
             assert_eq!(err, ContractError::NotFoundInCounterTradeInfo {});
 
@@ -2385,14 +2470,8 @@ pub mod tests {
             );
 
             // This triggers an error, the creator is not the same as the sender
-            let err = add_cw20_to_counter_trade_helper(
-                deps.as_mut(),
-                "token",
-                "bad_person",
-                0,
-                0,
-            )
-            .unwrap_err();
+            let err = add_cw20_to_counter_trade_helper(deps.as_mut(), "token", "bad_person", 0, 0)
+                .unwrap_err();
 
             assert_eq!(err, ContractError::CounterTraderNotCreator {});
         }
@@ -2406,14 +2485,8 @@ pub mod tests {
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
             suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
 
-            let res = add_cw721_to_counter_trade_helper(
-                deps.as_mut(),
-                "nft",
-                "counterer",
-                0,
-                0,
-            )
-            .unwrap();
+            let res =
+                add_cw721_to_counter_trade_helper(deps.as_mut(), "nft", "counterer", 0, 0).unwrap();
 
             assert_eq!(
                 res.attributes,
@@ -2440,14 +2513,8 @@ pub mod tests {
             );
 
             // This triggers an error, the counter-trade creator is not the same as the sender
-            let err = add_cw721_to_counter_trade_helper(
-                deps.as_mut(),
-                "token",
-                "bad_person",
-                0,
-                0,
-            )
-            .unwrap_err();
+            let err = add_cw721_to_counter_trade_helper(deps.as_mut(), "token", "bad_person", 0, 0)
+                .unwrap_err();
 
             assert_eq!(err, ContractError::CounterTraderNotCreator {});
         }
@@ -2460,18 +2527,9 @@ pub mod tests {
             create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
             suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
-            add_cw721_to_counter_trade_helper(deps.as_mut(), "nft", "counterer", 0, 0)
-                .unwrap();
-            add_cw721_to_counter_trade_helper(
-                deps.as_mut(),
-                "nft-2",
-                "counterer",
-                0,
-                0,
-            )
-            .unwrap();
-            add_cw20_to_counter_trade_helper(deps.as_mut(), "token", "counterer", 0, 0)
-                .unwrap();
+            add_cw721_to_counter_trade_helper(deps.as_mut(), "nft", "counterer", 0, 0).unwrap();
+            add_cw721_to_counter_trade_helper(deps.as_mut(), "nft-2", "counterer", 0, 0).unwrap();
+            add_cw20_to_counter_trade_helper(deps.as_mut(), "token", "counterer", 0, 0).unwrap();
             add_funds_to_counter_trade_helper(
                 deps.as_mut(),
                 "counterer",
@@ -2680,18 +2738,9 @@ pub mod tests {
             create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
             suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
-            add_cw721_to_counter_trade_helper(deps.as_mut(), "nft", "counterer", 0, 0)
-                .unwrap();
-            add_cw721_to_counter_trade_helper(
-                deps.as_mut(),
-                "nft-2",
-                "counterer",
-                0,
-                0,
-            )
-            .unwrap();
-            add_cw20_to_counter_trade_helper(deps.as_mut(), "token", "counterer", 0, 0)
-                .unwrap();
+            add_cw721_to_counter_trade_helper(deps.as_mut(), "nft", "counterer", 0, 0).unwrap();
+            add_cw721_to_counter_trade_helper(deps.as_mut(), "nft-2", "counterer", 0, 0).unwrap();
+            add_cw20_to_counter_trade_helper(deps.as_mut(), "token", "counterer", 0, 0).unwrap();
             add_funds_to_counter_trade_helper(
                 deps.as_mut(),
                 "counterer",

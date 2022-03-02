@@ -33,4 +33,4 @@ function add_contract(contractName: string, address: string){
 
 }
 
-export { env, add_uploaded_token, add_contract};
+export { env, add_uploaded_token, add_contract };

@@ -1,8 +1,8 @@
-use std::fmt::{Display, Formatter, Result};
+use strum_macros;
 
+use cosmwasm_std::{Addr, Coin, Uint128};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use cosmwasm_std::{Addr, Coin, Uint128};
 
 use std::collections::HashSet;
 
@@ -27,7 +27,7 @@ pub enum AssetInfo {
     Cw721Coin(Cw721Coin),
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug, strum_macros::Display)]
 #[serde(rename_all = "snake_case")]
 pub enum TradeState {
     Created,
@@ -36,12 +36,6 @@ pub enum TradeState {
     Refused,
     Accepted,
     Cancelled,
-}
-
-impl Display for TradeState {
-    fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -54,7 +48,7 @@ pub struct ContractInfo {
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "snake_case")]
-pub struct AcceptedTradeInfo {
+pub struct CounterTradeInfo {
     pub trade_id: u64,
     pub counter_id: u64,
 }
@@ -69,6 +63,6 @@ pub struct TradeInfo {
     pub last_counter_id: Option<u64>,
     pub whitelisted_users: HashSet<String>,
     pub comment: Option<String>,
-    pub accepted_info: Option<AcceptedTradeInfo>,
+    pub accepted_info: Option<CounterTradeInfo>,
     pub assets_withdrawn: bool,
 }

@@ -1,7 +1,7 @@
 use crate::error::ContractError;
 use crate::state::{is_trader, load_counter_trade, COUNTER_TRADE_INFO, TRADE_INFO};
-use cosmwasm_std::{DepsMut, Env, MessageInfo,  Response};
-use p2p_trading_export::state::{TradeState};
+use cosmwasm_std::{DepsMut, Env, MessageInfo, Response};
+use p2p_trading_export::state::TradeState;
 
 pub fn review_counter_trade(
     deps: DepsMut,
@@ -36,9 +36,12 @@ pub fn review_counter_trade(
     counter_info.comment = comment.clone();
 
     // Then we need to change the trade status that we may have changed
-    TRADE_INFO.save(deps.storage, &trade_id.to_be_bytes(), &trade_info)?; 
-    COUNTER_TRADE_INFO.save(deps.storage, (&trade_id.to_be_bytes(), &counter_id.to_be_bytes()), &counter_info)?;
-
+    TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
+    COUNTER_TRADE_INFO.save(
+        deps.storage,
+        (trade_id.into(), counter_id.into()),
+        &counter_info,
+    )?;
 
     Ok(Response::new()
         .add_attribute("review", "counter")

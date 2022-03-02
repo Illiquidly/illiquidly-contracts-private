@@ -13,13 +13,13 @@ use crate::state::{
 use cw20::Cw20ExecuteMsg;
 use cw721::Cw721ExecuteMsg;
 use p2p_trading_export::msg::into_cosmos_msg;
-use p2p_trading_export::state::{AcceptedTradeInfo, AssetInfo, TradeInfo, TradeState};
+use p2p_trading_export::state::{AssetInfo, CounterTradeInfo, TradeInfo, TradeState};
 
 pub fn create_trade(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
-    whitelisted_users: Option<Vec<String>>
+    whitelisted_users: Option<Vec<String>>,
 ) -> Result<Response, ContractError> {
     // We start by creating a new trade_id (simply incremented from the last id)
     let trade_id: u64 = CONTRACT_INFO
@@ -38,13 +38,13 @@ pub fn create_trade(
     // Or an external error happened, or whatever...
     // In that case, we emit an error
     // The priority is : We do not want to overwrite existing data
-    if TRADE_INFO.has(deps.storage, &trade_id.to_be_bytes()) {
+    if TRADE_INFO.has(deps.storage, trade_id.into()) {
         return Err(ContractError::ExistsInTradeInfo {});
     } else {
         // We can safely create the TradeInfo
         TRADE_INFO.save(
             deps.storage,
-            &trade_id.to_be_bytes(),
+            trade_id.into(),
             &TradeInfo {
                 owner: info.sender.clone(),
                 // We add the funds sent along with this transaction
@@ -60,8 +60,8 @@ pub fn create_trade(
         )?;
     }
 
-    if let Some(whitelist) = whitelisted_users{
-        add_whitelisted_users(deps,env,info,trade_id,whitelist)?;
+    if let Some(whitelist) = whitelisted_users {
+        add_whitelisted_users(deps, env, info, trade_id, whitelist)?;
     }
 
     Ok(Response::new()
@@ -78,18 +78,14 @@ pub fn add_funds_to_trade(
 ) -> Result<Response, ContractError> {
     is_trader(deps.storage, &info.sender, trade_id)?;
 
-    let trade_info = TRADE_INFO.load(deps.storage, &trade_id.to_be_bytes())?;
+    let trade_info = TRADE_INFO.load(deps.storage, trade_id.into())?;
     if trade_info.state != TradeState::Created {
         return Err(ContractError::WrongTradeState {
             state: trade_info.state,
         });
     }
 
-    TRADE_INFO.update(
-        deps.storage,
-        &trade_id.to_be_bytes(),
-        add_funds(info.funds.clone()),
-    )?;
+    TRADE_INFO.update(deps.storage, trade_id.into(), add_funds(info.funds.clone()))?;
 
     if let Some(confirmed) = confirm {
         if confirmed {
@@ -120,7 +116,7 @@ pub fn add_token_to_trade(
 
     TRADE_INFO.update(
         deps.storage,
-        &trade_id.to_be_bytes(),
+        trade_id.into(),
         add_cw20_coin(token.clone(), sent_amount),
     )?;
 
@@ -135,8 +131,7 @@ pub fn add_token_to_trade(
         .add_message(into_cosmos_msg(message, token.clone())?)
         .add_attribute("added token", "trade")
         .add_attribute("token", token.to_string())
-        .add_attribute("amount", sent_amount.to_string())
-    )
+        .add_attribute("amount", sent_amount.to_string()))
 }
 
 pub fn add_nft_to_trade(
@@ -157,9 +152,9 @@ pub fn add_nft_to_trade(
 
     TRADE_INFO.update(
         deps.storage,
-        &trade_id.to_be_bytes(),
+        trade_id.into(),
         add_cw721_coin(token.clone(), token_id.clone()),
-    )?; 
+    )?;
 
     // Now we need to transfer the nft
     let message = Cw721ExecuteMsg::TransferNft {
@@ -179,22 +174,25 @@ pub fn add_whitelisted_users(
     _env: Env,
     info: MessageInfo,
     trade_id: u64,
-    whitelisted_users: Vec<String>
-)-> Result<Response, ContractError>{
+    whitelisted_users: Vec<String>,
+) -> Result<Response, ContractError> {
     let mut trade_info = is_trader(deps.storage, &info.sender, trade_id)?;
     if trade_info.state != TradeState::Created {
         return Err(ContractError::WrongTradeState {
             state: trade_info.state,
         });
-    } 
-    
-    let hash_set: HashSet<String> = HashSet::from_iter(whitelisted_users);
-    trade_info.whitelisted_users = trade_info.whitelisted_users.union(&hash_set).cloned().collect();
-    
-    TRADE_INFO.save(deps.storage, &trade_id.to_be_bytes(), &trade_info)?;
+    }
 
-    Ok(Response::new()
-        .add_attribute("added","whitelisted_users"))
+    let hash_set: HashSet<String> = HashSet::from_iter(whitelisted_users);
+    trade_info.whitelisted_users = trade_info
+        .whitelisted_users
+        .union(&hash_set)
+        .cloned()
+        .collect();
+
+    TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
+
+    Ok(Response::new().add_attribute("added", "whitelisted_users"))
 }
 
 pub fn remove_whitelisted_users(
@@ -202,24 +200,22 @@ pub fn remove_whitelisted_users(
     _env: Env,
     info: MessageInfo,
     trade_id: u64,
-    whitelisted_users: Vec<String>
-)-> Result<Response, ContractError>{
+    whitelisted_users: Vec<String>,
+) -> Result<Response, ContractError> {
     let mut trade_info = is_trader(deps.storage, &info.sender, trade_id)?;
     if trade_info.state != TradeState::Created {
         return Err(ContractError::WrongTradeState {
             state: trade_info.state,
         });
     }
-    for user in whitelisted_users{
+    for user in whitelisted_users {
         trade_info.whitelisted_users.remove(&user);
     }
-    
-    TRADE_INFO.save(deps.storage, &trade_id.to_be_bytes(), &trade_info)?;
 
-    Ok(Response::new()
-        .add_attribute("removed","whitelisted_users"))
+    TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
+
+    Ok(Response::new().add_attribute("removed", "whitelisted_users"))
 }
-
 
 pub fn confirm_trade(
     deps: DepsMut,
@@ -231,7 +227,7 @@ pub fn confirm_trade(
 
     TRADE_INFO.update(
         deps.storage,
-        &trade_id.to_be_bytes(),
+        trade_id.into(),
         |d: Option<TradeInfo>| -> Result<TradeInfo, ContractError> {
             match d {
                 Some(mut one) => {
@@ -281,7 +277,7 @@ pub fn accept_trade(
 
     // We accept the trade
     // An accepted trade whould contain additionnal info to make indexing more easy
-    let accepted_info = AcceptedTradeInfo {
+    let accepted_info = CounterTradeInfo {
         trade_id,
         counter_id,
     };
@@ -291,49 +287,12 @@ pub fn accept_trade(
     counter_info.state = TradeState::Accepted;
 
     // And we save that to storage
-    TRADE_INFO.save(deps.storage, &trade_id.to_be_bytes(), &trade_info)?;
-    COUNTER_TRADE_INFO.save(deps.storage, (&trade_id.to_be_bytes(), &counter_id.to_be_bytes()), &counter_info)?;
-
-
-
-
-
-
-    /*
-    // We get all the counter trades for this trade
-    let counter_trade_keys: Vec<Vec<u8>> = COUNTER_TRADE_INFO
-        .prefix(&trade_id.to_be_bytes())
-        .keys(deps.storage, None, None, Order::Ascending)
-        .collect();
-
-
-    // We go through all of them and change their status
-    for key in counter_trade_keys {
-        COUNTER_TRADE_INFO.update(
-            deps.storage,
-            (&trade_id.to_be_bytes(), &key),
-            |d: Option<TradeInfo>| -> Result<TradeInfo, ContractError> {
-                match d {
-                    Some(mut one) => {
-                        let id: &[u8] = &key;
-                        if id == counter_id.to_be_bytes() {
-                            if one.state != TradeState::Published {
-                                return Err(ContractError::CantAcceptNotPublishedCounter {});
-                            }
-                            one.state = TradeState::Accepted;
-                        } else {
-                            one.state = TradeState::Refused;
-                        }
-                        Ok(one)
-                    }
-                    // TARPAULIN : Unreachable code
-                    None => Err(ContractError::NotFoundInCounterTradeInfo {}),
-                }
-            },
-        )?;
-    }
-    */
-
+    TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
+    COUNTER_TRADE_INFO.save(
+        deps.storage,
+        (trade_id.into(), counter_id.into()),
+        &counter_info,
+    )?;
 
     Ok(Response::new()
         .add_attribute("accepted", "trade")
@@ -362,15 +321,14 @@ pub fn refuse_counter_trade(
 
     trade_info.state = TradeState::Refused;
 
-    TRADE_INFO.save(deps.storage, &trade_id.to_be_bytes(),&trade_info)?;
-
+    TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
 
     /*
     // We go through all counter trades, to cancel the counter_id and to update the current trade state
     let mut is_countered = false;
     // We get all the counter trades for this trade
     let counter_trade_keys: Vec<Vec<u8>> = COUNTER_TRADE_INFO
-        .prefix(&trade_id.to_be_bytes())
+        .prefix(trade_id.into())
         .keys(deps.storage, None, None, Order::Ascending)
         .collect();
 
@@ -378,13 +336,13 @@ pub fn refuse_counter_trade(
     for key in counter_trade_keys {
         COUNTER_TRADE_INFO.update(
             deps.storage,
-            (&trade_id.to_be_bytes(), &key),
+            (trade_id.into(), &key),
             |d: Option<TradeInfo>| -> Result<TradeInfo, ContractError> {
                 match d {
                     Some(mut one) => {
                         let id: &[u8] = &key;
                         if id == counter_id.to_be_bytes() {
-                            one.state = 
+                            one.state =
                         }else if one.state == TradeState::Published {
                             is_countered = true;
                         }
@@ -422,7 +380,7 @@ pub fn cancel_trade(
     trade_info.state = TradeState::Cancelled;
 
     // We store the new trade status
-    TRADE_INFO.save(deps.storage, &trade_id.to_be_bytes(), &trade_info)?;
+    TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
 
     Ok(Response::new()
         .add_attribute("cancelled", "trade")
@@ -446,7 +404,7 @@ pub fn withdraw_trade_assets_while_creating(
 
     try_withdraw_assets_unsafe(&mut trade_info, &assets, &funds)?;
 
-    TRADE_INFO.save(deps.storage, &trade_id.to_be_bytes(), &trade_info)?;
+    TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
 
     let res = create_withdraw_messages(
         info.clone(),

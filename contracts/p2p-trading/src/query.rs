@@ -1,12 +1,14 @@
 use cosmwasm_std::{Api, Pair};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::{Coin, Deps, Order, StdResult};
-use cw_storage_plus::Bound;
+
+use cw_storage_plus::{Bound, PrimaryKey, U64Key};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::convert::TryInto;
 
 use crate::state::{CONTRACT_INFO, COUNTER_TRADE_INFO, TRADE_INFO};
-use p2p_trading_export::state::{AcceptedTradeInfo, AssetInfo, ContractInfo, TradeInfo};
+use p2p_trading_export::state::{AssetInfo, ContractInfo, CounterTradeInfo, TradeInfo};
 
 // settings for pagination
 const MAX_LIMIT: u32 = 30;
@@ -14,28 +16,15 @@ const DEFAULT_LIMIT: u32 = 10;
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug, Default)]
 pub struct TradeResponse {
-    pub trade_id: String,
+    pub trade_id: u64,
+    pub counter_id: Option<u64>,
     pub owner: String,
     pub associated_assets: Vec<AssetInfo>,
     pub associated_funds: Vec<Coin>,
     pub state: String,
     pub last_counter_id: Option<u64>,
     pub comment: Option<String>,
-    pub accepted_info: Option<AcceptedTradeInfo>,
-}
-
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug, Default)]
-pub struct CounterTradeResponse {
-    pub composite_id: String,
-    pub trade_id: String,
-    pub counter_id: String,
-    pub owner: String,
-    pub associated_assets: Vec<AssetInfo>,
-    pub associated_funds: Vec<Coin>,
-    pub state: String,
-    pub last_counter_id: Option<u64>,
-    pub comment: Option<String>,
-    pub accepted_info: Option<AcceptedTradeInfo>,
+    pub accepted_info: Option<CounterTradeInfo>,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug, Default)]
@@ -45,7 +34,7 @@ pub struct AllTradesResponse {
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug, Default)]
 pub struct AllCounterTradesResponse {
-    pub counter_trades: Vec<CounterTradeResponse>,
+    pub counter_trades: Vec<TradeResponse>,
 }
 
 pub fn query_contract_info(deps: Deps) -> StdResult<ContractInfo> {
@@ -55,11 +44,10 @@ pub fn query_contract_info(deps: Deps) -> StdResult<ContractInfo> {
 // parse trades to human readable format
 fn parse_trades(_: &dyn Api, item: StdResult<Pair<TradeInfo>>) -> StdResult<TradeResponse> {
     item.map(|(k, trade)| {
-        let mut trade_id: [u8; 8] = [Default::default(); 8];
-        trade_id[..k.len()].copy_from_slice(&k);
-
+        let trade_id = k.try_into().unwrap();
         TradeResponse {
-            trade_id: u64::from_be_bytes(trade_id).to_string(),
+            trade_id: u64::from_be_bytes(trade_id),
+            counter_id: None,
             owner: trade.owner.to_string(),
             associated_assets: trade.associated_assets,
             state: trade.state.to_string(),
@@ -70,31 +58,37 @@ fn parse_trades(_: &dyn Api, item: StdResult<Pair<TradeInfo>>) -> StdResult<Trad
         }
     })
 }
+
+pub fn trade_filter(
+    trade_info: &StdResult<TradeResponse>,
+    states: &Option<Vec<String>>,
+    owner: &Option<String>,
+) -> bool {
+    let trade = trade_info.as_ref().unwrap();
+
+    (match &states {
+        Some(state) => state.contains(&trade.state.to_string()),
+        None => true,
+    } && match &owner {
+        Some(owner) => trade.owner == owner.clone(),
+        None => true,
+    })
+}
+
 pub fn query_all_trades(
     deps: Deps,
-    start_after: Option<String>,
+    start_after: Option<u64>,
     limit: Option<u32>,
     states: Option<Vec<String>>,
     owner: Option<String>,
 ) -> StdResult<AllTradesResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
-    let start =
-        start_after.map(|s| Bound::Exclusive(s.parse::<u64>().unwrap().to_be_bytes().to_vec()));
+    let start = start_after.map(|s| Bound::Exclusive(U64Key::new(s).joined_key()));
 
     let trades: StdResult<Vec<TradeResponse>> = TRADE_INFO
         .range(deps.storage, start, None, Order::Ascending)
         .map(|kv_item| parse_trades(deps.api, kv_item))
-        .filter(|response| {
-            let trade = response.as_ref().unwrap();
-
-            return (match &states {
-                Some(state) => state.contains(&trade.state),
-                None => true,
-            } && match &owner {
-                Some(owner) => trade.owner == owner.clone(),
-                None => true,
-            });
-        })
+        .filter(|response| trade_filter(response, &states, &owner))
         .take(limit)
         .collect();
 
@@ -105,25 +99,16 @@ pub fn query_all_trades(
 fn parse_all_counter_trades(
     _: &dyn Api,
     item: StdResult<Pair<TradeInfo>>,
-) -> StdResult<CounterTradeResponse> {
+) -> StdResult<TradeResponse> {
     item.map(|(ck, trade)| {
         // First two bytes define size [0,8] since we know it's u64 skip it.
-        let (trade_k, counter_k) = (&ck[2..10], &ck[10..]);
+        let (trade_id, counter_id) = (&ck[2..10], &ck[10..]);
+        let trade_id = trade_id.try_into().unwrap();
+        let counter_id = counter_id.try_into().unwrap();
 
-        // Used for pagination
-        let mut composite_id: [u8; 16] = [Default::default(); 16];
-        composite_id[..ck[2..].len()].copy_from_slice(&ck[2..]);
-
-        let mut trade_id: [u8; 8] = [Default::default(); 8];
-        trade_id[..trade_k.len()].copy_from_slice(trade_k);
-
-        let mut counter_id: [u8; 8] = [Default::default(); 8];
-        counter_id[..counter_k.len()].copy_from_slice(counter_k);
-
-        CounterTradeResponse {
-            composite_id: u128::from_be_bytes(composite_id).to_string(),
-            trade_id: u64::from_be_bytes(trade_id).to_string(),
-            counter_id: u64::from_be_bytes(counter_id).to_string(),
+        TradeResponse {
+            trade_id: u64::from_be_bytes(trade_id),
+            counter_id: Some(u64::from_be_bytes(counter_id)),
             owner: trade.owner.to_string(),
             associated_assets: trade.associated_assets,
             state: trade.state.to_string(),
@@ -137,7 +122,7 @@ fn parse_all_counter_trades(
 
 pub fn query_all_counter_trades(
     deps: Deps,
-    start_after: Option<String>,
+    start_after: Option<CounterTradeInfo>,
     limit: Option<u32>,
     states: Option<Vec<String>>,
     owner: Option<String>,
@@ -145,29 +130,13 @@ pub fn query_all_counter_trades(
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
 
     let start = start_after.map(|s| {
-        Bound::Exclusive(
-            [
-                vec![0, 8], // size
-                s.parse::<u128>().unwrap().to_be_bytes().to_vec(),
-            ]
-            .concat(),
-        )
+        Bound::Exclusive((U64Key::new(s.trade_id), U64Key::new(s.counter_id)).joined_key())
     });
 
-    let counter_trades: StdResult<Vec<CounterTradeResponse>> = COUNTER_TRADE_INFO
+    let counter_trades: StdResult<Vec<TradeResponse>> = COUNTER_TRADE_INFO
         .range(deps.storage, start, None, Order::Ascending)
         .map(|kv_item| parse_all_counter_trades(deps.api, kv_item))
-        .filter(|response| {
-            let trade = response.as_ref().unwrap();
-
-            return (match &states {
-                Some(state) => state.contains(&trade.state),
-                None => true,
-            } && match &owner {
-                Some(owner) => trade.owner == owner.clone(),
-                None => true,
-            });
-        })
+        .filter(|response| trade_filter(response, &states, &owner))
         .take(limit)
         .collect();
 
@@ -180,24 +149,15 @@ pub fn query_all_counter_trades(
 fn parse_counter_trades(
     _: &dyn Api,
     item: StdResult<Pair<TradeInfo>>,
-    trade_k: Vec<u8>,
-) -> StdResult<CounterTradeResponse> {
-    item.map(|(k, trade)| {
-        // compsited_id is used for query pagination
-        let mut composite_id: [u8; 16] = [Default::default(); 16];
-        composite_id[..[trade_k.clone(), k.clone()].concat().len()]
-            .copy_from_slice(&[trade_k.clone(), k.clone()].concat());
+    trade_id: Vec<u8>,
+) -> StdResult<TradeResponse> {
+    item.map(|(counter_id, trade)| {
+        let trade_id = trade_id.try_into().unwrap();
+        let counter_id = counter_id.try_into().unwrap();
 
-        let mut trade_id: [u8; 8] = [Default::default(); 8];
-        trade_id[..trade_k.len()].copy_from_slice(&trade_k);
-
-        let mut counter_id: [u8; 8] = [Default::default(); 8];
-        counter_id[..k.len()].copy_from_slice(&k);
-
-        CounterTradeResponse {
-            composite_id: u128::from_be_bytes(composite_id).to_string(),
-            trade_id: u64::from_be_bytes(trade_id).to_string(),
-            counter_id: u64::from_be_bytes(counter_id).to_string(),
+        TradeResponse {
+            trade_id: u64::from_be_bytes(trade_id),
+            counter_id: Some(u64::from_be_bytes(counter_id)),
             owner: trade.owner.to_string(),
             associated_assets: trade.associated_assets,
             state: trade.state.to_string(),
@@ -210,10 +170,10 @@ fn parse_counter_trades(
 }
 
 pub fn query_counter_trades(deps: Deps, trade_id: u64) -> StdResult<AllCounterTradesResponse> {
-    let counter_trades: StdResult<Vec<CounterTradeResponse>> = COUNTER_TRADE_INFO
-        .prefix(&trade_id.to_be_bytes())
+    let counter_trades: StdResult<Vec<TradeResponse>> = COUNTER_TRADE_INFO
+        .prefix(trade_id.into())
         .range(deps.storage, None, None, Order::Ascending)
-        .map(|kv_item| parse_counter_trades(deps.api, kv_item, (&trade_id.to_be_bytes()).to_vec()))
+        .map(|kv_item| parse_counter_trades(deps.api, kv_item, U64Key::new(trade_id).joined_key()))
         .collect();
 
     Ok(AllCounterTradesResponse {

@@ -1,4 +1,4 @@
-use crate::state::AssetInfo;
+use crate::state::{AssetInfo, CounterTradeInfo};
 use cosmwasm_std::{to_binary, Binary, Coin, CosmosMsg, StdError, StdResult, Uint128, WasmMsg};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -55,35 +55,33 @@ pub enum ExecuteMsg {
         trade_id: u64,
         confirm: Option<bool>,
     },
-    AddCw20{
+    AddCw20 {
         trade_id: u64,
         counter_id: Option<u64>,
         address: String,
-        amount: Uint128
+        amount: Uint128,
     },
-    AddCw721{
+    AddCw721 {
         trade_id: u64,
         counter_id: Option<u64>,
         address: String,
-        token_id: String
+        token_id: String,
     },
     RemoveFromTrade {
         trade_id: u64,
         assets: Vec<(u16, AssetInfo)>,
         funds: Vec<(u16, Coin)>,
     },
-    AddWhitelistedUsers{
+    AddWhitelistedUsers {
         trade_id: u64,
         whitelisted_users: Vec<String>,
     },
-    RemoveWhitelistedUsers{
+    RemoveWhitelistedUsers {
         trade_id: u64,
         whitelisted_users: Vec<String>,
     },
     /// Is used by the Trader to confirm they completed their end of the trade.
-    ConfirmTrade {
-        trade_id: u64,
-    },
+    ConfirmTrade { trade_id: u64 },
     /// Can be used to initiate Counter Trade, but also to add new tokens to it
     SuggestCounterTrade {
         trade_id: u64,
@@ -101,29 +99,15 @@ pub enum ExecuteMsg {
         funds: Vec<(u16, Coin)>,
     },
     /// Is used by the Client to confirm they completed their end of the trade.
-    ConfirmCounterTrade {
-        trade_id: u64,
-        counter_id: u64,
-    },
+    ConfirmCounterTrade { trade_id: u64, counter_id: u64 },
     /// Accept the Trade plain and simple, swap it up !
-    AcceptTrade {
-        trade_id: u64,
-        counter_id: u64,
-    },
+    AcceptTrade { trade_id: u64, counter_id: u64 },
     /// Cancel the Trade :/ No luck there mate ?
-    CancelTrade {
-        trade_id: u64,
-    },
+    CancelTrade { trade_id: u64 },
     /// Cancel the Counter Trade :/ No luck there mate ?
-    CancelCounterTrade { 
-        trade_id: u64,
-        counter_id: u64
-    },
+    CancelCounterTrade { trade_id: u64, counter_id: u64 },
     /// Refuse the Trade plain and simple, no madam, I'm not interested in your tokens !
-    RefuseCounterTrade {
-        trade_id: u64,
-        counter_id: u64,
-    },
+    RefuseCounterTrade { trade_id: u64, counter_id: u64 },
     /// Some parts of the traded tokens were interesting, but you can't accept the trade as is
     ReviewCounterTrade {
         trade_id: u64,
@@ -131,18 +115,11 @@ pub enum ExecuteMsg {
         comment: Option<String>,
     },
     /// You can Withdraw funds via this function only whe the trade is accepted.
-    WithdrawPendingAssets {
-        trade_id: u64,
-    },
+    WithdrawPendingAssets { trade_id: u64 },
     /// You can Withdraw funds only at specific steps of the trade, but you're allowed to try anytime !
-    WithdrawCancelledTrade {
-        trade_id: u64,
-    },
+    WithdrawCancelledTrade { trade_id: u64 },
     /// You can Withdraw funds when your counter trade is aborted (refused or cancelled)
-    WithdrawAbortedCounter {
-        trade_id: u64,
-        counter_id: u64,
-    },
+    WithdrawAbortedCounter { trade_id: u64, counter_id: u64 },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -157,16 +134,16 @@ pub enum QueryMsg {
         counter_id: u64,
     },
     GetAllTrades {
-        start_after: Option<String>,
+        start_after: Option<u64>,
         limit: Option<u32>,
         states: Option<Vec<String>>,
-        owner: Option<String>
+        owner: Option<String>,
     },
     GetCounterTrades {
         trade_id: u64,
     },
     GetAllCounterTrades {
-        start_after: Option<String>, // use composite_id here as continuation key
+        start_after: Option<CounterTradeInfo>,
         limit: Option<u32>,
         states: Option<Vec<String>>,
         owner: Option<String>,
