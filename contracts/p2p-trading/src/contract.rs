@@ -24,7 +24,7 @@ use crate::trade::{
 };
 
 use crate::messages::review_counter_trade;
-use crate::query::query_contract_info;
+use crate::query::{query_contract_info, query_all_counter_trades, query_counter_trades, query_all_trades};
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -311,6 +311,27 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             &load_counter_trade(deps.storage, trade_id, counter_id)
                 .map_err(|e| StdError::generic_err(e.to_string()))?,
         ),
+        QueryMsg::GetAllCounterTrades {
+            states,
+            start_after,
+            limit,
+            owner,
+        } => to_binary(&query_all_counter_trades(
+            deps,
+            start_after,
+            limit,
+            states,
+            owner,
+        )?),
+        QueryMsg::GetCounterTrades { trade_id } => {
+            to_binary(&query_counter_trades(deps, trade_id)?)
+        }
+        QueryMsg::GetAllTrades {
+            states,
+            start_after,
+            limit,
+            owner,
+        } => to_binary(&query_all_trades(deps, start_after, limit, states, owner)?),
     }
 }
 
@@ -350,8 +371,8 @@ pub mod tests {
         assert_eq!(0, res_init.messages.len());
     }
 
-    fn create_trade_helper(deps: DepsMut) -> Response {
-        let info = mock_info("creator", &[]);
+    fn create_trade_helper(deps: DepsMut, creator: &str) -> Response {
+        let info = mock_info(creator, &[]);
         let env = mock_env();
 
         let res = execute(deps, env, info, ExecuteMsg::CreateTrade { whitelisted_users: Some(vec![])}).unwrap();
@@ -538,6 +559,8 @@ pub mod tests {
     }
 
     pub mod trade_tests {
+        use crate::query::{query_counter_trades, CounterTradeResponse, TradeResponse};
+
         use super::*;
         use std::collections::HashSet;
         use cosmwasm_std::{coin, SubMsg};
@@ -548,7 +571,7 @@ pub mod tests {
             let mut deps = mock_dependencies(&[]);
             init_helper(deps.as_mut());
 
-            let res = create_trade_helper(deps.as_mut());
+            let res = create_trade_helper(deps.as_mut(), "creator");
 
             assert_eq!(res.messages, vec![]);
             assert_eq!(
@@ -559,7 +582,7 @@ pub mod tests {
                 ]
             );
 
-            let res = create_trade_helper(deps.as_mut());
+            let res = create_trade_helper(deps.as_mut(), "creator");
 
             assert_eq!(res.messages, vec![]);
             assert_eq!(
@@ -571,10 +594,216 @@ pub mod tests {
             );
 
             let new_trade_info = load_trade(&deps.storage, 0).unwrap();
+
+            assert_eq!(new_trade_info.state, TradeState::Created {});
+
+            // Query all and check that trades exist, without filters specified
+            let res = query_all_trades(deps.as_ref(), None, None, None, None).unwrap();
+
+            assert_eq!(
+                res.trades,
+                vec![
+                    {
+                        TradeResponse {
+                            trade_id: "0".to_string(),
+                            owner: "creator".to_string(),
+                            associated_assets: vec![],
+                            associated_funds: vec![],
+                            state: TradeState::Created.to_string(),
+                            last_counter_id: None,
+                            comment: None,
+                            accepted_info: None,
+                        }
+                    },
+                    {
+                        TradeResponse {
+                            trade_id: "1".to_string(),
+                            owner: "creator".to_string(),
+                            associated_assets: vec![],
+                            associated_funds: vec![],
+                            state: TradeState::Created.to_string(),
+                            last_counter_id: None,
+                            comment: None,
+                            accepted_info: None,
+                        }
+                    }
+                ]
+            );
+        }
+
+        #[test]
+        fn create_multiple_trades_and_query() {
+            let mut deps = mock_dependencies(&[]);
+            init_helper(deps.as_mut());
+
+            let res = create_trade_helper(deps.as_mut(), "creator");
+
+            assert_eq!(res.messages, vec![]);
+            assert_eq!(
+                res.attributes,
+                vec![
+                    Attribute::new("trade", "created"),
+                    Attribute::new("trade_id", "0"),
+                ]
+            );
+
+            let res = create_trade_helper(deps.as_mut(), "creator2");
+
+            assert_eq!(res.messages, vec![]);
+            assert_eq!(
+                res.attributes,
+                vec![
+                    Attribute::new("trade", "created"),
+                    Attribute::new("trade_id", "1"),
+                ]
+            );
+
+            let new_trade_info = load_trade(&deps.storage, 0).unwrap();
+
             assert_eq!(new_trade_info.state, TradeState::Created {});
 
             let new_trade_info = load_trade(&deps.storage, 1).unwrap();
             assert_eq!(new_trade_info.state, TradeState::Created {});
+
+            // Query all created trades check that creators are different
+            let res = query_all_trades(
+                deps.as_ref(),
+                None,
+                None,
+                Some(vec![TradeState::Created.to_string()]),
+                None,
+            )
+            .unwrap();
+
+            assert_eq!(
+                res.trades,
+                vec![
+                    {
+                        TradeResponse {
+                            trade_id: "0".to_string(),
+                            owner: "creator".to_string(),
+                            associated_assets: vec![],
+                            associated_funds: vec![],
+                            state: TradeState::Created.to_string(),
+                            last_counter_id: None,
+                            comment: None,
+                            accepted_info: None,
+                        }
+                    },
+                    {
+                        TradeResponse {
+                            trade_id: "1".to_string(),
+                            owner: "creator2".to_string(),
+                            associated_assets: vec![],
+                            associated_funds: vec![],
+                            state: TradeState::Created.to_string(),
+                            last_counter_id: None,
+                            comment: None,
+                            accepted_info: None,
+                        }
+                    }
+                ]
+            );
+
+            // Verify that pagination by trade_id works
+            let res = query_all_trades(
+                deps.as_ref(),
+                Some("0".to_string()),
+                None,
+                Some(vec![TradeState::Created.to_string()]),
+                None,
+            )
+            .unwrap();
+
+            assert_eq!(
+                res.trades,
+                vec![{
+                    TradeResponse {
+                        trade_id: "1".to_string(),
+                        owner: "creator2".to_string(),
+                        associated_assets: vec![],
+                        associated_funds: vec![],
+                        state: TradeState::Created.to_string(),
+                        last_counter_id: None,
+                        comment: None,
+                        accepted_info: None,
+                    }
+                }]
+            );
+
+            // Query that query returned only queries that are in created state and belong to creator2
+            let res = query_all_trades(
+                deps.as_ref(),
+                None,
+                None,
+                Some(vec![TradeState::Created.to_string()]),
+                Some("creator2".to_string()),
+            )
+            .unwrap();
+
+            assert_eq!(
+                res.trades,
+                vec![{
+                    TradeResponse {
+                        trade_id: "1".to_string(),
+                        owner: "creator2".to_string(),
+                        associated_assets: vec![],
+                        associated_funds: vec![],
+                        state: TradeState::Created.to_string(),
+                        last_counter_id: None,
+                        comment: None,
+                        accepted_info: None,
+                    }
+                }]
+            );
+
+            // Check that if states are None that owner query still works
+            let res = query_all_trades(
+                deps.as_ref(),
+                None,
+                None,
+                None,
+                Some("creator2".to_string()),
+            )
+            .unwrap();
+
+            assert_eq!(
+                res.trades,
+                vec![{
+                    TradeResponse {
+                        trade_id: "1".to_string(),
+                        owner: "creator2".to_string(),
+                        associated_assets: vec![],
+                        associated_funds: vec![],
+                        state: TradeState::Created.to_string(),
+                        last_counter_id: None,
+                        comment: None,
+                        accepted_info: None,
+                    }
+                }]
+            );
+
+            // Check that queries with published state do not return anything. Because none exists.
+            let res = query_all_trades(
+                deps.as_ref(),
+                None,
+                None,
+                Some(vec![TradeState::Published.to_string()]),
+                None,
+            )
+            .unwrap();
+
+            assert_eq!(res.trades, vec![]);
+
+            // Check that queries with published state do not return anything when owner is specified. Because none exists.
+            let res = query_all_trades(
+                deps.as_ref(),
+                None,
+                None,
+                Some(vec![TradeState::Published.to_string()]),
+                Some("creator2".to_string()),
+            )
+            .unwrap();
         }
 
         #[test]
@@ -582,7 +811,7 @@ pub mod tests {
             let mut deps = mock_dependencies(&[]);
             init_helper(deps.as_mut());
 
-            create_trade_helper(deps.as_mut());
+            create_trade_helper(deps.as_mut(), "creator");
             let res = add_funds_to_trade_helper(
                 deps.as_mut(),
                 "creator",
@@ -614,7 +843,7 @@ pub mod tests {
             let mut deps = mock_dependencies(&[]);
             init_helper(deps.as_mut());
 
-            create_trade_helper(deps.as_mut());
+            create_trade_helper(deps.as_mut(), "creator");
             let res = add_funds_to_trade_helper(
                 deps.as_mut(),
                 "creator",
@@ -639,7 +868,7 @@ pub mod tests {
             let mut deps = mock_dependencies(&[]);
             init_helper(deps.as_mut());
 
-            create_trade_helper(deps.as_mut());
+            create_trade_helper(deps.as_mut(), "creator");
 
             let res =
                 add_cw20_to_trade_helper(deps.as_mut(), "token", "creator", 0).unwrap();
@@ -674,7 +903,7 @@ pub mod tests {
             let mut deps = mock_dependencies(&[]);
             init_helper(deps.as_mut());
 
-            create_trade_helper(deps.as_mut());
+            create_trade_helper(deps.as_mut(), "creator");
 
             let res =
                 add_cw721_to_trade_helper(deps.as_mut(), "nft", "creator", 0).unwrap();
@@ -710,7 +939,7 @@ pub mod tests {
             let mut deps = mock_dependencies(&[]);
             init_helper(deps.as_mut());
 
-            create_trade_helper(deps.as_mut());
+            create_trade_helper(deps.as_mut(), "creator");
 
             add_cw721_to_trade_helper(deps.as_mut(), "nft", "creator", 0).unwrap();
             add_cw721_to_trade_helper(deps.as_mut(), "nft-2", "creator", 0).unwrap();
@@ -913,7 +1142,7 @@ pub mod tests {
             let mut deps = mock_dependencies(&[]);
             init_helper(deps.as_mut());
 
-            create_trade_helper(deps.as_mut());
+            create_trade_helper(deps.as_mut(), "creator");
 
             add_cw721_to_trade_helper(deps.as_mut(), "nft", "creator", 0).unwrap();
             add_cw721_to_trade_helper(deps.as_mut(), "nft-2", "creator", 0).unwrap();
@@ -1014,7 +1243,7 @@ pub mod tests {
             let mut deps = mock_dependencies(&[]);
             init_helper(deps.as_mut());
 
-            create_trade_helper(deps.as_mut());
+            create_trade_helper(deps.as_mut(), "creator");
 
             //Wrong trade id
             let err = confirm_trade_helper(deps.as_mut(), "creator", 1).unwrap_err();
@@ -1031,6 +1260,32 @@ pub mod tests {
                     Attribute::new("confirmed", "trade"),
                     Attribute::new("trade", "0"),
                 ]
+            );
+
+            // Check with query that trade is confirmed, in published state
+            let res = query_all_trades(
+                deps.as_ref(),
+                None,
+                None,
+                Some(vec![TradeState::Published.to_string()]),
+                Some("creator".to_string()),
+            )
+            .unwrap();
+
+            assert_eq!(
+                res.trades,
+                vec![{
+                    TradeResponse {
+                        trade_id: "0".to_string(),
+                        owner: "creator".to_string(),
+                        associated_assets: vec![],
+                        associated_funds: vec![],
+                        state: TradeState::Published.to_string(),
+                        last_counter_id: None,
+                        comment: None,
+                        accepted_info: None,
+                    }
+                }]
             );
 
             let new_trade_info = load_trade(&deps.storage, 0).unwrap();
@@ -1052,7 +1307,7 @@ pub mod tests {
             let mut deps = mock_dependencies(&[]);
             init_helper(deps.as_mut());
 
-            create_trade_helper(deps.as_mut());
+            create_trade_helper(deps.as_mut(), "creator");
 
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
 
@@ -1093,10 +1348,12 @@ pub mod tests {
             let mut deps = mock_dependencies(&[]);
             init_helper(deps.as_mut());
 
-            create_trade_helper(deps.as_mut());
+            create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
 
             suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, Some(false)).unwrap();
+
+ 
 
             let err = accept_trade_helper(deps.as_mut(), "creator", 0, 5).unwrap_err();
             assert_eq!(err, ContractError::NotFoundInCounterTradeInfo {});
@@ -1135,6 +1392,77 @@ pub mod tests {
 
             let counter_trade_info = load_counter_trade(&deps.storage, 0, 0).unwrap();
             assert_eq!(counter_trade_info.state, TradeState::Accepted {});
+
+            // Check with query that trade is confirmed, in ack state
+            let res = query_all_trades(
+                deps.as_ref(),
+                None,
+                None,
+                Some(vec![TradeState::Accepted.to_string()]),
+                Some("creator".to_string()),
+            )
+            .unwrap();
+
+            assert_eq!(
+                res.trades,
+                vec![{
+                    TradeResponse {
+                        trade_id: "0".to_string(),
+                        owner: "creator".to_string(),
+                        associated_assets: vec![],
+                        associated_funds: vec![],
+                        state: TradeState::Accepted.to_string(),
+                        last_counter_id: Some(0),
+                        comment: None,
+                        accepted_info: Some(AcceptedTradeInfo {
+                            trade_id: 0,
+                            counter_id: 0
+                        }),
+                    }
+                }]
+            );
+
+            // Check with query by trade id that one counter is returned
+            let res = query_counter_trades(deps.as_ref(), 0).unwrap();
+
+            assert_eq!(
+                res.counter_trades,
+                vec![{
+                    CounterTradeResponse {
+                        counter_id: "0".to_string(),
+                        composite_id: "0".to_string(),
+                        trade_id: "0".to_string(),
+                        owner: "counterer".to_string(),
+                        associated_assets: vec![],
+                        associated_funds: vec![],
+                        state: TradeState::Accepted.to_string(),
+                        last_counter_id: None,
+                        comment: None,
+                        accepted_info: None,
+                    }
+                }]
+            );
+
+            // Check with queries that only one counter is returned by query and in accepted state
+            let res = query_all_counter_trades(deps.as_ref(), None, None, None, None).unwrap();
+
+            assert_eq!(
+                res.counter_trades,
+                vec![{
+                    CounterTradeResponse {
+                        counter_id: "0".to_string(),
+                        composite_id: "0".to_string(),
+                        trade_id: "0".to_string(),
+                        owner: "counterer".to_string(),
+                        associated_assets: vec![],
+                        associated_funds: vec![],
+                        state: TradeState::Accepted.to_string(),
+                        last_counter_id: None,
+                        comment: None,
+                        accepted_info: None,
+                    }
+                }]
+            );
         }
 
         #[test]
@@ -1142,7 +1470,7 @@ pub mod tests {
             let mut deps = mock_dependencies(&[]);
             init_helper(deps.as_mut());
 
-            create_trade_helper(deps.as_mut());
+            create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
 
             suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, Some(false)).unwrap();
@@ -1171,6 +1499,84 @@ pub mod tests {
 
             let counter_trade_info = load_counter_trade(&deps.storage, 0, 1).unwrap();
             assert_eq!(counter_trade_info.state, TradeState::Published {});
+
+            // Check that both Accepted and Published counter queries exist
+            let res = query_all_counter_trades(
+                deps.as_ref(),
+                None,
+                None,
+                Some(vec![
+                    TradeState::Accepted.to_string(),
+                    TradeState::Published.to_string(),
+                ]),
+                None,
+            )
+            .unwrap();
+
+            assert_eq!(
+                res.counter_trades,
+                vec![
+                    {
+                        CounterTradeResponse {
+                            counter_id: "0".to_string(),
+                            composite_id: "0".to_string(),
+                            trade_id: "0".to_string(),
+                            owner: "counterer".to_string(),
+                            associated_assets: vec![],
+                            associated_funds: vec![],
+                            state: TradeState::Accepted.to_string(),
+                            last_counter_id: None,
+                            comment: None,
+                            accepted_info: None,
+                        }
+                    },
+                    {
+                        CounterTradeResponse {
+                            counter_id: "1".to_string(),
+                            composite_id: "1".to_string(),
+                            trade_id: "0".to_string(),
+                            owner: "counterer".to_string(),
+                            associated_assets: vec![],
+                            associated_funds: vec![],
+                            state: TradeState::Published.to_string(),
+                            last_counter_id: None,
+                            comment: None,
+                            accepted_info: None,
+                        }
+                    }
+                ]
+            );
+
+            // Check that both Accepted and Published counter queries exist, paginate to skip first counter trade
+            let res = query_all_counter_trades(
+                deps.as_ref(),
+                Some("0".to_string()),
+                None,
+                Some(vec![
+                    TradeState::Accepted.to_string(),
+                    TradeState::Published.to_string(),
+                ]),
+                None,
+            )
+            .unwrap();
+
+            assert_eq!(
+                res.counter_trades,
+                vec![{
+                    CounterTradeResponse {
+                        counter_id: "1".to_string(),
+                        composite_id: "1".to_string(),
+                        trade_id: "0".to_string(),
+                        owner: "counterer".to_string(),
+                        associated_assets: vec![],
+                        associated_funds: vec![],
+                        state: TradeState::Published.to_string(),
+                        last_counter_id: None,
+                        comment: None,
+                        accepted_info: None,
+                    }
+                }]
+            );
         }
 
         #[test]
@@ -1178,7 +1584,7 @@ pub mod tests {
             let mut deps = mock_dependencies(&[]);
             init_helper(deps.as_mut());
 
-            create_trade_helper(deps.as_mut());
+            create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
 
             suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, Some(false)).unwrap();
@@ -1200,13 +1606,147 @@ pub mod tests {
                     Attribute::new("trade", "0"),
                 ]
             );
+
+            // Query all counter trades make sure counter trade is published
+            let res = query_all_counter_trades(deps.as_ref(), None, None, None, None).unwrap();
+
+            assert_eq!(
+                res.counter_trades,
+                vec![{
+                    CounterTradeResponse {
+                        counter_id: "0".to_string(),
+                        composite_id: "0".to_string(),
+                        trade_id: "0".to_string(),
+                        owner: "counterer".to_string(),
+                        associated_assets: vec![],
+                        associated_funds: vec![],
+                        state: TradeState::Published.to_string(),
+                        last_counter_id: None,
+                        comment: None,
+                        accepted_info: None,
+                    }
+                }]
+            );
+        }
+
+        #[test]
+        fn queries_with_multiple_trades_and_counter_trades() {
+            let mut deps = mock_dependencies(&[]);
+            init_helper(deps.as_mut());
+
+            create_trade_helper(deps.as_mut(), "creator");
+            confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
+
+            create_trade_helper(deps.as_mut(), "creator");
+            confirm_trade_helper(deps.as_mut(), "creator", 1).unwrap();
+
+            create_trade_helper(deps.as_mut(), "creator");
+            confirm_trade_helper(deps.as_mut(), "creator", 2).unwrap();
+
+            create_trade_helper(deps.as_mut(), "creator");
+            confirm_trade_helper(deps.as_mut(), "creator", 3).unwrap();
+
+            create_trade_helper(deps.as_mut(), "creator");
+            confirm_trade_helper(deps.as_mut(), "creator", 4).unwrap();
+
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, Some(false)).unwrap();
+
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 1, Some(false)).unwrap();
+
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 2, Some(false)).unwrap();
+
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 3, Some(false)).unwrap();
+
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 4, Some(false)).unwrap();
+
+            suggest_counter_trade_helper(deps.as_mut(), "counterer2", 4, Some(false)).unwrap();
+
+            // Query all after last one, should return empty array
+            let res = query_all_counter_trades(
+                deps.as_ref(),
+                Some("73786976294838206464".to_string()),
+                None,
+                None,
+                Some("counterer2".to_string()),
+            )
+            .unwrap();
+
+            assert_eq!(
+                res.counter_trades,
+                vec![CounterTradeResponse {
+                    composite_id: "73786976294838206465".to_string(),
+                    trade_id: "4".to_string(),
+                    counter_id: "1".to_string(),
+                    owner: "counterer2".to_string(),
+                    associated_assets: vec![],
+                    associated_funds: vec![],
+                    state: TradeState::Created.to_string(),
+                    last_counter_id: None,
+                    comment: None,
+                    accepted_info: None
+                }]
+            );
+
+            // Query all after last one, should return empty array
+            let res = query_all_counter_trades(
+                deps.as_ref(),
+                Some("73786976294838206465".to_string()),
+                None,
+                None,
+                Some("counterer2".to_string()),
+            )
+            .unwrap();
+
+            assert_eq!(res.counter_trades, vec![]);
+
+            // Query for non existing user should return empty []
+            let res = query_all_counter_trades(
+                deps.as_ref(),
+                None,
+                None,
+                None,
+                Some("counterer5".to_string()),
+            )
+            .unwrap();
+
+            assert_eq!(res.counter_trades, vec![]);
+
+            // Query by trade_id should return counter queries for trade id 4
+            let res = query_counter_trades(deps.as_ref(), 4).unwrap();
+
+            assert_eq!(
+                res.counter_trades,
+                vec![CounterTradeResponse {
+                    composite_id: "73786976294838206464".to_string(),
+                    trade_id: "4".to_string(),
+                    counter_id: "0".to_string(),
+                    owner: "counterer".to_string(),
+                    associated_assets: vec![],
+                    associated_funds: vec![],
+                    state: TradeState::Created.to_string(),
+                    last_counter_id: None,
+                    comment: None,
+                    accepted_info: None
+                },CounterTradeResponse {
+                    composite_id: "73786976294838206465".to_string(),
+                    trade_id: "4".to_string(),
+                    counter_id: "1".to_string(),
+                    owner: "counterer2".to_string(),
+                    associated_assets: vec![],
+                    associated_funds: vec![],
+                    state: TradeState::Created.to_string(),
+                    last_counter_id: None,
+                    comment: None,
+                    accepted_info: None
+                }]
+            );
         }
 
         #[test]
         fn withdraw_accepted_assets() {
             let mut deps = mock_dependencies(&[]);
             init_helper(deps.as_mut());
-            create_trade_helper(deps.as_mut());
+            create_trade_helper(deps.as_mut(), "creator");
             add_funds_to_trade_helper(deps.as_mut(), "creator", 0, &coins(5, "lunas"), None)
                 .unwrap();
             add_cw20_to_trade_helper(deps.as_mut(), "token", "creator", 0).unwrap();
@@ -1403,7 +1943,7 @@ pub mod tests {
         fn withdraw_cancelled_trade() {
             let mut deps = mock_dependencies(&[]);
             init_helper(deps.as_mut());
-            create_trade_helper(deps.as_mut());
+            create_trade_helper(deps.as_mut(), "creator");
             add_funds_to_trade_helper(deps.as_mut(), "creator", 0, &coins(5, "lunas"), None)
                 .unwrap();
             add_cw20_to_trade_helper(deps.as_mut(), "token", "creator", 0).unwrap();
@@ -1514,8 +2054,6 @@ pub mod tests {
 
 
         }
-
-
     }
 
     fn suggest_counter_trade_helper(
@@ -1733,7 +2271,7 @@ pub mod tests {
             let mut deps = mock_dependencies(&[]);
             init_helper(deps.as_mut());
 
-            create_trade_helper(deps.as_mut());
+            create_trade_helper(deps.as_mut(), "creator");
 
             let err = suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, Some(false))
                 .unwrap_err();
@@ -1765,7 +2303,7 @@ pub mod tests {
             let mut deps = mock_dependencies(&[]);
             init_helper(deps.as_mut());
 
-            create_trade_helper(deps.as_mut());
+            create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
             suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
 
@@ -1798,7 +2336,7 @@ pub mod tests {
             let mut deps = mock_dependencies(&[]);
             init_helper(deps.as_mut());
 
-            create_trade_helper(deps.as_mut());
+            create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
             suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
 
@@ -1864,7 +2402,7 @@ pub mod tests {
             let mut deps = mock_dependencies(&[]);
             init_helper(deps.as_mut());
 
-            create_trade_helper(deps.as_mut());
+            create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
             suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
 
@@ -1919,7 +2457,7 @@ pub mod tests {
             let mut deps = mock_dependencies(&[]);
             init_helper(deps.as_mut());
 
-            create_trade_helper(deps.as_mut());
+            create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
             suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
             add_cw721_to_counter_trade_helper(deps.as_mut(), "nft", "counterer", 0, 0)
@@ -2139,7 +2677,7 @@ pub mod tests {
             let mut deps = mock_dependencies(&[]);
             init_helper(deps.as_mut());
 
-            create_trade_helper(deps.as_mut());
+            create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
             suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
             add_cw721_to_counter_trade_helper(deps.as_mut(), "nft", "counterer", 0, 0)
@@ -2255,7 +2793,7 @@ pub mod tests {
             let mut deps = mock_dependencies(&[]);
             init_helper(deps.as_mut());
 
-            create_trade_helper(deps.as_mut());
+            create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
             suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
 
@@ -2298,7 +2836,7 @@ pub mod tests {
             let mut deps = mock_dependencies(&[]);
             init_helper(deps.as_mut());
 
-            create_trade_helper(deps.as_mut());
+            create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
             suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
 
@@ -2346,7 +2884,7 @@ pub mod tests {
             let mut deps = mock_dependencies(&[]);
             init_helper(deps.as_mut());
 
-            create_trade_helper(deps.as_mut());
+            create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
             suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
             confirm_counter_trade_helper(deps.as_mut(), "counterer", 0, 0).unwrap();
@@ -2361,7 +2899,7 @@ pub mod tests {
             let mut deps = mock_dependencies(&[]);
             init_helper(deps.as_mut());
 
-            create_trade_helper(deps.as_mut());
+            create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
             suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
             confirm_counter_trade_helper(deps.as_mut(), "counterer", 0, 0).unwrap();
@@ -2376,7 +2914,7 @@ pub mod tests {
             let mut deps = mock_dependencies(&[]);
             init_helper(deps.as_mut());
 
-            create_trade_helper(deps.as_mut());
+            create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
             suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, Some(true)).unwrap();
             // We suggest and confirm one more counter
@@ -2402,7 +2940,7 @@ pub mod tests {
             let mut deps = mock_dependencies(&[]);
             init_helper(deps.as_mut());
 
-            create_trade_helper(deps.as_mut());
+            create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
             suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
             let res = refuse_counter_trade_helper(deps.as_mut(), "creator", 0, 0).unwrap();
@@ -2421,7 +2959,7 @@ pub mod tests {
             let mut deps = mock_dependencies(&[]);
             init_helper(deps.as_mut());
 
-            create_trade_helper(deps.as_mut());
+            create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
             suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
             // We suggest and confirm one more counter
@@ -2445,7 +2983,7 @@ pub mod tests {
             let mut deps = mock_dependencies(&[]);
             init_helper(deps.as_mut());
 
-            create_trade_helper(deps.as_mut());
+            create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
             suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
 
@@ -2460,7 +2998,7 @@ pub mod tests {
             let mut deps = mock_dependencies(&[]);
             init_helper(deps.as_mut());
 
-            create_trade_helper(deps.as_mut());
+            create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
             suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
 
@@ -2481,7 +3019,7 @@ pub mod tests {
             let mut deps = mock_dependencies(&[]);
             init_helper(deps.as_mut());
 
-            create_trade_helper(deps.as_mut());
+            create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
             suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
             confirm_counter_trade_helper(deps.as_mut(), "counterer", 0, 0).unwrap();

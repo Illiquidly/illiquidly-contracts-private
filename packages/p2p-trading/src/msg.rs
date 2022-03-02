@@ -149,16 +149,26 @@ pub enum ExecuteMsg {
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
     ContractInfo {},
-    TradeInfo { trade_id: u64 },
-    CounterTradeInfo { trade_id: u64, counter_id: u64 }, /*
-                                                         }
-                                                         GetAllActiveTrades{}
-
-                                                         GetCounterTrades{
-                                                             trade_id:u64,
-                                                         },
-                                                         GetAllActiveCounterTrades{}
-
-
-                                                         */
+    TradeInfo {
+        trade_id: u64,
+    },
+    CounterTradeInfo {
+        trade_id: u64,
+        counter_id: u64,
+    },
+    GetAllTrades {
+        start_after: Option<String>,
+        limit: Option<u32>,
+        states: Option<Vec<String>>,
+        owner: Option<String>
+    },
+    GetCounterTrades {
+        trade_id: u64,
+    },
+    GetAllCounterTrades {
+        start_after: Option<String>, // use composite_id here as continuation key
+        limit: Option<u32>,
+        states: Option<Vec<String>>,
+        owner: Option<String>,
+    },
 }

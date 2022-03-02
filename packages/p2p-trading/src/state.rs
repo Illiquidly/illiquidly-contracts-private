@@ -1,3 +1,5 @@
+use std::fmt::{Display, Formatter, Result};
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use cosmwasm_std::{Addr, Coin, Uint128};
@@ -34,6 +36,12 @@ pub enum TradeState {
     Refused,
     Accepted,
     Cancelled,
+}
+
+impl Display for TradeState {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
