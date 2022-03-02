@@ -11,9 +11,10 @@ async function main(){
 
 
   for (const h of all_handlers) {
-	    await handler.send(h.getAddress(),{
-				"uusd": "10000000"
+  	let response = await handler.send(h.getAddress(),{
+				"uluna": "500000"
 			});
+  	console.log(response);
 			console.log(h.getAddress(),(await h.terra.bank.balance(h.getAddress())).toString());
 	}
 

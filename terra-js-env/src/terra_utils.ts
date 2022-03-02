@@ -1,4 +1,4 @@
-import { LCDClient, Coins, MnemonicKey, Wallet, MsgSend,MsgExecuteContract,isTxError, MsgStoreCode, MsgInstantiateContract} from '@terra-money/terra.js';
+import { StdFee, LCDClient, Coins, MnemonicKey, Wallet, MsgSend,MsgExecuteContract,isTxError, MsgStoreCode, MsgInstantiateContract} from '@terra-money/terra.js';
 import * as fs from 'fs';
 import { env } from "./env_helper";
 
@@ -22,7 +22,9 @@ class LCDClientWrapper{
 class Transaction extends LCDClientWrapper{
 	async post(msgs: any[]){
 		let post_msg = {msgs:msgs}
-		const tx = await this.wallet.createAndSignTx(post_msg);
+		const fee = new StdFee(50000, { uluna: 4500000 });
+
+		const tx = await this.wallet.createAndSignTx({msgs, fee});
 		return await this.terra.tx.broadcast(tx);
 	}
 	async execute(msgName:string, msgArgs: Object){

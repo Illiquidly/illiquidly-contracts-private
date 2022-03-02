@@ -451,8 +451,8 @@ pub mod tests {
         deps: DepsMut,
         sender: &str,
         trade_id: u64,
-        assets: Vec<(u64, AssetInfo)>,
-        funds: Vec<(u64, Coin)>,
+        assets: Vec<(u16, AssetInfo)>,
+        funds: Vec<(u16, Coin)>,
     ) -> Result<Response, ContractError> {
         let info = mock_info(sender, &[]);
         let env = mock_env();
@@ -1613,8 +1613,8 @@ pub mod tests {
         sender: &str,
         trade_id: u64,
         counter_id: u64,
-        assets: Vec<(u64, AssetInfo)>,
-        funds: Vec<(u64, Coin)>,
+        assets: Vec<(u16, AssetInfo)>,
+        funds: Vec<(u16, Coin)>,
     ) -> Result<Response, ContractError> {
         let info = mock_info(sender, &[]);
         let env = mock_env();
@@ -2496,23 +2496,6 @@ pub mod tests {
                     to: TradeState::Countered
                 }
             );
-        }
-    }
-    pub mod change_tests {
-        use super::*;
-        use cosmwasm_std::{coin, SubMsg};
-        use cw_storage_plus::{Map, U64Key};
-
-
-        pub const A: Map<U64Key, String> = Map::new("trade_info_test");
-
-        pub const B: Map<(U64Key, U64Key), String> = Map::new("counter_trade_info_test");
-
-
-        #[test]
-        fn change_test(){
-            let mut deps = mock_dependencies(&[]);
-            A.save(&mut deps.storage, 585u64.into() ,&"Test de ouf".to_string());
         }
     }
 }
