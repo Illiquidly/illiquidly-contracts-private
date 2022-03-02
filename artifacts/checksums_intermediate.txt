@@ -1,0 +1,3 @@
+0db85cc2e0b8f8da34a3860c69e97dcf00b721d16dacccef852aad7d8d69cd11  target/wasm32-unknown-unknown/release/iliq_token.wasm
+87744d97e9d64d58919b08c199e9f3058667d1733679e4aff210078329734a9b  target/wasm32-unknown-unknown/release/multisender.wasm
+2758deea8c250b74ffdf398b6a3651dc31c0d6eb13695b5eea3c2a25b5ac2591  target/wasm32-unknown-unknown/release/p2p_trading.wasm
