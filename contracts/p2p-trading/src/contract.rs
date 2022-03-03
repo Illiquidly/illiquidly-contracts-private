@@ -662,7 +662,7 @@ pub mod tests {
                 vec![
                     {
                         TradeResponse {
-                            trade_id: 0,
+                            trade_id: 1,
                             counter_id: None,
                             owner: "creator".to_string(),
                             associated_assets: vec![],
@@ -675,7 +675,7 @@ pub mod tests {
                     },
                     {
                         TradeResponse {
-                            trade_id: 1,
+                            trade_id: 0,
                             counter_id: None,
                             owner: "creator".to_string(),
                             associated_assets: vec![],
@@ -724,6 +724,9 @@ pub mod tests {
             let new_trade_info = load_trade(&deps.storage, 1).unwrap();
             assert_eq!(new_trade_info.state, TradeState::Created {});
 
+            create_trade_helper(deps.as_mut(), "creator2");
+            confirm_trade_helper(deps.as_mut(), "creator2",2).unwrap();
+
             // Query all created trades check that creators are different
             let res = query_all_trades(
                 deps.as_ref(),
@@ -739,9 +742,9 @@ pub mod tests {
                 vec![
                     {
                         TradeResponse {
-                            trade_id: 0,
+                            trade_id: 1,
                             counter_id: None,
-                            owner: "creator".to_string(),
+                            owner: "creator2".to_string(),
                             associated_assets: vec![],
                             associated_funds: vec![],
                             state: TradeState::Created.to_string(),
@@ -752,9 +755,9 @@ pub mod tests {
                     },
                     {
                         TradeResponse {
-                            trade_id: 1,
+                            trade_id: 0,
                             counter_id: None,
-                            owner: "creator2".to_string(),
+                            owner: "creator".to_string(),
                             associated_assets: vec![],
                             associated_funds: vec![],
                             state: TradeState::Created.to_string(),
@@ -769,7 +772,7 @@ pub mod tests {
             // Verify that pagination by trade_id works
             let res = query_all_trades(
                 deps.as_ref(),
-                Some(0),
+                Some(1),
                 None,
                 Some(vec![TradeState::Created.to_string()]),
                 None,
@@ -780,9 +783,9 @@ pub mod tests {
                 res.trades,
                 vec![{
                     TradeResponse {
-                        trade_id: 1,
+                        trade_id: 0,
                         counter_id: None,
-                        owner: "creator2".to_string(),
+                        owner: "creator".to_string(),
                         associated_assets: vec![],
                         associated_funds: vec![],
                         state: TradeState::Created.to_string(),
@@ -805,7 +808,7 @@ pub mod tests {
 
             assert_eq!(
                 res.trades,
-                vec![{
+                vec![
                     TradeResponse {
                         trade_id: 1,
                         counter_id: None,
@@ -817,7 +820,7 @@ pub mod tests {
                         comment: None,
                         accepted_info: None,
                     }
-                }]
+                ]
             );
 
             // Check that if states are None that owner query still works
@@ -832,7 +835,18 @@ pub mod tests {
 
             assert_eq!(
                 res.trades,
-                vec![{
+                vec![
+                    TradeResponse {
+                        trade_id: 2,
+                        counter_id: None,
+                        owner: "creator2".to_string(),
+                        associated_assets: vec![],
+                        associated_funds: vec![],
+                        state: TradeState::Published.to_string(),
+                        last_counter_id: None,
+                        comment: None,
+                        accepted_info: None,
+                    },
                     TradeResponse {
                         trade_id: 1,
                         counter_id: None,
@@ -844,7 +858,7 @@ pub mod tests {
                         comment: None,
                         accepted_info: None,
                     }
-                }]
+                ]
             );
 
             // Check that queries with published state do not return anything. Because none exists.
@@ -852,7 +866,7 @@ pub mod tests {
                 deps.as_ref(),
                 None,
                 None,
-                Some(vec![TradeState::Published.to_string()]),
+                Some(vec![TradeState::Accepted.to_string()]),
                 None,
             )
             .unwrap();
@@ -864,7 +878,7 @@ pub mod tests {
                 deps.as_ref(),
                 None,
                 None,
-                Some(vec![TradeState::Published.to_string()]),
+                Some(vec![TradeState::Accepted.to_string()]),
                 Some("creator2".to_string()),
             )
             .unwrap();
@@ -1559,6 +1573,7 @@ pub mod tests {
             suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, Some(false)).unwrap();
 
             suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, Some(false)).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, Some(false)).unwrap();
 
             confirm_counter_trade_helper(deps.as_mut(), "counterer", 0, 0).unwrap();
             confirm_counter_trade_helper(deps.as_mut(), "counterer", 0, 1).unwrap();
@@ -1601,19 +1616,6 @@ pub mod tests {
                 vec![
                     {
                         TradeResponse {
-                            counter_id: Some(0),
-                            trade_id: 0,
-                            owner: "counterer".to_string(),
-                            associated_assets: vec![],
-                            associated_funds: vec![],
-                            state: TradeState::Accepted.to_string(),
-                            last_counter_id: None,
-                            comment: None,
-                            accepted_info: None,
-                        }
-                    },
-                    {
-                        TradeResponse {
                             counter_id: Some(1),
                             trade_id: 0,
                             owner: "counterer".to_string(),
@@ -1624,16 +1626,29 @@ pub mod tests {
                             comment: None,
                             accepted_info: None,
                         }
+                    },
+                    {
+                        TradeResponse {
+                            counter_id: Some(0),
+                            trade_id: 0,
+                            owner: "counterer".to_string(),
+                            associated_assets: vec![],
+                            associated_funds: vec![],
+                            state: TradeState::Accepted.to_string(),
+                            last_counter_id: None,
+                            comment: None,
+                            accepted_info: None,
+                        }
                     }
                 ]
             );
 
-            // Check that both Accepted and Published counter queries exist, paginate to skip first counter trade
+            // Check that both Accepted and Published counter queries exist, paginate to skip last counter trade
             let res = query_all_counter_trades(
                 deps.as_ref(),
                 Some(CounterTradeInfo {
                     trade_id: 0,
-                    counter_id: 0,
+                    counter_id: 1,
                 }),
                 None,
                 Some(vec![
@@ -1648,12 +1663,12 @@ pub mod tests {
                 res.counter_trades,
                 vec![{
                     TradeResponse {
-                        counter_id: Some(1),
+                        counter_id: Some(0),
                         trade_id: 0,
                         owner: "counterer".to_string(),
                         associated_assets: vec![],
                         associated_funds: vec![],
-                        state: TradeState::Published.to_string(),
+                        state: TradeState::Accepted.to_string(),
                         last_counter_id: None,
                         comment: None,
                         accepted_info: None,
@@ -1731,7 +1746,7 @@ pub mod tests {
             create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 4).unwrap();
 
-            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, Some(false)).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer2", 0, Some(false)).unwrap();
 
             suggest_counter_trade_helper(deps.as_mut(), "counterer", 1, Some(false)).unwrap();
 
@@ -1743,12 +1758,12 @@ pub mod tests {
 
             suggest_counter_trade_helper(deps.as_mut(), "counterer2", 4, Some(false)).unwrap();
 
-            // Query all after last one, should return empty array
+            // Query all before second one, should return the first one
             let res = query_all_counter_trades(
                 deps.as_ref(),
                 Some(CounterTradeInfo {
-                    trade_id: 4,
-                    counter_id: 0,
+                    trade_id: 0,
+                    counter_id: 1,
                 }),
                 None,
                 None,
@@ -1759,8 +1774,8 @@ pub mod tests {
             assert_eq!(
                 res.counter_trades,
                 vec![TradeResponse {
-                    trade_id: 4,
-                    counter_id: Some(1),
+                    trade_id: 0,
+                    counter_id: Some(0),
                     owner: "counterer2".to_string(),
                     associated_assets: vec![],
                     associated_funds: vec![],
@@ -1771,16 +1786,16 @@ pub mod tests {
                 }]
             );
 
-            // Query all after last one, should return empty array
+            // Query all before first one, should return empty array
             let res = query_all_counter_trades(
                 deps.as_ref(),
                 Some(CounterTradeInfo {
-                    trade_id: 4,
-                    counter_id: 1,
+                    trade_id: 0,
+                    counter_id: 0,
                 }),
                 None,
                 None,
-                Some("counterer2".to_string()),
+                None
             )
             .unwrap();
 
@@ -1806,8 +1821,8 @@ pub mod tests {
                 vec![
                     TradeResponse {
                         trade_id: 4,
-                        counter_id: Some(0),
-                        owner: "counterer".to_string(),
+                        counter_id: Some(1),
+                        owner: "counterer2".to_string(),
                         associated_assets: vec![],
                         associated_funds: vec![],
                         state: TradeState::Created.to_string(),
@@ -1817,8 +1832,8 @@ pub mod tests {
                     },
                     TradeResponse {
                         trade_id: 4,
-                        counter_id: Some(1),
-                        owner: "counterer2".to_string(),
+                        counter_id: Some(0),
+                        owner: "counterer".to_string(),
                         associated_assets: vec![],
                         associated_funds: vec![],
                         state: TradeState::Created.to_string(),

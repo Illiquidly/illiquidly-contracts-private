@@ -86,7 +86,7 @@ pub fn query_all_trades(
     let start = start_after.map(|s| Bound::Exclusive(U64Key::new(s).joined_key()));
 
     let trades: StdResult<Vec<TradeResponse>> = TRADE_INFO
-        .range(deps.storage, start, None, Order::Ascending)
+        .range(deps.storage, None, start, Order::Descending)
         .map(|kv_item| parse_trades(deps.api, kv_item))
         .filter(|response| trade_filter(response, &states, &owner))
         .take(limit)
@@ -134,7 +134,7 @@ pub fn query_all_counter_trades(
     });
 
     let counter_trades: StdResult<Vec<TradeResponse>> = COUNTER_TRADE_INFO
-        .range(deps.storage, start, None, Order::Ascending)
+        .range(deps.storage, None, start, Order::Descending)
         .map(|kv_item| parse_all_counter_trades(deps.api, kv_item))
         .filter(|response| trade_filter(response, &states, &owner))
         .take(limit)
@@ -172,7 +172,7 @@ fn parse_counter_trades(
 pub fn query_counter_trades(deps: Deps, trade_id: u64) -> StdResult<AllCounterTradesResponse> {
     let counter_trades: StdResult<Vec<TradeResponse>> = COUNTER_TRADE_INFO
         .prefix(trade_id.into())
-        .range(deps.storage, None, None, Order::Ascending)
+        .range(deps.storage, None, None, Order::Descending)
         .map(|kv_item| parse_counter_trades(deps.api, kv_item, U64Key::new(trade_id).joined_key()))
         .collect();
 
