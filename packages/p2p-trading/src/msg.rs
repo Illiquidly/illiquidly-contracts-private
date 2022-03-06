@@ -80,8 +80,18 @@ pub enum ExecuteMsg {
         trade_id: u64,
         whitelisted_users: Vec<String>,
     },
+    AddNFTsWanted {
+        trade_id: u64,
+        nfts_wanted: Vec<String>,
+    },
+    RemoveNFTsWanted {
+        trade_id: u64,
+        nfts_wanted: Vec<String>,
+    },
     /// Is used by the Trader to confirm they completed their end of the trade.
-    ConfirmTrade { trade_id: u64 },
+    ConfirmTrade {
+        trade_id: u64,
+    },
     /// Can be used to initiate Counter Trade, but also to add new tokens to it
     SuggestCounterTrade {
         trade_id: u64,
@@ -99,27 +109,81 @@ pub enum ExecuteMsg {
         funds: Vec<(u16, Coin)>,
     },
     /// Is used by the Client to confirm they completed their end of the trade.
-    ConfirmCounterTrade { trade_id: u64, counter_id: u64 },
+    ConfirmCounterTrade {
+        trade_id: u64,
+        counter_id: u64,
+    },
     /// Accept the Trade plain and simple, swap it up !
-    AcceptTrade { trade_id: u64, counter_id: u64 },
+    AcceptTrade {
+        trade_id: u64,
+        counter_id: u64,
+    },
     /// Cancel the Trade :/ No luck there mate ?
-    CancelTrade { trade_id: u64 },
+    CancelTrade {
+        trade_id: u64,
+    },
     /// Cancel the Counter Trade :/ No luck there mate ?
-    CancelCounterTrade { trade_id: u64, counter_id: u64 },
+    CancelCounterTrade {
+        trade_id: u64,
+        counter_id: u64,
+    },
     /// Refuse the Trade plain and simple, no madam, I'm not interested in your tokens !
-    RefuseCounterTrade { trade_id: u64, counter_id: u64 },
+    RefuseCounterTrade {
+        trade_id: u64,
+        counter_id: u64,
+    },
     /// Some parts of the traded tokens were interesting, but you can't accept the trade as is
     ReviewCounterTrade {
         trade_id: u64,
         counter_id: u64,
         comment: Option<String>,
     },
-    /// You can Withdraw funds via this function only whe the trade is accepted.
-    WithdrawPendingAssets { trade_id: u64 },
+    /// The fee contract can Withdraw funds via this function only when the trade is accepted.
+    WithdrawPendingAssets {
+        trader: String,
+        trade_id: u64,
+    },
     /// You can Withdraw funds only at specific steps of the trade, but you're allowed to try anytime !
-    WithdrawCancelledTrade { trade_id: u64 },
+    WithdrawCancelledTrade {
+        trade_id: u64,
+    },
     /// You can Withdraw funds when your counter trade is aborted (refused or cancelled)
-    WithdrawAbortedCounter { trade_id: u64, counter_id: u64 },
+    WithdrawAbortedCounter {
+        trade_id: u64,
+        counter_id: u64,
+    },
+
+    SetNewOwner {
+        owner: String,
+    },
+
+    SetNewFeeContract {
+        fee_contract: String,
+    },
+}
+
+
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct QueryFilters{
+    pub states: Option<Vec<String>>,
+    pub owner: Option<String>,
+    pub whitelisted_user: Option<String>,
+    pub contains_token: Option<String>,
+    pub wanted_nft: Option<String>
+}
+
+impl Default for QueryFilters{
+    fn default() -> Self{
+        Self{
+            states: None,
+            owner: None,
+            whitelisted_user: None,
+            contains_token: None,
+            wanted_nft: None
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -136,8 +200,7 @@ pub enum QueryMsg {
     GetAllTrades {
         start_after: Option<u64>,
         limit: Option<u32>,
-        states: Option<Vec<String>>,
-        owner: Option<String>,
+        filters: Option<QueryFilters>
     },
     GetCounterTrades {
         trade_id: u64,
@@ -145,7 +208,6 @@ pub enum QueryMsg {
     GetAllCounterTrades {
         start_after: Option<CounterTradeInfo>,
         limit: Option<u32>,
-        states: Option<Vec<String>>,
-        owner: Option<String>,
+        filters: Option<QueryFilters>
     },
 }

@@ -3,20 +3,33 @@
   "title": "QueryMsg",
   "oneOf": [
     {
-      "description": "Returns the current balance of the given address, 0 if unset. Return type: BalanceResponse.",
       "type": "object",
       "required": [
-        "balance"
+        "contract_info"
       ],
       "properties": {
-        "balance": {
+        "contract_info": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "trade_info"
+      ],
+      "properties": {
+        "trade_info": {
           "type": "object",
           "required": [
-            "address"
+            "trade_id"
           ],
           "properties": {
-            "address": {
-              "type": "string"
+            "trade_id": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
             }
           }
         }
@@ -24,50 +37,27 @@
       "additionalProperties": false
     },
     {
-      "description": "Returns metadata on the contract - name, decimals, supply, etc. Return type: TokenInfoResponse.",
       "type": "object",
       "required": [
-        "token_info"
+        "counter_trade_info"
       ],
       "properties": {
-        "token_info": {
-          "type": "object"
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "description": "Only with \"mintable\" extension. Returns who can mint and the hard cap on maximum tokens after minting. Return type: MinterResponse.",
-      "type": "object",
-      "required": [
-        "minter"
-      ],
-      "properties": {
-        "minter": {
-          "type": "object"
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "description": "Only with \"allowance\" extension. Returns how much spender can use from owner account, 0 if unset. Return type: AllowanceResponse.",
-      "type": "object",
-      "required": [
-        "allowance"
-      ],
-      "properties": {
-        "allowance": {
+        "counter_trade_info": {
           "type": "object",
           "required": [
-            "owner",
-            "spender"
+            "counter_id",
+            "trade_id"
           ],
           "properties": {
-            "owner": {
-              "type": "string"
+            "counter_id": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
             },
-            "spender": {
-              "type": "string"
+            "trade_id": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
             }
           }
         }
@@ -75,17 +65,13 @@
       "additionalProperties": false
     },
     {
-      "description": "Only with \"enumerable\" extension (and \"allowances\") Returns all allowances this owner has approved. Supports pagination. Return type: AllAllowancesResponse.",
       "type": "object",
       "required": [
-        "all_allowances"
+        "get_all_trades"
       ],
       "properties": {
-        "all_allowances": {
+        "get_all_trades": {
           "type": "object",
-          "required": [
-            "owner"
-          ],
           "properties": {
             "limit": {
               "type": [
@@ -96,13 +82,27 @@
               "minimum": 0.0
             },
             "owner": {
-              "type": "string"
-            },
-            "start_after": {
               "type": [
                 "string",
                 "null"
               ]
+            },
+            "start_after": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint64",
+              "minimum": 0.0
+            },
+            "states": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string"
+              }
             }
           }
         }
@@ -110,13 +110,34 @@
       "additionalProperties": false
     },
     {
-      "description": "Only with \"enumerable\" extension Returns all accounts that have balances. Supports pagination. Return type: AllAccountsResponse.",
       "type": "object",
       "required": [
-        "all_accounts"
+        "get_counter_trades"
       ],
       "properties": {
-        "all_accounts": {
+        "get_counter_trades": {
+          "type": "object",
+          "required": [
+            "trade_id"
+          ],
+          "properties": {
+            "trade_id": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "get_all_counter_trades"
+      ],
+      "properties": {
+        "get_all_counter_trades": {
           "type": "object",
           "properties": {
             "limit": {
@@ -127,42 +148,56 @@
               "format": "uint32",
               "minimum": 0.0
             },
-            "start_after": {
+            "owner": {
               "type": [
                 "string",
                 "null"
               ]
+            },
+            "start_after": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/CounterTradeInfo"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "states": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string"
+              }
             }
           }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "description": "Only with \"marketing\" extension Returns more metadata on the contract to display in the client: - description, logo, project url, etc. Return type: MarketingInfoResponse",
-      "type": "object",
-      "required": [
-        "marketing_info"
-      ],
-      "properties": {
-        "marketing_info": {
-          "type": "object"
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "description": "Only with \"marketing\" extension Downloads the mbeded logo data (if stored on chain). Errors if no logo data ftored for this contract. Return type: DownloadLogoResponse.",
-      "type": "object",
-      "required": [
-        "download_logo"
-      ],
-      "properties": {
-        "download_logo": {
-          "type": "object"
         }
       },
       "additionalProperties": false
     }
-  ]
+  ],
+  "definitions": {
+    "CounterTradeInfo": {
+      "type": "object",
+      "required": [
+        "counter_id",
+        "trade_id"
+      ],
+      "properties": {
+        "counter_id": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "trade_id": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
+    }
+  }
 }

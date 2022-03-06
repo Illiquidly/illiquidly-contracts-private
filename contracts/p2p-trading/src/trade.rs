@@ -1,5 +1,5 @@
 use cosmwasm_std::{
-    BankMsg, Coin, DepsMut, Env, MessageInfo, Response, StdError, StdResult, Uint128,
+    Addr, BankMsg, Coin, DepsMut, Api, Env, MessageInfo, Response, StdError, StdResult, Uint128,
 };
 
 use std::collections::HashSet;
@@ -49,13 +49,7 @@ pub fn create_trade(
                 owner: info.sender.clone(),
                 // We add the funds sent along with this transaction
                 associated_funds: info.funds.clone(),
-                associated_assets: vec![],
-                state: TradeState::Created,
-                last_counter_id: None,
-                whitelisted_users: HashSet::new(),
-                comment: None,
-                accepted_info: None,
-                assets_withdrawn: false,
+                ..Default::default()
             },
         )?;
     }
@@ -130,8 +124,8 @@ pub fn add_token_to_trade(
     Ok(Response::new()
         .add_message(into_cosmos_msg(message, token.clone())?)
         .add_attribute("added token", "trade")
-        .add_attribute("token", token.to_string())
-        .add_attribute("amount", sent_amount.to_string()))
+        .add_attribute("token", token)
+        .add_attribute("amount", sent_amount))
 }
 
 pub fn add_nft_to_trade(
@@ -165,8 +159,18 @@ pub fn add_nft_to_trade(
     Ok(Response::new()
         .add_message(into_cosmos_msg(message, token.clone())?)
         .add_attribute("added token", "trade")
-        .add_attribute("nft", token.to_string())
+        .add_attribute("nft", token)
         .add_attribute("token_id", token_id))
+}
+
+pub fn validate_addresses(
+    api: &dyn Api,
+    whitelisted_users: &[String],
+)-> StdResult<Vec<Addr>>{
+    whitelisted_users
+    .iter()
+    .map(|x|api.addr_validate(x))
+    .collect()
 }
 
 pub fn add_whitelisted_users(
@@ -183,7 +187,9 @@ pub fn add_whitelisted_users(
         });
     }
 
-    let hash_set: HashSet<String> = HashSet::from_iter(whitelisted_users);
+    let hash_set: HashSet<Addr> = HashSet::from_iter(
+        validate_addresses(deps.api,&whitelisted_users)?
+    );
     trade_info.whitelisted_users = trade_info
         .whitelisted_users
         .union(&hash_set)
@@ -208,6 +214,9 @@ pub fn remove_whitelisted_users(
             state: trade_info.state,
         });
     }
+
+    let whitelisted_users = validate_addresses(deps.api,&whitelisted_users)?;
+
     for user in whitelisted_users {
         trade_info.whitelisted_users.remove(&user);
     }
@@ -215,6 +224,60 @@ pub fn remove_whitelisted_users(
     TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
 
     Ok(Response::new().add_attribute("removed", "whitelisted_users"))
+}
+
+pub fn add_nfts_wanted(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    trade_id: u64,
+    nfts_wanted: Vec<String>,
+) -> Result<Response, ContractError> {
+    let mut trade_info = is_trader(deps.storage, &info.sender, trade_id)?;
+    if trade_info.state != TradeState::Created {
+        return Err(ContractError::WrongTradeState {
+            state: trade_info.state,
+        });
+    }
+
+    let hash_set: HashSet<Addr> = HashSet::from_iter(
+        validate_addresses(deps.api,&nfts_wanted)?
+    );
+    trade_info.additionnal_info.nfts_wanted = trade_info
+        .additionnal_info
+        .nfts_wanted
+        .union(&hash_set)
+        .cloned()
+        .collect();
+
+    TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
+
+    Ok(Response::new().add_attribute("added", "nfts_wanted"))
+}
+
+pub fn remove_nfts_wanted(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    trade_id: u64,
+    nfts_wanted: Vec<String>,
+) -> Result<Response, ContractError> {
+    let mut trade_info = is_trader(deps.storage, &info.sender, trade_id)?;
+    if trade_info.state != TradeState::Created {
+        return Err(ContractError::WrongTradeState {
+            state: trade_info.state,
+        });
+    }
+
+    let nfts_wanted = validate_addresses(deps.api,&nfts_wanted)?;
+
+    for nft in nfts_wanted {
+        trade_info.additionnal_info.nfts_wanted.remove(&nft);
+    }
+
+    TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
+
+    Ok(Response::new().add_attribute("removed", "nfts_wanted"))
 }
 
 pub fn confirm_trade(
@@ -407,7 +470,7 @@ pub fn withdraw_trade_assets_while_creating(
     TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
 
     let res = create_withdraw_messages(
-        info.clone(),
+        &info.sender,
         &assets.iter().map(|x| x.1.clone()).collect(),
         &funds.iter().map(|x| x.1.clone()).collect(),
     )?;
@@ -416,8 +479,8 @@ pub fn withdraw_trade_assets_while_creating(
 
 pub fn are_assets_in_trade(
     trade_info: &TradeInfo,
-    assets: &Vec<(u16, AssetInfo)>,
-    funds: &Vec<(u16, Coin)>,
+    assets: &[(u16, AssetInfo)],
+    funds: &[(u16, Coin)],
 ) -> Result<(), ContractError> {
     // We first treat the assets
     for (position, asset) in assets {
@@ -518,8 +581,8 @@ pub fn are_assets_in_trade(
 
 pub fn try_withdraw_assets_unsafe(
     trade_info: &mut TradeInfo,
-    assets: &Vec<(u16, AssetInfo)>,
-    funds: &Vec<(u16, Coin)>,
+    assets: &[(u16, AssetInfo)],
+    funds: &[(u16, Coin)],
 ) -> Result<(), ContractError> {
     for (position, asset) in assets {
         let position: usize = (*position).into();
@@ -545,7 +608,7 @@ pub fn try_withdraw_assets_unsafe(
     // Then we remove empty funds from the trade
     trade_info.associated_assets.retain(|asset| match asset {
         AssetInfo::Cw20Coin(token) => token.amount != Uint128::zero(),
-        AssetInfo::Cw721Coin(nft) => nft.address != "",
+        AssetInfo::Cw721Coin(nft) => !nft.address.is_empty(),
     });
 
     // Then we take care of the wanted funds
@@ -568,7 +631,7 @@ pub fn try_withdraw_assets_unsafe(
 }
 
 pub fn create_withdraw_messages(
-    info: MessageInfo,
+    recipient: &Addr,
     assets: &Vec<AssetInfo>,
     funds: &Vec<Coin>,
 ) -> Result<Response, ContractError> {
@@ -579,14 +642,14 @@ pub fn create_withdraw_messages(
         match asset {
             AssetInfo::Cw20Coin(token) => {
                 let message = Cw20ExecuteMsg::Transfer {
-                    recipient: info.sender.to_string(),
+                    recipient: recipient.to_string(),
                     amount: token.amount,
                 };
                 res = res.add_message(into_cosmos_msg(message, token.address.clone())?);
             }
             AssetInfo::Cw721Coin(nft) => {
                 let message = Cw721ExecuteMsg::TransferNft {
-                    recipient: info.sender.to_string(),
+                    recipient: recipient.to_string(),
                     token_id: nft.token_id.clone(),
                 };
                 res = res.add_message(into_cosmos_msg(message, nft.address.clone())?);
@@ -597,8 +660,8 @@ pub fn create_withdraw_messages(
     // Then the funds
     if !funds.is_empty() {
         res = res.add_message(BankMsg::Send {
-            to_address: info.sender.to_string(),
-            amount: funds.iter().map(|x| x.clone()).collect(),
+            to_address: recipient.to_string(),
+            amount: funds.to_vec(),
         });
     };
 

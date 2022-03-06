@@ -33,7 +33,7 @@ pub fn review_counter_trade(
     }
 
     counter_info.state = TradeState::Created;
-    counter_info.comment = comment.clone();
+    counter_info.additionnal_info.comment = comment;
 
     // Then we need to change the trade status that we may have changed
     TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;

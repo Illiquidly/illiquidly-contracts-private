@@ -3,11 +3,21 @@
   "title": "InstantiateMsg",
   "type": "object",
   "required": [
+    "fee_contract",
     "name"
   ],
   "properties": {
+    "fee_contract": {
+      "type": "string"
+    },
     "name": {
       "type": "string"
+    },
+    "owner": {
+      "type": [
+        "string",
+        "null"
+      ]
     }
   }
 }

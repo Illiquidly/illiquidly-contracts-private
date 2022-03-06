@@ -1,5 +1,4 @@
 use cosmwasm_std::{Coin, DepsMut, Env, MessageInfo, Response, Uint128};
-use std::collections::HashSet;
 
 use cw20::Cw20ExecuteMsg;
 use cw721::Cw721ExecuteMsg;
@@ -24,7 +23,7 @@ pub fn suggest_counter_trade(
     // We start by verifying it is possible to suggest a counter trade to that trade
     // It also checks if the trade exists
     // And that the sender is whitelisted (in case the trade is private)
-    can_suggest_counter_trade(deps.storage, trade_id, &info.sender.clone().into())?;
+    can_suggest_counter_trade(deps.storage, trade_id, &info.sender)?;
 
     // We start by creating a new trade_id (simply incremented from the last id)
     let new_trade_info = TRADE_INFO.update(
@@ -45,7 +44,7 @@ pub fn suggest_counter_trade(
                     Ok(trade_info)
                 }
                 //TARPAULIN : Unreachable
-                None => return Err(ContractError::NotFoundInTradeInfo {}),
+                None => Err(ContractError::NotFoundInTradeInfo {}),
             }
         },
     )?;
@@ -66,13 +65,7 @@ pub fn suggest_counter_trade(
                 owner: info.sender.clone(),
                 // We add the funds sent along with this transaction
                 associated_funds: info.funds.clone(),
-                associated_assets: vec![],
-                state: TradeState::Created,
-                last_counter_id: None,
-                whitelisted_users: HashSet::new(),
-                comment: None,
-                accepted_info: None,
-                assets_withdrawn: false,
+                ..Default::default()
             },
         )?;
     }
@@ -159,8 +152,9 @@ pub fn add_token_to_counter_trade(
     Ok(Response::new()
         .add_message(into_cosmos_msg(message, token.clone())?)
         .add_attribute("added token", "counter")
-        .add_attribute("token", token.to_string())
-        .add_attribute("amount", sent_amount.to_string()))
+        .add_attribute("token", token)
+        .add_attribute("amount", sent_amount)
+    )
 }
 
 pub fn add_nft_to_counter_trade(
@@ -199,7 +193,7 @@ pub fn add_nft_to_counter_trade(
     Ok(Response::new()
         .add_message(into_cosmos_msg(message, token.clone())?)
         .add_attribute("added token", "counter")
-        .add_attribute("nft", token.to_string())
+        .add_attribute("nft", token)
         .add_attribute("token_id", token_id))
 }
 
@@ -309,7 +303,7 @@ pub fn withdraw_counter_trade_assets_while_creating(
     )?;
 
     let res = create_withdraw_messages(
-        info.clone(),
+        &info.sender,
         &assets.iter().map(|x| x.1.clone()).collect(),
         &funds.iter().map(|x| x.1.clone()).collect(),
     )?;

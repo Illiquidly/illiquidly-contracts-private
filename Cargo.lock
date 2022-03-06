@@ -275,6 +275,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "fee-contract"
+version = "0.9.0"
+dependencies = [
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-storage-plus",
+ "cw20",
+ "cw20-base",
+ "cw721",
+ "fee-contract-export",
+ "p2p-trading-export",
+ "schemars",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
+name = "fee-contract-export"
+version = "0.1.0"
+dependencies = [
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-storage-plus",
+ "cw20",
+ "cw20-base",
+ "cw721",
+ "schemars",
+ "serde",
+ "strum",
+ "strum_macros",
+ "thiserror",
+]
+
+[[package]]
 name = "ff"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
