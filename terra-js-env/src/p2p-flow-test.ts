@@ -24,6 +24,8 @@ async function main(){
 	let iliq_counter = counter.getContract(cw20_tokens[cw20_token_names[0]]);
 	let p2p = handler.getContract(env.contracts.p2p);
 	let p2p_counter = counter.getContract(env.contracts.p2p);
+	let fee = handler.getContract(env.contracts.fee);
+	let fee_counter = counter.getContract(env.contracts.fee);
 
 	let response: any; 
 
@@ -104,12 +106,12 @@ async function main(){
 
 
 	// We withdraw the funds
-	response = await p2p.execute.withdraw_pending_assets({
+	response = await fee.execute.pay_fee_and_withdraw({
 		trade_id: trade_id,
 	});
 
 	// We withdraw the funds
-	response = await p2p_counter.execute.withdraw_pending_assets({
+	response = await fee_counter.execute.pay_fee_and_withdraw({
 		trade_id: trade_id,
 	});
 
