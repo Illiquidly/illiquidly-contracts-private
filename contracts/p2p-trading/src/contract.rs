@@ -19,10 +19,10 @@ use crate::counter_trade::{
     withdraw_counter_trade_assets_while_creating,
 };
 use crate::trade::{
-    accept_trade, add_funds_to_trade, add_nft_to_trade, add_token_to_trade,  withdraw_trade_assets_while_creating,
-    cancel_trade, confirm_trade, create_trade, create_withdraw_messages, refuse_counter_trade,
-    add_whitelisted_users, remove_whitelisted_users,
-    add_nfts_wanted, remove_nfts_wanted,
+    accept_trade, add_funds_to_trade, add_nft_to_trade, add_nfts_wanted, add_token_to_trade,
+    add_whitelisted_users, cancel_trade, confirm_trade, create_trade, create_withdraw_messages,
+    refuse_counter_trade, remove_nfts_wanted, remove_whitelisted_users,
+    withdraw_trade_assets_while_creating,
 };
 
 use crate::messages::review_counter_trade;
@@ -127,12 +127,12 @@ pub fn execute(
 
         ExecuteMsg::AddNFTsWanted {
             trade_id,
-            nfts_wanted
+            nfts_wanted,
         } => add_nfts_wanted(deps, env, info, trade_id, nfts_wanted),
 
         ExecuteMsg::RemoveNFTsWanted {
             trade_id,
-            nfts_wanted
+            nfts_wanted,
         } => remove_nfts_wanted(deps, env, info, trade_id, nfts_wanted),
 
         ExecuteMsg::ConfirmTrade { trade_id } => confirm_trade(deps, env, info, trade_id),
@@ -391,12 +391,12 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::GetAllCounterTrades {
             start_after,
             limit,
-            filters
+            filters,
         } => to_binary(&query_all_counter_trades(
             deps,
             start_after,
             limit,
-            filters
+            filters,
         )?),
         QueryMsg::GetCounterTrades { trade_id } => {
             to_binary(&query_counter_trades(deps, trade_id)?)
@@ -404,7 +404,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::GetAllTrades {
             start_after,
             limit,
-            filters
+            filters,
         } => to_binary(&query_all_trades(deps, start_after, limit, filters)?),
     }
 }
@@ -431,12 +431,18 @@ pub mod tests {
         instantiate(deps, env, info, instantiate_msg).unwrap();
     }
 
-    fn set_fee_contract_helper(deps: DepsMut){
+    fn set_fee_contract_helper(deps: DepsMut) {
         let info = mock_info("creator", &[]);
         let env = mock_env();
-        execute(deps,env,info,ExecuteMsg::SetNewFeeContract {
-            fee_contract:"fee_contract".to_string()
-        }).unwrap();
+        execute(
+            deps,
+            env,
+            info,
+            ExecuteMsg::SetNewFeeContract {
+                fee_contract: "fee_contract".to_string(),
+            },
+        )
+        .unwrap();
     }
 
     #[test]
@@ -531,7 +537,7 @@ pub mod tests {
         trade_id: u64,
         confirm: Vec<String>,
     ) -> Result<Response, ContractError> {
-        let info = mock_info(trader,&[]);
+        let info = mock_info(trader, &[]);
         let env = mock_env();
 
         execute(
@@ -551,7 +557,7 @@ pub mod tests {
         trade_id: u64,
         confirm: Vec<String>,
     ) -> Result<Response, ContractError> {
-        let info = mock_info(trader,&[]);
+        let info = mock_info(trader, &[]);
         let env = mock_env();
 
         execute(
@@ -725,15 +731,14 @@ pub mod tests {
     }
 
     pub mod trade_tests {
-        use std::iter::FromIterator;
         use super::*;
         use crate::query::{query_counter_trades, TradeResponse};
-        use crate::trade::{validate_addresses};
-        use cosmwasm_std::{coin, SubMsg, Api};
-        use p2p_trading_export::state::CounterTradeInfo;
+        use crate::trade::validate_addresses;
+        use cosmwasm_std::{coin, Api, SubMsg};
         use p2p_trading_export::msg::QueryFilters;
+        use p2p_trading_export::state::CounterTradeInfo;
         use std::collections::HashSet;
-        
+        use std::iter::FromIterator;
 
         #[test]
         fn create_trade() {
@@ -776,20 +781,20 @@ pub mod tests {
                         TradeResponse {
                             trade_id: 1,
                             counter_id: None,
-                            trade_info: TradeInfo{
+                            trade_info: TradeInfo {
                                 owner: deps.api.addr_validate("creator").unwrap(),
                                 ..Default::default()
-                            }
+                            },
                         }
                     },
                     {
                         TradeResponse {
                             trade_id: 0,
                             counter_id: None,
-                            trade_info: TradeInfo{
+                            trade_info: TradeInfo {
                                 owner: deps.api.addr_validate("creator").unwrap(),
                                 ..Default::default()
-                            }
+                            },
                         }
                     }
                 ]
@@ -802,32 +807,34 @@ pub mod tests {
             init_helper(deps.as_mut());
 
             create_trade_helper(deps.as_mut(), "creator");
-            let res = add_nfts_wanted_helper(deps.as_mut(), "creator",0, vec!["nft1".to_string(),"nft2".to_string()]).unwrap();
+            let res = add_nfts_wanted_helper(
+                deps.as_mut(),
+                "creator",
+                0,
+                vec!["nft1".to_string(), "nft2".to_string()],
+            )
+            .unwrap();
             assert_eq!(
-                res.attributes, 
-                vec![
-                    Attribute::new("added", "nfts_wanted"),
-                ]
+                res.attributes,
+                vec![Attribute::new("added", "nfts_wanted"),]
             );
 
-            let trade = load_trade(&deps.storage,0).unwrap();
+            let trade = load_trade(&deps.storage, 0).unwrap();
             assert_eq!(
                 trade.additionnal_info.nfts_wanted,
-                HashSet::from_iter(vec![Addr::unchecked("nft1"),Addr::unchecked("nft2")])
+                HashSet::from_iter(vec![Addr::unchecked("nft1"), Addr::unchecked("nft2")])
             );
 
-            add_nfts_wanted_helper(deps.as_mut(), "creator",0, vec!["nft1".to_string()]).unwrap();
-            remove_nfts_wanted_helper(deps.as_mut(), "creator",0, vec!["nft1".to_string()]).unwrap();
+            add_nfts_wanted_helper(deps.as_mut(), "creator", 0, vec!["nft1".to_string()]).unwrap();
+            remove_nfts_wanted_helper(deps.as_mut(), "creator", 0, vec!["nft1".to_string()])
+                .unwrap();
 
-            let trade = load_trade(&deps.storage,0).unwrap();
+            let trade = load_trade(&deps.storage, 0).unwrap();
             assert_eq!(
                 trade.additionnal_info.nfts_wanted,
                 HashSet::from_iter(vec![Addr::unchecked("nft2")])
             );
-
         }
-
-
 
         #[test]
         fn create_multiple_trades_and_query() {
@@ -871,10 +878,10 @@ pub mod tests {
                 deps.as_ref(),
                 None,
                 None,
-                Some(QueryFilters{
+                Some(QueryFilters {
                     states: Some(vec![TradeState::Created.to_string()]),
                     ..Default::default()
-                })
+                }),
             )
             .unwrap();
 
@@ -885,20 +892,20 @@ pub mod tests {
                         TradeResponse {
                             trade_id: 1,
                             counter_id: None,
-                            trade_info: TradeInfo{
+                            trade_info: TradeInfo {
                                 owner: deps.api.addr_validate("creator2").unwrap(),
                                 ..Default::default()
-                            }
+                            },
                         }
                     },
                     {
                         TradeResponse {
                             trade_id: 0,
                             counter_id: None,
-                            trade_info: TradeInfo{
+                            trade_info: TradeInfo {
                                 owner: deps.api.addr_validate("creator").unwrap(),
                                 ..Default::default()
-                            }
+                            },
                         }
                     }
                 ]
@@ -909,10 +916,10 @@ pub mod tests {
                 deps.as_ref(),
                 Some(1),
                 None,
-                Some(QueryFilters{
+                Some(QueryFilters {
                     states: Some(vec![TradeState::Created.to_string()]),
                     ..Default::default()
-                })
+                }),
             )
             .unwrap();
 
@@ -922,10 +929,10 @@ pub mod tests {
                     TradeResponse {
                         trade_id: 0,
                         counter_id: None,
-                        trade_info: TradeInfo{
+                        trade_info: TradeInfo {
                             owner: deps.api.addr_validate("creator").unwrap(),
                             ..Default::default()
-                        }
+                        },
                     }
                 }]
             );
@@ -935,11 +942,11 @@ pub mod tests {
                 deps.as_ref(),
                 None,
                 None,
-                Some(QueryFilters{
+                Some(QueryFilters {
                     states: Some(vec![TradeState::Created.to_string()]),
                     owner: Some("creator2".to_string()),
                     ..Default::default()
-                })
+                }),
             )
             .unwrap();
 
@@ -948,7 +955,7 @@ pub mod tests {
                 vec![TradeResponse {
                     trade_id: 1,
                     counter_id: None,
-                    trade_info: TradeInfo{
+                    trade_info: TradeInfo {
                         owner: deps.api.addr_validate("creator2").unwrap(),
                         ..Default::default()
                     }
@@ -960,10 +967,10 @@ pub mod tests {
                 deps.as_ref(),
                 None,
                 None,
-                Some(QueryFilters{
+                Some(QueryFilters {
                     owner: Some("creator2".to_string()),
                     ..Default::default()
-                })
+                }),
             )
             .unwrap();
 
@@ -973,7 +980,7 @@ pub mod tests {
                     TradeResponse {
                         trade_id: 2,
                         counter_id: None,
-                        trade_info: TradeInfo{
+                        trade_info: TradeInfo {
                             owner: deps.api.addr_validate("creator2").unwrap(),
                             state: TradeState::Published,
                             ..Default::default()
@@ -982,7 +989,7 @@ pub mod tests {
                     TradeResponse {
                         trade_id: 1,
                         counter_id: None,
-                        trade_info: TradeInfo{
+                        trade_info: TradeInfo {
                             owner: deps.api.addr_validate("creator2").unwrap(),
                             ..Default::default()
                         }
@@ -995,10 +1002,10 @@ pub mod tests {
                 deps.as_ref(),
                 None,
                 None,
-                Some(QueryFilters{
+                Some(QueryFilters {
                     states: Some(vec![TradeState::Accepted.to_string()]),
                     ..Default::default()
-                })
+                }),
             )
             .unwrap();
 
@@ -1009,11 +1016,11 @@ pub mod tests {
                 deps.as_ref(),
                 None,
                 None,
-                Some(QueryFilters{
+                Some(QueryFilters {
                     states: Some(vec![TradeState::Accepted.to_string()]),
                     owner: Some("creator2".to_string()),
                     ..Default::default()
-                })
+                }),
             )
             .unwrap();
             assert_eq!(res.trades, vec![]);
@@ -1135,13 +1142,12 @@ pub mod tests {
                 deps.as_ref(),
                 None,
                 None,
-                Some(QueryFilters{
+                Some(QueryFilters {
                     contains_token: Some("other_token".to_string()),
                     ..Default::default()
-                })
+                }),
             )
             .unwrap();
-
 
             assert_eq!(
                 res.trades,
@@ -1149,21 +1155,21 @@ pub mod tests {
                     TradeResponse {
                         trade_id: 0,
                         counter_id: None,
-                        trade_info: TradeInfo{
+                        trade_info: TradeInfo {
                             owner: deps.api.addr_validate("creator").unwrap(),
                             state: TradeState::Created,
-                            associated_assets:vec![
+                            associated_assets: vec![
                                 AssetInfo::Cw20Coin(Cw20Coin {
                                     amount: Uint128::from(200u64),
-                                    address: "token".to_string()
+                                    address: "token".to_string(),
                                 }),
                                 AssetInfo::Cw20Coin(Cw20Coin {
                                     amount: Uint128::from(100u64),
-                                    address: "other_token".to_string()
-                                })
+                                    address: "other_token".to_string(),
+                                }),
                             ],
                             ..Default::default()
-                        }
+                        },
                     }
                 }]
             );
@@ -1173,18 +1179,14 @@ pub mod tests {
                 deps.as_ref(),
                 None,
                 None,
-                Some(QueryFilters{
+                Some(QueryFilters {
                     contains_token: Some("bad_token".to_string()),
                     ..Default::default()
-                })
+                }),
             )
-            .unwrap(); 
-            assert_eq!(
-                res.trades,
-                vec![]
-            );
+            .unwrap();
+            assert_eq!(res.trades, vec![]);
 
-            
             // This triggers an error, the creator is not the same as the sender
             let err =
                 add_cw20_to_trade_helper(deps.as_mut(), "token", "bad_person", 0).unwrap_err();
@@ -1559,11 +1561,11 @@ pub mod tests {
                 deps.as_ref(),
                 None,
                 None,
-                Some(QueryFilters{
+                Some(QueryFilters {
                     states: Some(vec![TradeState::Published.to_string()]),
                     owner: Some("creator".to_string()),
                     ..Default::default()
-                })
+                }),
             )
             .unwrap();
 
@@ -1573,11 +1575,11 @@ pub mod tests {
                     TradeResponse {
                         trade_id: 0,
                         counter_id: None,
-                        trade_info: TradeInfo{
+                        trade_info: TradeInfo {
                             owner: deps.api.addr_validate("creator").unwrap(),
                             state: TradeState::Published,
                             ..Default::default()
-                        }
+                        },
                     }
                 }]
             );
@@ -1688,11 +1690,11 @@ pub mod tests {
                 deps.as_ref(),
                 None,
                 None,
-                Some(QueryFilters{
+                Some(QueryFilters {
                     states: Some(vec![TradeState::Accepted.to_string()]),
                     owner: Some("creator".to_string()),
                     ..Default::default()
-                })
+                }),
             )
             .unwrap();
 
@@ -1702,7 +1704,7 @@ pub mod tests {
                     TradeResponse {
                         trade_id: 0,
                         counter_id: None,
-                        trade_info: TradeInfo{
+                        trade_info: TradeInfo {
                             owner: deps.api.addr_validate("creator").unwrap(),
                             state: TradeState::Accepted,
                             last_counter_id: Some(0),
@@ -1711,7 +1713,7 @@ pub mod tests {
                                 counter_id: 0,
                             }),
                             ..Default::default()
-                        }
+                        },
                     }
                 }]
             );
@@ -1725,11 +1727,11 @@ pub mod tests {
                     TradeResponse {
                         counter_id: Some(0),
                         trade_id: 0,
-                        trade_info: TradeInfo{
+                        trade_info: TradeInfo {
                             owner: deps.api.addr_validate("counterer").unwrap(),
                             state: TradeState::Accepted,
                             ..Default::default()
-                        }
+                        },
                     }
                 }]
             );
@@ -1743,11 +1745,11 @@ pub mod tests {
                     TradeResponse {
                         counter_id: Some(0),
                         trade_id: 0,
-                        trade_info: TradeInfo{
+                        trade_info: TradeInfo {
                             owner: deps.api.addr_validate("counterer").unwrap(),
                             state: TradeState::Accepted,
                             ..Default::default()
-                        }
+                        },
                     }
                 }]
             );
@@ -1794,13 +1796,13 @@ pub mod tests {
                 deps.as_ref(),
                 None,
                 None,
-                Some(QueryFilters{
+                Some(QueryFilters {
                     states: Some(vec![
                         TradeState::Accepted.to_string(),
                         TradeState::Published.to_string(),
                     ]),
                     ..Default::default()
-                })
+                }),
             )
             .unwrap();
 
@@ -1811,22 +1813,22 @@ pub mod tests {
                         TradeResponse {
                             counter_id: Some(1),
                             trade_id: 0,
-                            trade_info: TradeInfo{
+                            trade_info: TradeInfo {
                                 owner: deps.api.addr_validate("counterer").unwrap(),
                                 state: TradeState::Published,
                                 ..Default::default()
-                            }
+                            },
                         }
                     },
                     {
                         TradeResponse {
                             counter_id: Some(0),
                             trade_id: 0,
-                            trade_info: TradeInfo{
+                            trade_info: TradeInfo {
                                 owner: deps.api.addr_validate("counterer").unwrap(),
                                 state: TradeState::Accepted,
                                 ..Default::default()
-                            }
+                            },
                         }
                     }
                 ]
@@ -1840,13 +1842,13 @@ pub mod tests {
                     counter_id: 1,
                 }),
                 None,
-                Some(QueryFilters{
+                Some(QueryFilters {
                     states: Some(vec![
                         TradeState::Accepted.to_string(),
                         TradeState::Published.to_string(),
                     ]),
                     ..Default::default()
-                })
+                }),
             )
             .unwrap();
 
@@ -1856,11 +1858,11 @@ pub mod tests {
                     TradeResponse {
                         counter_id: Some(0),
                         trade_id: 0,
-                        trade_info: TradeInfo{
+                        trade_info: TradeInfo {
                             owner: deps.api.addr_validate("counterer").unwrap(),
                             state: TradeState::Accepted,
                             ..Default::default()
-                        }
+                        },
                     }
                 }]
             );
@@ -1903,11 +1905,11 @@ pub mod tests {
                     TradeResponse {
                         counter_id: Some(0),
                         trade_id: 0,
-                        trade_info: TradeInfo{
+                        trade_info: TradeInfo {
                             owner: deps.api.addr_validate("counterer").unwrap(),
                             state: TradeState::Published,
                             ..Default::default()
-                        }
+                        },
                     }
                 }]
             );
@@ -1953,10 +1955,10 @@ pub mod tests {
                     counter_id: 1,
                 }),
                 None,
-                Some(QueryFilters{
+                Some(QueryFilters {
                     owner: Some("counterer2".to_string()),
                     ..Default::default()
-                })
+                }),
             )
             .unwrap();
 
@@ -1965,7 +1967,7 @@ pub mod tests {
                 vec![TradeResponse {
                     trade_id: 0,
                     counter_id: Some(0),
-                    trade_info: TradeInfo{
+                    trade_info: TradeInfo {
                         owner: deps.api.addr_validate("counterer2").unwrap(),
                         state: TradeState::Created,
                         ..Default::default()
@@ -1981,7 +1983,7 @@ pub mod tests {
                     counter_id: 0,
                 }),
                 None,
-                None
+                None,
             )
             .unwrap();
 
@@ -1992,10 +1994,10 @@ pub mod tests {
                 deps.as_ref(),
                 None,
                 None,
-                Some(QueryFilters{
+                Some(QueryFilters {
                     owner: Some("counterer5".to_string()),
                     ..Default::default()
-                })
+                }),
             )
             .unwrap();
 
@@ -2010,7 +2012,7 @@ pub mod tests {
                     TradeResponse {
                         trade_id: 4,
                         counter_id: Some(1),
-                        trade_info: TradeInfo{
+                        trade_info: TradeInfo {
                             owner: deps.api.addr_validate("counterer2").unwrap(),
                             state: TradeState::Created,
                             ..Default::default()
@@ -2019,7 +2021,7 @@ pub mod tests {
                     TradeResponse {
                         trade_id: 4,
                         counter_id: Some(0),
-                        trade_info: TradeInfo{
+                        trade_info: TradeInfo {
                             owner: deps.api.addr_validate("counterer").unwrap(),
                             ..Default::default()
                         }
@@ -2353,7 +2355,8 @@ pub mod tests {
             whitelisted_users.push("whitelist".to_string());
             whitelisted_users.push("whitelist-1".to_string());
             whitelisted_users.push("whitelist-2".to_string());
-            let hash_set = HashSet::from_iter(validate_addresses(&deps.api, &whitelisted_users).unwrap());
+            let hash_set =
+                HashSet::from_iter(validate_addresses(&deps.api, &whitelisted_users).unwrap());
             assert_eq!(info.whitelisted_users, hash_set);
         }
     }

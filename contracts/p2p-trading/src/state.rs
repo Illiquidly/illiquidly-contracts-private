@@ -82,10 +82,8 @@ pub fn add_cw721_coin(
     move |d: Option<TradeInfo>| -> StdResult<TradeInfo> {
         match d {
             Some(mut one) => {
-                one.associated_assets.push(AssetInfo::Cw721Coin(Cw721Coin {
-                    address,
-                    token_id,
-                }));
+                one.associated_assets
+                    .push(AssetInfo::Cw721Coin(Cw721Coin { address, token_id }));
                 Ok(one)
             }
             //TARPAULIN : Unreachable in current code state
@@ -107,13 +105,13 @@ pub fn is_owner(storage: &dyn Storage, sender: Addr) -> Result<ContractInfo, Con
 
 pub fn is_fee_contract(storage: &dyn Storage, sender: Addr) -> Result<(), ContractError> {
     let contract_info = CONTRACT_INFO.load(storage)?;
-    if let Some(fee_contract) = contract_info.fee_contract{
+    if let Some(fee_contract) = contract_info.fee_contract {
         if sender == fee_contract {
             Ok(())
         } else {
             Err(ContractError::Unauthorized {})
         }
-    }else{
+    } else {
         Err(ContractError::Unauthorized {})
     }
 }

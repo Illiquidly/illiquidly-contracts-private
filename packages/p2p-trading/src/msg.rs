@@ -2,6 +2,7 @@ use crate::state::{AssetInfo, CounterTradeInfo};
 use cosmwasm_std::{to_binary, Binary, Coin, CosmosMsg, StdError, StdResult, Uint128, WasmMsg};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+
 fn is_valid_name(name: &str) -> bool {
     let bytes = name.as_bytes();
     if bytes.len() < 3 || bytes.len() > 50 {
@@ -162,28 +163,14 @@ pub enum ExecuteMsg {
     },
 }
 
-
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema, Default)]
 #[serde(rename_all = "snake_case")]
-pub struct QueryFilters{
+pub struct QueryFilters {
     pub states: Option<Vec<String>>,
     pub owner: Option<String>,
     pub whitelisted_user: Option<String>,
     pub contains_token: Option<String>,
-    pub wanted_nft: Option<String>
-}
-
-impl Default for QueryFilters{
-    fn default() -> Self{
-        Self{
-            states: None,
-            owner: None,
-            whitelisted_user: None,
-            contains_token: None,
-            wanted_nft: None
-        }
-    }
+    pub wanted_nft: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -200,7 +187,7 @@ pub enum QueryMsg {
     GetAllTrades {
         start_after: Option<u64>,
         limit: Option<u32>,
-        filters: Option<QueryFilters>
+        filters: Option<QueryFilters>,
     },
     GetCounterTrades {
         trade_id: u64,
@@ -208,6 +195,6 @@ pub enum QueryMsg {
     GetAllCounterTrades {
         start_after: Option<CounterTradeInfo>,
         limit: Option<u32>,
-        filters: Option<QueryFilters>
+        filters: Option<QueryFilters>,
     },
 }

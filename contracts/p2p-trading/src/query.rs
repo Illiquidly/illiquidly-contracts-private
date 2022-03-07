@@ -1,6 +1,6 @@
 use cosmwasm_std::{Api, Pair};
 #[cfg(not(feature = "library"))]
-use cosmwasm_std::{ Deps, Order, StdResult};
+use cosmwasm_std::{Deps, Order, StdResult};
 
 use cw_storage_plus::{Bound, PrimaryKey, U64Key};
 use schemars::JsonSchema;
@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use std::convert::TryInto;
 
 use crate::state::{CONTRACT_INFO, COUNTER_TRADE_INFO, TRADE_INFO};
+use p2p_trading_export::msg::QueryFilters;
 use p2p_trading_export::state::{AssetInfo, ContractInfo, CounterTradeInfo, TradeInfo};
-use p2p_trading_export::msg::{QueryFilters};
 
 // settings for pagination
 const MAX_LIMIT: u32 = 30;
@@ -19,7 +19,7 @@ const DEFAULT_LIMIT: u32 = 10;
 pub struct TradeResponse {
     pub trade_id: u64,
     pub counter_id: Option<u64>,
-    pub trade_info: TradeInfo
+    pub trade_info: TradeInfo,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug, Default)]
@@ -43,7 +43,7 @@ fn parse_trades(_: &dyn Api, item: StdResult<Pair<TradeInfo>>) -> StdResult<Trad
         TradeResponse {
             trade_id: u64::from_be_bytes(trade_id),
             counter_id: None,
-            trade_info:trade
+            trade_info: trade,
         }
     })
 }
@@ -51,50 +51,42 @@ fn parse_trades(_: &dyn Api, item: StdResult<Pair<TradeInfo>>) -> StdResult<Trad
 pub fn trade_filter(
     api: &dyn Api,
     trade_info: &StdResult<TradeResponse>,
-    filters: &Option<QueryFilters>
+    filters: &Option<QueryFilters>,
 ) -> bool {
-
-    if let Some(filters) = filters{
-
+    if let Some(filters) = filters {
         let trade = trade_info.as_ref().unwrap();
 
-        (
-            match &filters.states {
-                Some(state) => state.contains(&trade.trade_info.state.to_string()),
-                None => true,
-            } 
-            && 
-            match &filters.owner {
-                Some(owner) => trade.trade_info.owner == owner.clone(),
-                None => true,
-            }
-            && 
-            match &filters.whitelisted_user {
-                Some(whitelisted_user) 
-                    => trade.trade_info.whitelisted_users.contains(&api.addr_validate(whitelisted_user).unwrap()),
-                None => true,
-            }
-            && 
-            match &filters.wanted_nft {
-                Some(wanted_nft) 
-                    => trade.trade_info.additionnal_info.nfts_wanted.contains(&api.addr_validate(wanted_nft).unwrap()),
-                None => true,
-            }
-            && 
-            match &filters.contains_token {
-                Some(token) 
-                    => !trade.trade_info.associated_assets
-                    .iter()
-                    .filter(|asset| match asset{
-                        AssetInfo::Cw20Coin(x) => x.address == token.as_ref(),
-                        AssetInfo::Cw721Coin(x) => x.address == token.as_ref(),
-                    })
-                    .collect::<Vec<&AssetInfo>>()
-                    .is_empty(),
-                None => true,
-            }
-        )
-    }else{
+        (match &filters.states {
+            Some(state) => state.contains(&trade.trade_info.state.to_string()),
+            None => true,
+        } && match &filters.owner {
+            Some(owner) => trade.trade_info.owner == owner.clone(),
+            None => true,
+        } && match &filters.whitelisted_user {
+            Some(whitelisted_user) => trade
+                .trade_info
+                .whitelisted_users
+                .contains(&api.addr_validate(whitelisted_user).unwrap()),
+            None => true,
+        } && match &filters.wanted_nft {
+            Some(wanted_nft) => trade
+                .trade_info
+                .additionnal_info
+                .nfts_wanted
+                .contains(&api.addr_validate(wanted_nft).unwrap()),
+            None => true,
+        } && match &filters.contains_token {
+            Some(token) => trade
+                .trade_info
+                .associated_assets
+                .iter()
+                .any(|asset| match asset {
+                    AssetInfo::Cw20Coin(x) => x.address == token.as_ref(),
+                    AssetInfo::Cw721Coin(x) => x.address == token.as_ref(),
+                }),
+            None => true,
+        })
+    } else {
         true
     }
 }
@@ -103,7 +95,7 @@ pub fn query_all_trades(
     deps: Deps,
     start_after: Option<u64>,
     limit: Option<u32>,
-    filters: Option<QueryFilters>
+    filters: Option<QueryFilters>,
 ) -> StdResult<AllTradesResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
     let start = start_after.map(|s| Bound::Exclusive(U64Key::new(s).joined_key()));
@@ -111,7 +103,7 @@ pub fn query_all_trades(
     let trades: StdResult<Vec<TradeResponse>> = TRADE_INFO
         .range(deps.storage, None, start, Order::Descending)
         .map(|kv_item| parse_trades(deps.api, kv_item))
-        .filter(|response| trade_filter(deps.api,response, &filters))
+        .filter(|response| trade_filter(deps.api, response, &filters))
         .take(limit)
         .collect();
 
@@ -132,7 +124,7 @@ fn parse_all_counter_trades(
         TradeResponse {
             trade_id: u64::from_be_bytes(trade_id),
             counter_id: Some(u64::from_be_bytes(counter_id)),
-            trade_info: trade
+            trade_info: trade,
         }
     })
 }
@@ -141,7 +133,7 @@ pub fn query_all_counter_trades(
     deps: Deps,
     start_after: Option<CounterTradeInfo>,
     limit: Option<u32>,
-    filters: Option<QueryFilters>
+    filters: Option<QueryFilters>,
 ) -> StdResult<AllCounterTradesResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
 
@@ -174,7 +166,7 @@ fn parse_counter_trades(
         TradeResponse {
             trade_id: u64::from_be_bytes(trade_id),
             counter_id: Some(u64::from_be_bytes(counter_id)),
-            trade_info: trade
+            trade_info: trade,
         }
     })
 }

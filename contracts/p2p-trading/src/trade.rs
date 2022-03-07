@@ -1,5 +1,5 @@
 use cosmwasm_std::{
-    Addr, BankMsg, Coin, DepsMut, Api, Env, MessageInfo, Response, StdError, StdResult, Uint128,
+    Addr, Api, BankMsg, Coin, DepsMut, Env, MessageInfo, Response, StdError, StdResult, Uint128,
 };
 
 use std::collections::HashSet;
@@ -163,14 +163,11 @@ pub fn add_nft_to_trade(
         .add_attribute("token_id", token_id))
 }
 
-pub fn validate_addresses(
-    api: &dyn Api,
-    whitelisted_users: &[String],
-)-> StdResult<Vec<Addr>>{
+pub fn validate_addresses(api: &dyn Api, whitelisted_users: &[String]) -> StdResult<Vec<Addr>> {
     whitelisted_users
-    .iter()
-    .map(|x|api.addr_validate(x))
-    .collect()
+        .iter()
+        .map(|x| api.addr_validate(x))
+        .collect()
 }
 
 pub fn add_whitelisted_users(
@@ -187,9 +184,8 @@ pub fn add_whitelisted_users(
         });
     }
 
-    let hash_set: HashSet<Addr> = HashSet::from_iter(
-        validate_addresses(deps.api,&whitelisted_users)?
-    );
+    let hash_set: HashSet<Addr> =
+        HashSet::from_iter(validate_addresses(deps.api, &whitelisted_users)?);
     trade_info.whitelisted_users = trade_info
         .whitelisted_users
         .union(&hash_set)
@@ -215,7 +211,7 @@ pub fn remove_whitelisted_users(
         });
     }
 
-    let whitelisted_users = validate_addresses(deps.api,&whitelisted_users)?;
+    let whitelisted_users = validate_addresses(deps.api, &whitelisted_users)?;
 
     for user in whitelisted_users {
         trade_info.whitelisted_users.remove(&user);
@@ -240,9 +236,7 @@ pub fn add_nfts_wanted(
         });
     }
 
-    let hash_set: HashSet<Addr> = HashSet::from_iter(
-        validate_addresses(deps.api,&nfts_wanted)?
-    );
+    let hash_set: HashSet<Addr> = HashSet::from_iter(validate_addresses(deps.api, &nfts_wanted)?);
     trade_info.additionnal_info.nfts_wanted = trade_info
         .additionnal_info
         .nfts_wanted
@@ -269,7 +263,7 @@ pub fn remove_nfts_wanted(
         });
     }
 
-    let nfts_wanted = validate_addresses(deps.api,&nfts_wanted)?;
+    let nfts_wanted = validate_addresses(deps.api, &nfts_wanted)?;
 
     for nft in nfts_wanted {
         trade_info.additionnal_info.nfts_wanted.remove(&nft);

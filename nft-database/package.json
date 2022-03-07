@@ -1,0 +1,30 @@
+{
+  "name": "nft-database",
+  "version": "1.0.0",
+  "description": "Database Interface to query nfts owned by an address",
+  "main": "index.js",
+  "scripts": {
+    "build:dev": "tsc --watch --preserveWatchOutput",
+    "test": "node dist/index.js",
+    "base": "node dist/database.js",
+    "dev": "nodemon --watch src -e ts,ejs --exec npm run base",
+    "prettier-format": "prettier --config .prettierrc 'src/**/*.ts' --write"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@terra-money/terra.js": "^3.0.8",
+    "axios": "^0.26.0",
+    "axios-retry": "^3.2.4",
+    "express": "^4.17.3",
+    "ipfs": "^0.62.1",
+    "nodemon": "^2.0.15",
+    "orbit-db": "^0.28.3"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.13",
+    "@types/node": "^16.11.26",
+    "prettier": "^2.5.1",
+    "typescript": "^4.6.2"
+  }
+}

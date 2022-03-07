@@ -153,8 +153,7 @@ pub fn add_token_to_counter_trade(
         .add_message(into_cosmos_msg(message, token.clone())?)
         .add_attribute("added token", "counter")
         .add_attribute("token", token)
-        .add_attribute("amount", sent_amount)
-    )
+        .add_attribute("amount", sent_amount))
 }
 
 pub fn add_nft_to_counter_trade(

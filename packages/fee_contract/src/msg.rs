@@ -29,7 +29,7 @@ pub fn into_cosmos_msg<M: Serialize, T: Into<String>>(
 #[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
 pub struct InstantiateMsg {
     pub name: String,
-    pub p2p_contract: String
+    pub p2p_contract: String,
 }
 
 impl InstantiateMsg {
@@ -47,21 +47,19 @@ impl InstantiateMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
-    PayFeeAndWithdraw {
-        trade_id: u64,
-    },
+    PayFeeAndWithdraw { trade_id: u64 },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
-    Fee{
+    Fee {
         trade_id: u64,
-        counter_id: Option<u64>
-    }
+        counter_id: Option<u64>,
+    },
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
-pub struct FeeResponse{
-    pub fee: String
+pub struct FeeResponse {
+    pub fee: String,
 }

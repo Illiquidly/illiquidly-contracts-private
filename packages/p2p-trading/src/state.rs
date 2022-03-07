@@ -54,20 +54,11 @@ pub struct CounterTradeInfo {
     pub counter_id: u64,
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug, Default)]
 #[serde(rename_all = "snake_case")]
 pub struct AdditionnalTradeInfo {
     pub comment: Option<String>,
     pub nfts_wanted: HashSet<Addr>,
-}
-
-impl Default for AdditionnalTradeInfo{
-    fn default() -> Self{
-        Self{
-            comment: None,
-            nfts_wanted: HashSet::new()
-        }
-    }
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -79,14 +70,14 @@ pub struct TradeInfo {
     pub state: TradeState,
     pub last_counter_id: Option<u64>,
     pub whitelisted_users: HashSet<Addr>,
-    pub additionnal_info : AdditionnalTradeInfo,
+    pub additionnal_info: AdditionnalTradeInfo,
     pub accepted_info: Option<CounterTradeInfo>,
     pub assets_withdrawn: bool,
 }
 
-impl Default for TradeInfo{
-    fn default() -> Self{
-        Self{
+impl Default for TradeInfo {
+    fn default() -> Self {
+        Self {
             owner: Addr::unchecked(""),
             associated_assets: vec![],
             associated_funds: vec![],

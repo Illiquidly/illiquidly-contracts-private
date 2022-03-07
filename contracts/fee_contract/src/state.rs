@@ -1,4 +1,4 @@
-use cw_storage_plus::{Item};
+use cw_storage_plus::Item;
 
 use fee_contract_export::state::ContractInfo;
 
