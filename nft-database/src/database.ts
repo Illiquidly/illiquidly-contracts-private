@@ -24,7 +24,8 @@ function default_api_structure() {
 async function updateAddress(
   db: any,
   address: string,
-  currentData: any = undefined
+  currentData: any = undefined,
+  lastBlock: number | undefined = undefined
 ) {
   let blockHeight = await getBlockHeight();
 
@@ -35,8 +36,11 @@ async function updateAddress(
   if (!currentData) {
     currentData = default_api_structure();
   }
-
-  let new_nfts = await getNewDatabaseInfo(address, currentData.lastBlock);
+  if(lastBlock == undefined){
+    lastBlock = currentData.lastBlock
+  }
+  console.log(lastBlock);
+  let new_nfts = await getNewDatabaseInfo(address, lastBlock);
   if (new_nfts.size) {
     let nfts = new Set(currentData.nfts);
     new_nfts.forEach((nft) => nfts.add(nft));
@@ -84,12 +88,11 @@ async function main() {
 
   app.get('/nfts/update-query/:address', async (req: any, res: any) => {
     let currentData = await db.get(address);
-    if (currentData) {
-      res.status(200).send(currentData);
-    } else {
-      console.log('No New nfts');
-      res.status(200).send(await updateAddress(db, address, currentData));
-    }
+    res.status(200).send(await updateAddress(db, address, currentData));
+  });
+
+  app.get('/nfts/force-update/:address', async (req: any, res: any) => {
+    res.status(200).send(await updateAddress(db, address, {},0));
   });
 }
 main();

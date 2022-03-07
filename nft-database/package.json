@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "build:dev": "tsc --watch --preserveWatchOutput",
+    "build": "tsc --preserveWatchOutput",
     "test": "node dist/index.js",
     "base": "node dist/database.js",
     "dev": "nodemon --watch src -e ts,ejs --exec npm run base",

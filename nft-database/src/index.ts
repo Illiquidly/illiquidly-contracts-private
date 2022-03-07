@@ -4,6 +4,32 @@ const { LCDClient, MnemonicKey } = require('@terra-money/terra.js');
 const axios = require('axios');
 let fcdUrl = 'https://fcd.terra.dev';
 
+
+function addFromWasmEvents(tx: any, nftsInteracted: any){
+	for(let log of tx.logs){
+		for(let event of log.events){
+			if(event.type == "wasm"){
+				let nft_transfered = false;
+				let contract;
+				// We check the tx transfered an NFT
+				for(let attribute of event.attributes){
+					if(attribute.value == "transfer_nft" || attribute.value == "mint"){
+						nft_transfered = true;
+					}
+					if(attribute.key == "contract_address"){
+						contract = attribute.value;
+					}
+				}
+				if(nft_transfered){
+					nftsInteracted.add(contract);
+				}
+			}
+		}
+	}
+}
+
+
+
 function getNftsFromTxList(
   tx_data: any,
   min_block_height: number = 0
@@ -12,6 +38,7 @@ function getNftsFromTxList(
   let min_block_height_seen: number = min_block_height;
   let last_tx_id_seen = 0;
   for (let tx of tx_data.data.txs) {
+  	addFromWasmEvents(tx, nftsInteracted);
     if (min_block_height_seen == 0 || tx.height < min_block_height_seen) {
       min_block_height_seen = tx.height;
     }
@@ -90,3 +117,14 @@ export async function getNewDatabaseInfo(
   const terra = new LCDClient(env['chain']);
   return await getNewInteractedNfts(address, blockHeight);
 }
+
+
+async function main(){
+
+	let address = 'terra1pa9tyjtxv0qd5pgqyu6ugtedds0d42wt5rxk4w';
+	let response = await getNewDatabaseInfo(address);
+	console.log(response);
+
+}
+
+main()
