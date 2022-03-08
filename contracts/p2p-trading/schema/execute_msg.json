@@ -37,12 +37,6 @@
             "trade_id"
           ],
           "properties": {
-            "confirm": {
-              "type": [
-                "boolean",
-                "null"
-              ]
-            },
             "trade_id": {
               "type": "integer",
               "format": "uint64",
@@ -248,6 +242,90 @@
       "additionalProperties": false
     },
     {
+      "type": "object",
+      "required": [
+        "set_comment"
+      ],
+      "properties": {
+        "set_comment": {
+          "type": "object",
+          "required": [
+            "comment",
+            "trade_id"
+          ],
+          "properties": {
+            "comment": {
+              "type": "string"
+            },
+            "trade_id": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "add_n_f_ts_wanted"
+      ],
+      "properties": {
+        "add_n_f_ts_wanted": {
+          "type": "object",
+          "required": [
+            "nfts_wanted",
+            "trade_id"
+          ],
+          "properties": {
+            "nfts_wanted": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "trade_id": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "remove_n_f_ts_wanted"
+      ],
+      "properties": {
+        "remove_n_f_ts_wanted": {
+          "type": "object",
+          "required": [
+            "nfts_wanted",
+            "trade_id"
+          ],
+          "properties": {
+            "nfts_wanted": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "trade_id": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
       "description": "Is used by the Trader to confirm they completed their end of the trade.",
       "type": "object",
       "required": [
@@ -283,12 +361,6 @@
             "trade_id"
           ],
           "properties": {
-            "confirm": {
-              "type": [
-                "boolean",
-                "null"
-              ]
-            },
             "trade_id": {
               "type": "integer",
               "format": "uint64",
@@ -312,12 +384,6 @@
             "trade_id"
           ],
           "properties": {
-            "confirm": {
-              "type": [
-                "boolean",
-                "null"
-              ]
-            },
             "counter_id": {
               "type": "integer",
               "format": "uint64",

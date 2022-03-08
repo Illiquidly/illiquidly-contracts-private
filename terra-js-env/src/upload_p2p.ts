@@ -7,7 +7,7 @@ async function main(){
 
 	// Getting a handler for the current address
 	let handler = new Address(env["mnemonics"][0]);
-
+	console.log(handler.getAddress());
 	// Uploading the contract code	
 	let p2p_codeId: string[] = await handler.uploadContract("../artifacts/p2p_trading.wasm");
 	let fee_codeId: string[] = await handler.uploadContract("../artifacts/fee_contract.wasm");

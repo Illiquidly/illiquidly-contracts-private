@@ -15,10 +15,9 @@ use crate::trade::{are_assets_in_trade, create_withdraw_messages, try_withdraw_a
 
 pub fn suggest_counter_trade(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     info: MessageInfo,
     trade_id: u64,
-    confirm: Option<bool>,
 ) -> Result<Response, ContractError> {
     // We start by verifying it is possible to suggest a counter trade to that trade
     // It also checks if the trade exists
@@ -64,16 +63,10 @@ pub fn suggest_counter_trade(
             &TradeInfo {
                 owner: info.sender.clone(),
                 // We add the funds sent along with this transaction
-                associated_funds: info.funds.clone(),
+                associated_funds: info.funds,
                 ..Default::default()
             },
         )?;
-    }
-
-    if let Some(confirmed) = confirm {
-        if confirmed {
-            confirm_counter_trade(deps, env, info, trade_id, counter_id)?;
-        }
     }
 
     Ok(Response::new()
@@ -84,11 +77,10 @@ pub fn suggest_counter_trade(
 
 pub fn add_funds_to_counter_trade(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     info: MessageInfo,
     trade_id: u64,
     counter_id: u64,
-    confirm: Option<bool>,
 ) -> Result<Response, ContractError> {
     let counter_info = is_counter_trader(deps.storage, &info.sender, trade_id, counter_id)?;
     if counter_info.state != TradeState::Created {
@@ -100,14 +92,8 @@ pub fn add_funds_to_counter_trade(
     COUNTER_TRADE_INFO.update(
         deps.storage,
         (trade_id.into(), counter_id.into()),
-        add_funds(info.funds.clone()),
+        add_funds(info.funds),
     )?;
-
-    if let Some(confirmed) = confirm {
-        if confirmed {
-            confirm_counter_trade(deps, env, info, trade_id, counter_id)?;
-        }
-    }
 
     Ok(Response::new()
         .add_attribute("added funds", "counter")

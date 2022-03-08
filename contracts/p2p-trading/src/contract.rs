@@ -21,7 +21,7 @@ use crate::counter_trade::{
 use crate::trade::{
     accept_trade, add_funds_to_trade, add_nft_to_trade, add_nfts_wanted, add_token_to_trade,
     add_whitelisted_users, cancel_trade, confirm_trade, create_trade, create_withdraw_messages,
-    refuse_counter_trade, remove_nfts_wanted, remove_whitelisted_users,
+    refuse_counter_trade, remove_nfts_wanted, remove_whitelisted_users, set_comment,
     withdraw_trade_assets_while_creating,
 };
 
@@ -65,9 +65,7 @@ pub fn execute(
         ExecuteMsg::CreateTrade { whitelisted_users } => {
             create_trade(deps, env, info, whitelisted_users)
         }
-        ExecuteMsg::AddFundsToTrade { trade_id, confirm } => {
-            add_funds_to_trade(deps, env, info, trade_id, confirm)
-        }
+        ExecuteMsg::AddFundsToTrade { trade_id } => add_funds_to_trade(deps, env, info, trade_id),
         ExecuteMsg::AddCw20 {
             trade_id,
             counter_id,
@@ -135,18 +133,21 @@ pub fn execute(
             nfts_wanted,
         } => remove_nfts_wanted(deps, env, info, trade_id, nfts_wanted),
 
+        ExecuteMsg::SetComment { trade_id, comment } => {
+            set_comment(deps, env, info, trade_id, comment)
+        }
+
         ExecuteMsg::ConfirmTrade { trade_id } => confirm_trade(deps, env, info, trade_id),
 
         //Counter Trade Creation Messages
-        ExecuteMsg::SuggestCounterTrade { trade_id, confirm } => {
-            suggest_counter_trade(deps, env, info, trade_id, confirm)
+        ExecuteMsg::SuggestCounterTrade { trade_id } => {
+            suggest_counter_trade(deps, env, info, trade_id)
         }
 
         ExecuteMsg::AddFundsToCounterTrade {
             trade_id,
             counter_id,
-            confirm,
-        } => add_funds_to_counter_trade(deps, env, info, trade_id, counter_id, confirm),
+        } => add_funds_to_counter_trade(deps, env, info, trade_id, counter_id),
 
         ExecuteMsg::RemoveFromCounterTrade {
             trade_id,
@@ -576,7 +577,6 @@ pub mod tests {
         trader: &str,
         trade_id: u64,
         coins_to_send: &Vec<Coin>,
-        confirm: Option<bool>,
     ) -> Result<Response, ContractError> {
         let info = mock_info(trader, coins_to_send);
         let env = mock_env();
@@ -585,10 +585,7 @@ pub mod tests {
             deps,
             env,
             info,
-            ExecuteMsg::AddFundsToTrade {
-                trade_id: trade_id,
-                confirm: confirm,
-            },
+            ExecuteMsg::AddFundsToTrade { trade_id: trade_id },
         )
     }
 
@@ -1032,14 +1029,8 @@ pub mod tests {
             init_helper(deps.as_mut());
 
             create_trade_helper(deps.as_mut(), "creator");
-            let res = add_funds_to_trade_helper(
-                deps.as_mut(),
-                "creator",
-                0,
-                &coins(2, "token"),
-                Some(false),
-            )
-            .unwrap();
+            let res =
+                add_funds_to_trade_helper(deps.as_mut(), "creator", 0, &coins(2, "token")).unwrap();
             assert_eq!(
                 res.attributes,
                 vec![
@@ -1048,17 +1039,10 @@ pub mod tests {
                 ]
             );
 
-            add_funds_to_trade_helper(deps.as_mut(), "creator", 0, &coins(2, "token"), Some(false))
-                .unwrap();
+            add_funds_to_trade_helper(deps.as_mut(), "creator", 0, &coins(2, "token")).unwrap();
 
-            add_funds_to_trade_helper(
-                deps.as_mut(),
-                "creator",
-                0,
-                &coins(2, "other_token"),
-                Some(false),
-            )
-            .unwrap();
+            add_funds_to_trade_helper(deps.as_mut(), "creator", 0, &coins(2, "other_token"))
+                .unwrap();
 
             let new_trade_info = load_trade(&deps.storage, 0).unwrap();
             assert_eq!(
@@ -1074,31 +1058,6 @@ pub mod tests {
                     }
                 ]
             );
-        }
-
-        #[test]
-        fn create_trade_and_add_funds_and_confirm() {
-            let mut deps = mock_dependencies(&[]);
-            init_helper(deps.as_mut());
-
-            create_trade_helper(deps.as_mut(), "creator");
-            let res = add_funds_to_trade_helper(
-                deps.as_mut(),
-                "creator",
-                0,
-                &coins(2, "token"),
-                Some(true),
-            )
-            .unwrap();
-            assert_eq!(
-                res.attributes,
-                vec![
-                    Attribute::new("added funds", "trade"),
-                    Attribute::new("trade_id", "0"),
-                ]
-            );
-            let new_trade_info = load_trade(&deps.storage, 0).unwrap();
-            assert_eq!(new_trade_info.state, TradeState::Published {});
         }
 
         #[test]
@@ -1238,14 +1197,7 @@ pub mod tests {
             add_cw721_to_trade_helper(deps.as_mut(), "nft", "creator", 0).unwrap();
             add_cw721_to_trade_helper(deps.as_mut(), "nft-2", "creator", 0).unwrap();
             add_cw20_to_trade_helper(deps.as_mut(), "token", "creator", 0).unwrap();
-            add_funds_to_trade_helper(
-                deps.as_mut(),
-                "creator",
-                0,
-                &coins(100, "luna"),
-                Some(false),
-            )
-            .unwrap();
+            add_funds_to_trade_helper(deps.as_mut(), "creator", 0, &coins(100, "luna")).unwrap();
 
             let res = remove_from_trade_helper(
                 deps.as_mut(),
@@ -1441,14 +1393,7 @@ pub mod tests {
             add_cw721_to_trade_helper(deps.as_mut(), "nft", "creator", 0).unwrap();
             add_cw721_to_trade_helper(deps.as_mut(), "nft-2", "creator", 0).unwrap();
             add_cw20_to_trade_helper(deps.as_mut(), "token", "creator", 0).unwrap();
-            add_funds_to_trade_helper(
-                deps.as_mut(),
-                "creator",
-                0,
-                &coins(100, "luna"),
-                Some(false),
-            )
-            .unwrap();
+            add_funds_to_trade_helper(deps.as_mut(), "creator", 0, &coins(100, "luna")).unwrap();
 
             let err = remove_from_trade_helper(
                 deps.as_mut(),
@@ -1608,9 +1553,8 @@ pub mod tests {
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
 
             // This triggers an error, we can't send funds to confirmed trade
-            let err =
-                add_funds_to_trade_helper(deps.as_mut(), "creator", 0, &coins(2, "token"), None)
-                    .unwrap_err();
+            let err = add_funds_to_trade_helper(deps.as_mut(), "creator", 0, &coins(2, "token"))
+                .unwrap_err();
             assert_eq!(
                 err,
                 ContractError::WrongTradeState {
@@ -1645,7 +1589,7 @@ pub mod tests {
             create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
 
-            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, Some(false)).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0).unwrap();
 
             let err = accept_trade_helper(deps.as_mut(), "creator", 0, 5).unwrap_err();
             assert_eq!(err, ContractError::NotFoundInCounterTradeInfo {});
@@ -1763,10 +1707,10 @@ pub mod tests {
             create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
 
-            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, Some(false)).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0).unwrap();
 
-            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, Some(false)).unwrap();
-            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, Some(false)).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0).unwrap();
 
             confirm_counter_trade_helper(deps.as_mut(), "counterer", 0, 0).unwrap();
             confirm_counter_trade_helper(deps.as_mut(), "counterer", 0, 1).unwrap();
@@ -1876,7 +1820,7 @@ pub mod tests {
             create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
 
-            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, Some(false)).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0).unwrap();
 
             let err = cancel_trade_helper(deps.as_mut(), "creator", 1).unwrap_err();
             assert_eq!(err, ContractError::NotFoundInTradeInfo {});
@@ -1935,17 +1879,17 @@ pub mod tests {
             create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 4).unwrap();
 
-            suggest_counter_trade_helper(deps.as_mut(), "counterer2", 0, Some(false)).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer2", 0).unwrap();
 
-            suggest_counter_trade_helper(deps.as_mut(), "counterer", 1, Some(false)).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 1).unwrap();
 
-            suggest_counter_trade_helper(deps.as_mut(), "counterer", 2, Some(false)).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 2).unwrap();
 
-            suggest_counter_trade_helper(deps.as_mut(), "counterer", 3, Some(false)).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 3).unwrap();
 
-            suggest_counter_trade_helper(deps.as_mut(), "counterer", 4, Some(false)).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 4).unwrap();
 
-            suggest_counter_trade_helper(deps.as_mut(), "counterer2", 4, Some(false)).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer2", 4).unwrap();
 
             // Query all before second one, should return the first one
             let res = query_all_counter_trades(
@@ -2036,12 +1980,11 @@ pub mod tests {
             init_helper(deps.as_mut());
             set_fee_contract_helper(deps.as_mut());
             create_trade_helper(deps.as_mut(), "creator");
-            add_funds_to_trade_helper(deps.as_mut(), "creator", 0, &coins(5, "lunas"), None)
-                .unwrap();
+            add_funds_to_trade_helper(deps.as_mut(), "creator", 0, &coins(5, "lunas")).unwrap();
             add_cw20_to_trade_helper(deps.as_mut(), "token", "creator", 0).unwrap();
             add_cw721_to_trade_helper(deps.as_mut(), "nft", "creator", 0).unwrap();
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
-            suggest_counter_trade_helper(deps.as_mut(), "other_counterer", 0, Some(false)).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "other_counterer", 0).unwrap();
 
             add_cw20_to_counter_trade_helper(
                 deps.as_mut(),
@@ -2066,24 +2009,17 @@ pub mod tests {
                 0,
                 0,
                 &coins(9, "other_token"),
-                Some(false),
             )
             .unwrap();
 
-            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, Some(false)).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0).unwrap();
             add_cw20_to_counter_trade_helper(deps.as_mut(), "counter-token", "counterer", 0, 1)
                 .unwrap();
             add_cw721_to_counter_trade_helper(deps.as_mut(), "counter-nft", "counterer", 0, 1)
                 .unwrap();
-            add_funds_to_counter_trade_helper(
-                deps.as_mut(),
-                "counterer",
-                0,
-                1,
-                &coins(2, "token"),
-                Some(true),
-            )
-            .unwrap();
+            add_funds_to_counter_trade_helper(deps.as_mut(), "counterer", 0, 1, &coins(2, "token"))
+                .unwrap();
+            confirm_counter_trade_helper(deps.as_mut(), "counterer", 0, 1).unwrap();
 
             // Little test to start with (can't withdraw if the trade is not accepted)
             let err = withdraw_helper(deps.as_mut(), "anyone", "fee_contract", 0).unwrap_err();
@@ -2224,12 +2160,11 @@ pub mod tests {
             let mut deps = mock_dependencies(&[]);
             init_helper(deps.as_mut());
             create_trade_helper(deps.as_mut(), "creator");
-            add_funds_to_trade_helper(deps.as_mut(), "creator", 0, &coins(5, "lunas"), None)
-                .unwrap();
+            add_funds_to_trade_helper(deps.as_mut(), "creator", 0, &coins(5, "lunas")).unwrap();
             add_cw20_to_trade_helper(deps.as_mut(), "token", "creator", 0).unwrap();
             add_cw721_to_trade_helper(deps.as_mut(), "nft", "creator", 0).unwrap();
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
-            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, Some(false)).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0).unwrap();
 
             add_cw20_to_counter_trade_helper(
                 deps.as_mut(),
@@ -2300,17 +2235,15 @@ pub mod tests {
             let mut deps = mock_dependencies(&[]);
             init_helper(deps.as_mut());
             create_private_trade_helper(deps.as_mut(), vec!["whitelist".to_string()]);
-            add_funds_to_trade_helper(deps.as_mut(), "creator", 0, &coins(5, "lunas"), None)
-                .unwrap();
+            add_funds_to_trade_helper(deps.as_mut(), "creator", 0, &coins(5, "lunas")).unwrap();
             add_cw20_to_trade_helper(deps.as_mut(), "token", "creator", 0).unwrap();
             add_cw721_to_trade_helper(deps.as_mut(), "nft", "creator", 0).unwrap();
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
 
-            let err = suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, Some(false))
-                .unwrap_err();
+            let err = suggest_counter_trade_helper(deps.as_mut(), "counterer", 0).unwrap_err();
             assert_eq!(err, ContractError::AddressNotWhitelisted {});
 
-            suggest_counter_trade_helper(deps.as_mut(), "whitelist", 0, Some(false)).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "whitelist", 0).unwrap();
 
             let err = remove_whitelisted_users(deps.as_mut(), 0, vec!["whitelist".to_string()])
                 .unwrap_err();
@@ -2365,7 +2298,6 @@ pub mod tests {
         deps: DepsMut,
         counterer: &str,
         trade_id: u64,
-        confirm: Option<bool>,
     ) -> Result<Response, ContractError> {
         let info = mock_info(counterer, &[]);
         let env = mock_env();
@@ -2374,10 +2306,7 @@ pub mod tests {
             deps,
             env,
             info,
-            ExecuteMsg::SuggestCounterTrade {
-                trade_id: trade_id,
-                confirm: confirm,
-            },
+            ExecuteMsg::SuggestCounterTrade { trade_id: trade_id },
         )
     }
 
@@ -2387,7 +2316,6 @@ pub mod tests {
         trade_id: u64,
         counter_id: u64,
         coins_to_send: &Vec<Coin>,
-        confirm: Option<bool>,
     ) -> Result<Response, ContractError> {
         let info = mock_info(counterer, coins_to_send);
         let env = mock_env();
@@ -2399,7 +2327,6 @@ pub mod tests {
             ExecuteMsg::AddFundsToCounterTrade {
                 trade_id,
                 counter_id,
-                confirm,
             },
         )
     }
@@ -2577,20 +2504,17 @@ pub mod tests {
 
             create_trade_helper(deps.as_mut(), "creator");
 
-            let err = suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, Some(false))
-                .unwrap_err();
+            let err = suggest_counter_trade_helper(deps.as_mut(), "counterer", 0).unwrap_err();
 
             assert_eq!(err, ContractError::NotCounterable {});
 
-            let err = suggest_counter_trade_helper(deps.as_mut(), "counterer", 1, Some(false))
-                .unwrap_err();
+            let err = suggest_counter_trade_helper(deps.as_mut(), "counterer", 1).unwrap_err();
 
             assert_eq!(err, ContractError::NotFoundInTradeInfo {});
 
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
 
-            let res =
-                suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, Some(false)).unwrap();
+            let res = suggest_counter_trade_helper(deps.as_mut(), "counterer", 0).unwrap();
 
             assert_eq!(
                 res.attributes,
@@ -2609,7 +2533,7 @@ pub mod tests {
 
             create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
-            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0).unwrap();
 
             let res = add_funds_to_counter_trade_helper(
                 deps.as_mut(),
@@ -2617,7 +2541,6 @@ pub mod tests {
                 0u64,
                 0u64,
                 &coins(2, "token"),
-                Some(false),
             )
             .unwrap();
 
@@ -2642,7 +2565,7 @@ pub mod tests {
 
             create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
-            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0).unwrap();
 
             let res = add_cw20_to_counter_trade_helper(deps.as_mut(), "token", "counterer", 0, 0)
                 .unwrap();
@@ -2690,7 +2613,7 @@ pub mod tests {
 
             create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
-            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0).unwrap();
 
             let res =
                 add_cw721_to_counter_trade_helper(deps.as_mut(), "nft", "counterer", 0, 0).unwrap();
@@ -2733,7 +2656,7 @@ pub mod tests {
 
             create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
-            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0).unwrap();
             add_cw721_to_counter_trade_helper(deps.as_mut(), "nft", "counterer", 0, 0).unwrap();
             add_cw721_to_counter_trade_helper(deps.as_mut(), "nft-2", "counterer", 0, 0).unwrap();
             add_cw20_to_counter_trade_helper(deps.as_mut(), "token", "counterer", 0, 0).unwrap();
@@ -2743,7 +2666,6 @@ pub mod tests {
                 0,
                 0,
                 &coins(100, "luna"),
-                Some(false),
             )
             .unwrap();
 
@@ -2944,7 +2866,7 @@ pub mod tests {
 
             create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
-            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0).unwrap();
             add_cw721_to_counter_trade_helper(deps.as_mut(), "nft", "counterer", 0, 0).unwrap();
             add_cw721_to_counter_trade_helper(deps.as_mut(), "nft-2", "counterer", 0, 0).unwrap();
             add_cw20_to_counter_trade_helper(deps.as_mut(), "token", "counterer", 0, 0).unwrap();
@@ -2954,7 +2876,6 @@ pub mod tests {
                 0,
                 0,
                 &coins(100, "luna"),
-                Some(false),
             )
             .unwrap();
 
@@ -3051,7 +2972,7 @@ pub mod tests {
 
             create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
-            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0).unwrap();
 
             //Wrong trade id
             let err = confirm_counter_trade_helper(deps.as_mut(), "creator", 1, 0).unwrap_err();
@@ -3094,7 +3015,7 @@ pub mod tests {
 
             create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
-            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0).unwrap();
 
             //Wrong trade id
             let err = review_counter_trade_helper(deps.as_mut(), "creator", 1, 0).unwrap_err();
@@ -3142,7 +3063,7 @@ pub mod tests {
 
             create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
-            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0).unwrap();
             confirm_counter_trade_helper(deps.as_mut(), "counterer", 0, 0).unwrap();
             accept_trade_helper(deps.as_mut(), "creator", 0, 0).unwrap();
 
@@ -3157,7 +3078,7 @@ pub mod tests {
 
             create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
-            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0).unwrap();
             confirm_counter_trade_helper(deps.as_mut(), "counterer", 0, 0).unwrap();
             cancel_trade_helper(deps.as_mut(), "creator", 0).unwrap();
 
@@ -3172,9 +3093,11 @@ pub mod tests {
 
             create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
-            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, Some(true)).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0).unwrap();
+            confirm_counter_trade_helper(deps.as_mut(), "counterer", 0, 0).unwrap();
             // We suggest and confirm one more counter
-            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, Some(true)).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0).unwrap();
+            confirm_counter_trade_helper(deps.as_mut(), "counterer", 0, 1).unwrap();
 
             // This time, it has to work fine
             let res = review_counter_trade_helper(deps.as_mut(), "creator", 0, 0).unwrap();
@@ -3198,7 +3121,7 @@ pub mod tests {
 
             create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
-            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0).unwrap();
             let res = refuse_counter_trade_helper(deps.as_mut(), "creator", 0, 0).unwrap();
             assert_eq!(
                 res.attributes,
@@ -3217,11 +3140,12 @@ pub mod tests {
 
             create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
-            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0).unwrap();
             // We suggest and confirm one more counter
-            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, Some(true)).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0).unwrap();
+            confirm_counter_trade_helper(deps.as_mut(), "counterer", 0, 0).unwrap();
             // We suggest one more counter
-            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, Some(false)).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0).unwrap();
 
             let res = refuse_counter_trade_helper(deps.as_mut(), "creator", 0, 0).unwrap();
             assert_eq!(
@@ -3241,7 +3165,7 @@ pub mod tests {
 
             create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
-            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0).unwrap();
 
             confirm_counter_trade_helper(deps.as_mut(), "counterer", 0, 0).unwrap();
             accept_trade_helper(deps.as_mut(), "creator", 0, 0).unwrap();
@@ -3256,7 +3180,7 @@ pub mod tests {
 
             create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
-            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0).unwrap();
 
             confirm_counter_trade_helper(deps.as_mut(), "counterer", 0, 0).unwrap();
             accept_trade_helper(deps.as_mut(), "creator", 0, 0).unwrap();
@@ -3277,7 +3201,7 @@ pub mod tests {
 
             create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
-            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0, None).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0).unwrap();
             confirm_counter_trade_helper(deps.as_mut(), "counterer", 0, 0).unwrap();
             accept_trade_helper(deps.as_mut(), "creator", 0, 0).unwrap();
 

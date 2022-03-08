@@ -54,7 +54,6 @@ pub enum ExecuteMsg {
     },
     AddFundsToTrade {
         trade_id: u64,
-        confirm: Option<bool>,
     },
     AddCw20 {
         trade_id: u64,
@@ -81,6 +80,10 @@ pub enum ExecuteMsg {
         trade_id: u64,
         whitelisted_users: Vec<String>,
     },
+    SetComment {
+        trade_id: u64,
+        comment: String,
+    },
     AddNFTsWanted {
         trade_id: u64,
         nfts_wanted: Vec<String>,
@@ -96,12 +99,10 @@ pub enum ExecuteMsg {
     /// Can be used to initiate Counter Trade, but also to add new tokens to it
     SuggestCounterTrade {
         trade_id: u64,
-        confirm: Option<bool>,
     },
     AddFundsToCounterTrade {
         trade_id: u64,
         counter_id: u64,
-        confirm: Option<bool>,
     },
     RemoveFromCounterTrade {
         trade_id: u64,

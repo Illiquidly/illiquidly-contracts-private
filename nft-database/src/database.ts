@@ -1,11 +1,12 @@
 const IPFS = require('ipfs');
 const OrbitDB = require('orbit-db');
-import { getBlockHeight, getNewDatabaseInfo } from './index.js';
+import { getBlockHeight, getNewDatabaseInfo, parseNFTSet } from './index.js';
 const express = require('express');
 
 interface NFTsInteracted {
   lastBlock: number;
-  nfts: string[];
+  interacted_nfts: string[];
+  owned_nfts: any;
 }
 
 const app = express();
@@ -17,7 +18,8 @@ app.listen(8080, () => {
 function default_api_structure() {
   return {
     lastBlock: 0,
-    nfts: []
+    nfts: [],
+    owned_nfts: {}
   };
 }
 
@@ -36,23 +38,29 @@ async function updateAddress(
   if (!currentData) {
     currentData = default_api_structure();
   }
-  if(lastBlock == undefined){
-    lastBlock = currentData.lastBlock
+  if (lastBlock == undefined) {
+    lastBlock = currentData.lastBlock;
   }
   console.log(lastBlock);
   let new_nfts = await getNewDatabaseInfo(address, lastBlock);
   if (new_nfts.size) {
-    let nfts = new Set(currentData.nfts);
+    let nfts: Set<string> = new Set(currentData.nfts);
     new_nfts.forEach((nft) => nfts.add(nft));
 
-    currentData.nfts = [...nfts];
-    currentData.lastBlock = blockHeight;
-    await db.put(address, currentData);
-
+    currentData.interacted_nfts = [...nfts];
     console.log('Added new nfts !');
   } else {
-    console.log('No new nfts, perfect');
+    console.log('No new nfts');
   }
+  console.log('Checking property!');
+
+  currentData.owned_nfts = await parseNFTSet(
+    currentData.interacted_nfts,
+    address
+  );
+  currentData.lastBlock = blockHeight;
+  await db.put(address, currentData);
+
   return currentData;
 }
 
@@ -68,17 +76,12 @@ async function main() {
   const db = await orbitdb.keyvalue('wallet-nfts');
   console.log('Created database at', db.address);
 
-  let address = 'terra1pa9tyjtxv0qd5pgqyu6ugtedds0d42wt5rxk4w';
-  //await updateAddress(db,address);
-
-  // Update if necessary
-  //console.log(await updateAndGetCurrentNFTs(db,address), await db.get(address));
-
   app.get('/nfts', (req: any, res: any) => {
     res.status(200).send('Syntax : echo here the syntax you need');
   });
 
   app.get('/nfts/query/:address', async (req: any, res: any) => {
+    const address = req.params.address;
     let currentData = await db.get(address);
     if (!currentData) {
       currentData = default_api_structure();
@@ -87,12 +90,14 @@ async function main() {
   });
 
   app.get('/nfts/update-query/:address', async (req: any, res: any) => {
+    const address = req.params.address;
     let currentData = await db.get(address);
     res.status(200).send(await updateAddress(db, address, currentData));
   });
 
   app.get('/nfts/force-update/:address', async (req: any, res: any) => {
-    res.status(200).send(await updateAddress(db, address, {},0));
+    const address = req.params.address;
+    res.status(200).send(await updateAddress(db, address, {}, 0));
   });
 }
 main();

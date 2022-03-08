@@ -15,9 +15,13 @@ import { env } from './env_helper';
 // Wrapper for Query and Transaction objects (used to build a common Proxy on top of them)
 class LCDClientWrapper {
   terra: LCDClient;
-  wallet: Wallet;
+  wallet: Wallet | undefined;
   contractAddress: string;
-  constructor(terra: LCDClient, wallet: Wallet, contractAddress: string) {
+  constructor(
+    terra: LCDClient,
+    wallet: Wallet | undefined,
+    contractAddress: string
+  ) {
     this.terra = terra;
     this.wallet = wallet;
     this.contractAddress = contractAddress;
@@ -31,12 +35,17 @@ class LCDClientWrapper {
 /// Removes a lot of code overhead
 class Transaction extends LCDClientWrapper {
   async post(msgs: any[]) {
+    if (this.wallet == undefined) {
+      return;
+    }
     let post_msg = { msgs: msgs };
-
     const tx = await this.wallet.createAndSignTx(post_msg);
     return await this.terra.tx.broadcast(tx);
   }
   async execute(msgName: string, msgArgs: Object) {
+    if (this.wallet == undefined) {
+      return;
+    }
     let msg = {
       [msgName]: {
         ...msgArgs
@@ -61,7 +70,7 @@ class Transaction extends LCDClientWrapper {
 }
 /// Query Msg Handler
 /// Removes a lot of code overhead
-class Query extends LCDClientWrapper {
+export class Query extends LCDClientWrapper {
   async execute(msgName: string, msgArgs: Object) {
     let msg = { [msgName]: { ...msgArgs } };
     let response = await this.terra.wasm.contractQuery(
@@ -164,7 +173,9 @@ export class Address {
 }
 
 /// Allows the messages to be called via methods instead of wrapped objects
-function createWrapperProxy<T extends LCDClientWrapper>(wrapper: T): Interface {
+export function createWrapperProxy<T extends LCDClientWrapper>(
+  wrapper: T
+): Interface {
   let handler = {
     get: function (target: T, prop: string, receiver: any) {
       if (!(prop in target))

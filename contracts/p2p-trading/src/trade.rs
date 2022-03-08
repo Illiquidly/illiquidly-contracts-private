@@ -65,10 +65,9 @@ pub fn create_trade(
 
 pub fn add_funds_to_trade(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     info: MessageInfo,
     trade_id: u64,
-    confirm: Option<bool>,
 ) -> Result<Response, ContractError> {
     is_trader(deps.storage, &info.sender, trade_id)?;
 
@@ -79,13 +78,7 @@ pub fn add_funds_to_trade(
         });
     }
 
-    TRADE_INFO.update(deps.storage, trade_id.into(), add_funds(info.funds.clone()))?;
-
-    if let Some(confirmed) = confirm {
-        if confirmed {
-            confirm_trade(deps, env, info, trade_id)?;
-        }
-    }
+    TRADE_INFO.update(deps.storage, trade_id.into(), add_funds(info.funds))?;
 
     Ok(Response::new()
         .add_attribute("added funds", "trade")
@@ -272,6 +265,21 @@ pub fn remove_nfts_wanted(
     TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
 
     Ok(Response::new().add_attribute("removed", "nfts_wanted"))
+}
+
+pub fn set_comment(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    trade_id: u64,
+    comment: String,
+) -> Result<Response, ContractError> {
+    let mut trade_info = is_trader(deps.storage, &info.sender, trade_id)?;
+    trade_info.additionnal_info.comment = Some(comment.clone());
+    TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
+    Ok(Response::new()
+        .add_attribute("set", "comment")
+        .add_attribute("comment", comment))
 }
 
 pub fn confirm_trade(

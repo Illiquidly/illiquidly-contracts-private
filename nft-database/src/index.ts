@@ -1,34 +1,51 @@
-import { Address } from './terra_utils';
+import { Query, createWrapperProxy } from './terra_utils';
 import { env } from './env_helper';
+import { Wallet } from '@terra-money/terra.js';
 const { LCDClient, MnemonicKey } = require('@terra-money/terra.js');
 const axios = require('axios');
 let fcdUrl = 'https://fcd.terra.dev';
 
-
-function addFromWasmEvents(tx: any, nftsInteracted: any){
-	for(let log of tx.logs){
-		for(let event of log.events){
-			if(event.type == "wasm"){
-				let nft_transfered = false;
-				let contract;
-				// We check the tx transfered an NFT
-				for(let attribute of event.attributes){
-					if(attribute.value == "transfer_nft" || attribute.value == "mint"){
-						nft_transfered = true;
-					}
-					if(attribute.key == "contract_address"){
-						contract = attribute.value;
-					}
-				}
-				if(nft_transfered){
-					nftsInteracted.add(contract);
-				}
-			}
-		}
-	}
+interface NFTInfo {
+  address: string;
+  token_id: any[];
 }
 
+function addFromWasmEvents(tx: any, nftsInteracted: any) {
+  for (let log of tx.logs) {
+    for (let event of log.events) {
+      if (event.type == 'wasm') {
+        let nft_transfered = false;
+        let contract;
+        // We check the tx transfered an NFT
+        for (let attribute of event.attributes) {
+          if (attribute.value == 'transfer_nft' || attribute.value == 'mint') {
+            nft_transfered = true;
+          }
+          if (attribute.key == 'contract_address') {
+            contract = attribute.value;
+          }
+        }
+        if (nft_transfered) {
+          nftsInteracted.add(contract);
+        }
+      }
+    }
+  }
+}
 
+function addFromMsg(tx: any, nftsInteracted: any, min_block_height: number) {
+  for (let msg of tx.tx.value.msg) {
+    if (msg.type == 'wasm/MsgExecuteContract') {
+      let execute_msg = msg.value.execute_msg;
+      if (
+        (execute_msg.transfer_nft || execute_msg.mint) &&
+        !tx.raw_log.includes('failed')
+      ) {
+        nftsInteracted.add(msg.value.contract);
+      }
+    }
+  }
+}
 
 function getNftsFromTxList(
   tx_data: any,
@@ -38,25 +55,18 @@ function getNftsFromTxList(
   let min_block_height_seen: number = min_block_height;
   let last_tx_id_seen = 0;
   for (let tx of tx_data.data.txs) {
-  	addFromWasmEvents(tx, nftsInteracted);
+    if (tx.height > min_block_height) {
+      // We add NFTS interacted with
+      addFromWasmEvents(tx, nftsInteracted);
+      addFromMsg(tx, nftsInteracted, min_block_height);
+    }
+
+    // We update the block and id info
     if (min_block_height_seen == 0 || tx.height < min_block_height_seen) {
       min_block_height_seen = tx.height;
     }
     if (last_tx_id_seen == 0 || tx.id < last_tx_id_seen) {
       last_tx_id_seen = tx.id;
-    }
-    if (tx.height > min_block_height) {
-      for (let msg of tx.tx.value.msg) {
-        if (msg.type == 'wasm/MsgExecuteContract') {
-          let execute_msg = msg.value.execute_msg;
-          if (
-            (execute_msg.transfer_nft || execute_msg.mint) &&
-            !tx.raw_log.includes('failed')
-          ) {
-            nftsInteracted.add(msg.value.contract);
-          }
-        }
-      }
     }
   }
   return [nftsInteracted, last_tx_id_seen, min_block_height_seen];
@@ -118,13 +128,45 @@ export async function getNewDatabaseInfo(
   return await getNewInteractedNfts(address, blockHeight);
 }
 
-
-async function main(){
-
-	let address = 'terra1pa9tyjtxv0qd5pgqyu6ugtedds0d42wt5rxk4w';
-	let response = await getNewDatabaseInfo(address);
-	console.log(response);
-
+export async function parseNFTSet(
+  nfts: Set<string> | string[],
+  address: string
+) {
+  let promiseArray: any[] = [];
+  for (let nft of nfts) {
+    let contract = createWrapperProxy(
+      new Query(new LCDClient(env['chain']), undefined, nft)
+    );
+    promiseArray.push(
+      contract
+        .tokens({
+          owner: address
+        })
+        .then((token_id: any) => {
+          return {
+            [nft]: token_id.tokens
+          };
+        })
+        .catch(() => console.log('Error for', nft))
+    );
+  }
+  return await Promise.all(promiseArray).then((response: any) => {
+    response = response.filter(function (x: any) {
+      return x !== undefined;
+    });
+    let owned_nfts = {};
+    response.forEach((response: any) => {
+      owned_nfts = { ...owned_nfts, ...response };
+    });
+    return owned_nfts;
+  });
 }
 
-main()
+async function main() {
+  let address = 'terra1pa9tyjtxv0qd5pgqyu6ugtedds0d42wt5rxk4w';
+  let response = await getNewDatabaseInfo(address);
+  let owned_nfts = await parseNFTSet(response, address);
+  console.log(owned_nfts);
+}
+
+//main()

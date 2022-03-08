@@ -12,7 +12,7 @@ async function main(){
 
   for (const h of all_handlers) {
   	let response = await handler.send(h.getAddress(),{
-				"uluna": "500000"
+				"uluna": "5000000"
 			});
   	console.log(response);
 			console.log(h.getAddress(),(await h.terra.bank.balance(h.getAddress())).toString());

@@ -73,6 +73,16 @@
         "get_all_trades": {
           "type": "object",
           "properties": {
+            "filters": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/QueryFilters"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "limit": {
               "type": [
                 "integer",
@@ -81,12 +91,6 @@
               "format": "uint32",
               "minimum": 0.0
             },
-            "owner": {
-              "type": [
-                "string",
-                "null"
-              ]
-            },
             "start_after": {
               "type": [
                 "integer",
@@ -94,15 +98,6 @@
               ],
               "format": "uint64",
               "minimum": 0.0
-            },
-            "states": {
-              "type": [
-                "array",
-                "null"
-              ],
-              "items": {
-                "type": "string"
-              }
             }
           }
         }
@@ -140,6 +135,16 @@
         "get_all_counter_trades": {
           "type": "object",
           "properties": {
+            "filters": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/QueryFilters"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "limit": {
               "type": [
                 "integer",
@@ -147,12 +152,6 @@
               ],
               "format": "uint32",
               "minimum": 0.0
-            },
-            "owner": {
-              "type": [
-                "string",
-                "null"
-              ]
             },
             "start_after": {
               "anyOf": [
@@ -163,15 +162,6 @@
                   "type": "null"
                 }
               ]
-            },
-            "states": {
-              "type": [
-                "array",
-                "null"
-              ],
-              "items": {
-                "type": "string"
-              }
             }
           }
         }
@@ -196,6 +186,44 @@
           "type": "integer",
           "format": "uint64",
           "minimum": 0.0
+        }
+      }
+    },
+    "QueryFilters": {
+      "type": "object",
+      "properties": {
+        "contains_token": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "owner": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "states": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "wanted_nft": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "whitelisted_user": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       }
     }
