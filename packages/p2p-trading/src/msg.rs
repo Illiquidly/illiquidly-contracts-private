@@ -67,6 +67,13 @@ pub enum ExecuteMsg {
         address: String,
         token_id: String,
     },
+    AddCw1155 {
+        trade_id: u64,
+        counter_id: Option<u64>,
+        address: String,
+        token_id: String,
+        value: Uint128
+    },
     RemoveFromTrade {
         trade_id: u64,
         assets: Vec<(u16, AssetInfo)>,

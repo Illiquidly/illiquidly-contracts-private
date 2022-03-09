@@ -2,10 +2,11 @@ use cosmwasm_std::{Coin, DepsMut, Env, MessageInfo, Response, Uint128};
 
 use cw20::Cw20ExecuteMsg;
 use cw721::Cw721ExecuteMsg;
+use cw1155::Cw1155ExecuteMsg;
 
 use crate::error::ContractError;
 use crate::state::{
-    add_cw20_coin, add_cw721_coin, add_funds, can_suggest_counter_trade, is_counter_trader,
+    add_cw20_coin, add_cw721_coin, add_cw1155_coin, add_funds, can_suggest_counter_trade, is_counter_trader,
     load_trade, COUNTER_TRADE_INFO, TRADE_INFO,
 };
 use p2p_trading_export::msg::into_cosmos_msg;
@@ -182,6 +183,51 @@ pub fn add_nft_to_counter_trade(
         .add_attribute("token_id", token_id))
 }
 
+pub fn add_cw1155_to_counter_trade(
+    deps: DepsMut,
+    env: Env,
+    trader: String,
+    trade_id: u64,
+    counter_id: u64,
+    token: String,
+    token_id: String, 
+    sent_amount: Uint128,
+) -> Result<Response, ContractError> {
+    let counter_info = is_counter_trader(
+        deps.storage,
+        &deps.api.addr_validate(&trader)?,
+        trade_id,
+        counter_id,
+    )?;
+    if counter_info.state != TradeState::Created {
+        return Err(ContractError::WrongTradeState {
+            state: counter_info.state,
+        });
+    }
+
+    COUNTER_TRADE_INFO.update(
+        deps.storage,
+        (trade_id.into(), counter_id.into()),
+        add_cw1155_coin(token.clone(), token_id.clone(), sent_amount),
+    )?;
+
+    // Now we need to transfer the token
+    let message = Cw1155ExecuteMsg::SendFrom {
+        from: trader,
+        to: env.contract.address.into(),
+        token_id: token_id.clone(),
+        value: sent_amount,
+        msg:None
+    };
+
+    Ok(Response::new()
+        .add_message(into_cosmos_msg(message, token.clone())?)
+        .add_attribute("added Cw1155", "trade")
+        .add_attribute("token", token)
+        .add_attribute("token_id", token_id)
+        .add_attribute("amount", sent_amount))
+}
+
 pub fn confirm_counter_trade(
     deps: DepsMut,
     _env: Env,
@@ -264,7 +310,7 @@ pub fn cancel_counter_trade(
 
 pub fn withdraw_counter_trade_assets_while_creating(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     trade_id: u64,
     counter_id: u64,
@@ -288,6 +334,7 @@ pub fn withdraw_counter_trade_assets_while_creating(
     )?;
 
     let res = create_withdraw_messages(
+        &env.contract.address,
         &info.sender,
         &assets.iter().map(|x| x.1.clone()).collect(),
         &funds.iter().map(|x| x.1.clone()).collect(),

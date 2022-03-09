@@ -83,6 +83,7 @@ pub fn trade_filter(
                 .any(|asset| match asset {
                     AssetInfo::Cw20Coin(x) => x.address == token.as_ref(),
                     AssetInfo::Cw721Coin(x) => x.address == token.as_ref(),
+                    AssetInfo::Cw1155Coin(x) => x.address == token.as_ref(),
                 }),
             None => true,
         })

@@ -5,13 +5,16 @@ use cosmwasm_std::{
 use std::collections::HashSet;
 use std::iter::FromIterator;
 
-use crate::error::ContractError;
-use crate::state::{
-    add_cw20_coin, add_cw721_coin, add_funds, is_trader, load_counter_trade, CONTRACT_INFO,
-    COUNTER_TRADE_INFO, TRADE_INFO,
-};
 use cw20::Cw20ExecuteMsg;
 use cw721::Cw721ExecuteMsg;
+use cw1155::Cw1155ExecuteMsg;
+
+use crate::error::ContractError;
+use crate::state::{
+    add_cw20_coin, add_cw721_coin, add_cw1155_coin, add_funds, is_trader, load_counter_trade, CONTRACT_INFO,
+    COUNTER_TRADE_INFO, TRADE_INFO,
+};
+
 use p2p_trading_export::msg::into_cosmos_msg;
 use p2p_trading_export::state::{AssetInfo, CounterTradeInfo, TradeInfo, TradeState};
 
@@ -154,6 +157,46 @@ pub fn add_nft_to_trade(
         .add_attribute("added token", "trade")
         .add_attribute("nft", token)
         .add_attribute("token_id", token_id))
+}
+
+pub fn add_cw1155_to_trade(
+    deps: DepsMut,
+    env: Env,
+    trader: String,
+    trade_id: u64,
+    token: String,
+    token_id: String, 
+    sent_amount: Uint128,
+) -> Result<Response, ContractError> {
+    let trade_info = is_trader(deps.storage, &deps.api.addr_validate(&trader)?, trade_id)?;
+
+    if trade_info.state != TradeState::Created {
+        return Err(ContractError::WrongTradeState {
+            state: trade_info.state,
+        });
+    }
+
+    TRADE_INFO.update(
+        deps.storage,
+        trade_id.into(),
+        add_cw1155_coin(token.clone(), token_id.clone(), sent_amount),
+    )?;
+
+    // Now we need to transfer the token
+    let message = Cw1155ExecuteMsg::SendFrom {
+        from: trader,
+        to: env.contract.address.into(),
+        token_id: token_id.clone(),
+        value: sent_amount,
+        msg:None
+    };
+
+    Ok(Response::new()
+        .add_message(into_cosmos_msg(message, token.clone())?)
+        .add_attribute("added Cw1155", "trade")
+        .add_attribute("token", token)
+        .add_attribute("token_id", token_id)
+        .add_attribute("amount", sent_amount))
 }
 
 pub fn validate_addresses(api: &dyn Api, whitelisted_users: &[String]) -> StdResult<Vec<Addr>> {
@@ -454,7 +497,7 @@ pub fn cancel_trade(
 
 pub fn withdraw_trade_assets_while_creating(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     trade_id: u64,
     assets: Vec<(u16, AssetInfo)>,
@@ -472,6 +515,7 @@ pub fn withdraw_trade_assets_while_creating(
     TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
 
     let res = create_withdraw_messages(
+        &env.contract.address,
         &info.sender,
         &assets.iter().map(|x| x.1.clone()).collect(),
         &funds.iter().map(|x| x.1.clone()).collect(),
@@ -549,6 +593,43 @@ pub fn are_assets_in_trade(
                     ))));
                 }
             }
+            AssetInfo::Cw1155Coin(cw1155_info) => {
+                // We check the token is the one we want
+                if let AssetInfo::Cw1155Coin(cw1155) = asset {
+                    // We verify the sent information matches the saved nft
+                    if cw1155_info.address != cw1155.address {
+                        return Err(ContractError::Std(StdError::generic_err(format!(
+                            "Wrong nft address at position {position}",
+                            position = position
+                        ))));
+                    }
+                    if cw1155_info.token_id != cw1155.token_id {
+                        return Err(ContractError::Std(StdError::generic_err(format!(
+                            "Wrong cw1155 id at position {position}, \
+                                wanted: {wanted}, \
+                                found: {found}",
+                            position = position,
+                            wanted = cw1155.token_id,
+                            found = cw1155_info.token_id
+                        ))));
+                    }
+                    if cw1155_info.value < cw1155.value {
+                        return Err(ContractError::Std(StdError::generic_err(format!(
+                            "You can't withdraw that much {address}, \
+                                wanted: {wanted}, \
+                                available: {available}",
+                            address = cw1155_info.address,
+                            wanted = cw1155.value,
+                            available = cw1155_info.value
+                        ))));
+                    }
+                } else {
+                    return Err(ContractError::Std(StdError::generic_err(format!(
+                        "Wrong token type at position {position}",
+                        position = position
+                    ))));
+                }
+            }
         }
     }
 
@@ -591,17 +672,21 @@ pub fn try_withdraw_assets_unsafe(
         let asset_info = trade_info.associated_assets[position].clone();
         match asset_info {
             AssetInfo::Cw20Coin(mut token_info) => {
-                // We check the token is the one we want
                 if let AssetInfo::Cw20Coin(token) = asset {
                     token_info.amount -= token.amount;
                     trade_info.associated_assets[position] = AssetInfo::Cw20Coin(token_info);
                 }
             }
             AssetInfo::Cw721Coin(mut nft_info) => {
-                // We check the token is the one we want
                 if let AssetInfo::Cw721Coin(_) = asset {
                     nft_info.address = "".to_string();
                     trade_info.associated_assets[position] = AssetInfo::Cw721Coin(nft_info);
+                }
+            }
+            AssetInfo::Cw1155Coin(mut cw1155_info) => {
+                if let AssetInfo::Cw1155Coin(cw1155) = asset {
+                    cw1155_info.value -= cw1155.value;
+                    trade_info.associated_assets[position] = AssetInfo::Cw1155Coin(cw1155_info);
                 }
             }
         }
@@ -611,6 +696,7 @@ pub fn try_withdraw_assets_unsafe(
     trade_info.associated_assets.retain(|asset| match asset {
         AssetInfo::Cw20Coin(token) => token.amount != Uint128::zero(),
         AssetInfo::Cw721Coin(nft) => !nft.address.is_empty(),
+        AssetInfo::Cw1155Coin(cw1155) => cw1155.value != Uint128::zero(),
     });
 
     // Then we take care of the wanted funds
@@ -633,6 +719,7 @@ pub fn try_withdraw_assets_unsafe(
 }
 
 pub fn create_withdraw_messages(
+    contract_address: &Addr,
     recipient: &Addr,
     assets: &Vec<AssetInfo>,
     funds: &Vec<Coin>,
@@ -655,6 +742,16 @@ pub fn create_withdraw_messages(
                     token_id: nft.token_id.clone(),
                 };
                 res = res.add_message(into_cosmos_msg(message, nft.address.clone())?);
+            }
+            AssetInfo::Cw1155Coin(cw1155) => {
+                let message = Cw1155ExecuteMsg::SendFrom {
+                    from: contract_address.to_string(),
+                    to: recipient.to_string(),
+                    token_id: cw1155.token_id.clone(),
+                    value: cw1155.value,
+                    msg:None
+                };
+                res = res.add_message(into_cosmos_msg(message, cw1155.address.clone())?);
             }
         }
     }
