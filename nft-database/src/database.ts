@@ -1,6 +1,6 @@
 const IPFS = require('ipfs');
 const OrbitDB = require('orbit-db');
-import { getBlockHeight, getNewDatabaseInfo, parseNFTSet } from './index.js';
+import { getBlockHeight, getNewDatabaseInfo, parseNFTSet, chains } from './index.js';
 const express = require('express');
 
 interface NFTsInteracted {
@@ -15,24 +15,25 @@ app.listen(8080, () => {
   console.log("Serveur à l'écoute");
 });
 
-function default_api_structure() {
+function default_api_structure(): NFTsInteracted {
   return {
     lastBlock: 0,
-    nfts: [],
+    interacted_nfts: [],
     owned_nfts: {}
   };
 }
 
 async function updateAddress(
   db: any,
+  network:string,
   address: string,
-  currentData: any = undefined,
+  currentData: NFTsInteracted | undefined = undefined,
   lastBlock: number | undefined = undefined
 ) {
-  let blockHeight = await getBlockHeight();
+  let blockHeight = await getBlockHeight(network);
 
   if (!currentData) {
-    let currentData: NFTsInteracted = await db.get(address);
+    let currentData: NFTsInteracted = await db.get(to_key(network,address));
   }
   // In case the address was never scanned (or never interacted with any NFT contract)
   if (!currentData) {
@@ -41,10 +42,9 @@ async function updateAddress(
   if (lastBlock == undefined) {
     lastBlock = currentData.lastBlock;
   }
-  console.log(lastBlock);
-  let new_nfts = await getNewDatabaseInfo(address, lastBlock);
+  let new_nfts = await getNewDatabaseInfo(network, address, lastBlock);
   if (new_nfts.size) {
-    let nfts: Set<string> = new Set(currentData.nfts);
+    let nfts: Set<string> = new Set(currentData.interacted_nfts);
     new_nfts.forEach((nft) => nfts.add(nft));
 
     currentData.interacted_nfts = [...nfts];
@@ -55,13 +55,29 @@ async function updateAddress(
   console.log('Checking property!');
 
   currentData.owned_nfts = await parseNFTSet(
+    network, 
     currentData.interacted_nfts,
     address
   );
   currentData.lastBlock = blockHeight;
-  await db.put(address, currentData);
+  await db.put(to_key(network,address), currentData);
 
   return currentData;
+}
+
+function to_key(network: string, address:string){
+  return `${address}@${network}`;
+}
+function validate(network: string, res: any): boolean{
+  if(chains[network] == undefined){
+    res.status(404).send(
+      {status:"Network not found"}
+    );
+    return false
+  }else{
+    return true
+  }
+
 }
 
 async function main() {
@@ -80,24 +96,33 @@ async function main() {
     res.status(200).send('Syntax : echo here the syntax you need');
   });
 
-  app.get('/nfts/query/:address', async (req: any, res: any) => {
+  app.get('/nfts/query/:network/:address', async (req: any, res: any) => {
     const address = req.params.address;
-    let currentData = await db.get(address);
-    if (!currentData) {
-      currentData = default_api_structure();
+    const network = req.params.network;
+    if(validate(network, res)){
+      let currentData = await db.get(to_key(network,address));
+      if (!currentData) {
+        currentData = default_api_structure();
+      }
+      res.status(200).send(currentData);
     }
-    res.status(200).send(currentData);
   });
 
-  app.get('/nfts/update-query/:address', async (req: any, res: any) => {
+  app.get('/nfts/update-query/:network/:address', async (req: any, res: any) => {
     const address = req.params.address;
-    let currentData = await db.get(address);
-    res.status(200).send(await updateAddress(db, address, currentData));
+    const network = req.params.network;
+    if(validate(network,res)){
+      let currentData = await db.get(to_key(network,address));
+      res.status(200).send(await updateAddress(db, network, address, currentData));
+    }
   });
 
-  app.get('/nfts/force-update/:address', async (req: any, res: any) => {
+  app.get('/nfts/force-update/:network/:address', async (req: any, res: any) => {
     const address = req.params.address;
-    res.status(200).send(await updateAddress(db, address, {}, 0));
+    const network = req.params.network;
+    if(validate(network, res)){
+      res.status(200).send(await updateAddress(db, network, address, default_api_structure(), 0));
+    }
   });
 }
 main();

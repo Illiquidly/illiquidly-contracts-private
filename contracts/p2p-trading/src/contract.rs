@@ -14,15 +14,15 @@ use p2p_trading_export::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use p2p_trading_export::state::{ContractInfo, TradeInfo, TradeState};
 
 use crate::counter_trade::{
-    add_funds_to_counter_trade, add_nft_to_counter_trade, add_token_to_counter_trade, add_cw1155_to_counter_trade,
-    cancel_counter_trade, confirm_counter_trade, suggest_counter_trade,
+    add_cw1155_to_counter_trade, add_funds_to_counter_trade, add_nft_to_counter_trade,
+    add_token_to_counter_trade, cancel_counter_trade, confirm_counter_trade, suggest_counter_trade,
     withdraw_counter_trade_assets_while_creating,
 };
 use crate::trade::{
-    accept_trade, add_funds_to_trade, add_nft_to_trade, add_cw1155_to_trade, add_nfts_wanted, add_token_to_trade,
-    add_whitelisted_users, cancel_trade, confirm_trade, create_trade, create_withdraw_messages,
-    refuse_counter_trade, remove_nfts_wanted, remove_whitelisted_users, set_comment,
-    withdraw_trade_assets_while_creating,
+    accept_trade, add_cw1155_to_trade, add_funds_to_trade, add_nft_to_trade, add_nfts_wanted,
+    add_token_to_trade, add_whitelisted_users, cancel_trade, confirm_trade, create_trade,
+    create_withdraw_messages, refuse_counter_trade, remove_nfts_wanted, remove_whitelisted_users,
+    set_comment, withdraw_trade_assets_while_creating,
 };
 
 use crate::messages::review_counter_trade;
@@ -113,7 +113,7 @@ pub fn execute(
             counter_id,
             address,
             token_id,
-            value
+            value,
         } => {
             if let Some(counter) = counter_id {
                 add_cw1155_to_counter_trade(
@@ -124,10 +124,18 @@ pub fn execute(
                     counter,
                     address,
                     token_id,
-                    value
+                    value,
                 )
             } else {
-                add_cw1155_to_trade(deps, env, info.sender.into(), trade_id, address, token_id, value)
+                add_cw1155_to_trade(
+                    deps,
+                    env,
+                    info.sender.into(),
+                    trade_id,
+                    address,
+                    token_id,
+                    value,
+                )
             }
         }
         ExecuteMsg::RemoveFromTrade {
@@ -272,7 +280,7 @@ pub fn set_new_fee_contract(
 }
 
 pub fn check_and_create_withdraw_messages(
-    env: Env, 
+    env: Env,
     recipient: &Addr,
     trade_info: &TradeInfo,
 ) -> Result<Response, ContractError> {
@@ -441,11 +449,11 @@ pub mod tests {
     use crate::state::load_trade;
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
     use cosmwasm_std::{coins, Attribute, BankMsg, Coin, Uint128};
+    use cw1155::Cw1155ExecuteMsg;
     use cw20::Cw20ExecuteMsg;
     use cw721::Cw721ExecuteMsg;
-    use cw1155::Cw1155ExecuteMsg;
     use p2p_trading_export::msg::into_cosmos_msg;
-    use p2p_trading_export::state::{AssetInfo, Cw20Coin, Cw721Coin, Cw1155Coin};
+    use p2p_trading_export::state::{AssetInfo, Cw1155Coin, Cw20Coin, Cw721Coin};
 
     fn init_helper(deps: DepsMut) {
         let instantiate_msg = InstantiateMsg {
@@ -678,7 +686,7 @@ pub mod tests {
                 counter_id: None,
                 address: token.to_string(),
                 token_id: "58".to_string(),
-                value: Uint128::from(value)
+                value: Uint128::from(value),
             },
         )
     }
@@ -1244,7 +1252,8 @@ pub mod tests {
 
             create_trade_helper(deps.as_mut(), "creator");
 
-            let res = add_cw1155_to_trade_helper(deps.as_mut(), "1155", "creator", 50u128, 0).unwrap();
+            let res =
+                add_cw1155_to_trade_helper(deps.as_mut(), "1155", "creator", 50u128, 0).unwrap();
 
             assert_eq!(
                 res.attributes,
@@ -1283,7 +1292,8 @@ pub mod tests {
             add_cw721_to_trade_helper(deps.as_mut(), "nft", "creator", 0).unwrap();
             add_cw721_to_trade_helper(deps.as_mut(), "nft-2", "creator", 0).unwrap();
             add_cw20_to_trade_helper(deps.as_mut(), "token", "creator", 0).unwrap();
-            add_cw1155_to_trade_helper(deps.as_mut(), "cw1155token", "creator", 100u128, 0).unwrap();
+            add_cw1155_to_trade_helper(deps.as_mut(), "cw1155token", "creator", 100u128, 0)
+                .unwrap();
             add_funds_to_trade_helper(deps.as_mut(), "creator", 0, &coins(100, "luna")).unwrap();
 
             let res = remove_from_trade_helper(
@@ -1323,7 +1333,6 @@ pub mod tests {
                 vec![Attribute::new("remove from", "trade"),]
             );
 
-
             assert_eq!(
                 res.messages,
                 vec![
@@ -1354,7 +1363,7 @@ pub mod tests {
                                 to: "creator".to_string(),
                                 token_id: "58".to_string(),
                                 value: Uint128::from(58u128),
-                                msg:None
+                                msg: None
                             },
                             "cw1155token"
                         )
@@ -1407,7 +1416,7 @@ pub mod tests {
                             address: "token".to_string(),
                             amount: Uint128::from(42u64),
                         }),
-                    )
+                    ),
                 ],
                 vec![(0, coin(42, "luna"))],
             )
@@ -2241,7 +2250,7 @@ pub mod tests {
                                 from: mock_env().contract.address.to_string(),
                                 token_id: "58".to_string(),
                                 value: Uint128::from(100u128),
-                                msg:None
+                                msg: None
                             },
                             "cw1155"
                         )

@@ -4,7 +4,7 @@ use cosmwasm_std::{Addr, Coin, StdError, StdResult, Storage, Uint128};
 
 use crate::error::ContractError;
 use p2p_trading_export::state::{
-    AssetInfo, ContractInfo, Cw20Coin, Cw721Coin, Cw1155Coin, TradeInfo, TradeState,
+    AssetInfo, ContractInfo, Cw1155Coin, Cw20Coin, Cw721Coin, TradeInfo, TradeState,
 };
 
 pub const CONTRACT_INFO: Item<ContractInfo> = Item::new("contract_info");
@@ -94,21 +94,16 @@ pub fn add_cw721_coin(
     }
 }
 
-
 pub fn add_cw1155_coin(
     address: String,
-    token_id: String, 
+    token_id: String,
     value: Uint128,
 ) -> impl FnOnce(Option<TradeInfo>) -> StdResult<TradeInfo> {
     move |d: Option<TradeInfo>| -> StdResult<TradeInfo> {
         match d {
             Some(mut trade) => {
                 let existing_token = trade.associated_assets.iter_mut().find(|c| match c {
-                    AssetInfo::Cw1155Coin(x) => {
-                        x.address == address
-                        &&
-                        x.token_id == token_id
-                    }
+                    AssetInfo::Cw1155Coin(x) => x.address == address && x.token_id == token_id,
                     _ => false,
                 });
                 if let Some(existing_token) = existing_token {
@@ -122,11 +117,13 @@ pub fn add_cw1155_coin(
                         value: current_value + value,
                     })
                 } else {
-                    trade.associated_assets.push(AssetInfo::Cw1155Coin(Cw1155Coin {
-                        address,
-                        token_id,
-                        value
-                    }))
+                    trade
+                        .associated_assets
+                        .push(AssetInfo::Cw1155Coin(Cw1155Coin {
+                            address,
+                            token_id,
+                            value,
+                        }))
                 }
 
                 Ok(trade)

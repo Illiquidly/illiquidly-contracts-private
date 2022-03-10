@@ -1,9 +1,24 @@
 import { Query, createWrapperProxy } from './terra_utils';
-import { env } from './env_helper';
 import { Wallet } from '@terra-money/terra.js';
 const { LCDClient, MnemonicKey } = require('@terra-money/terra.js');
 const axios = require('axios');
-let fcdUrl = 'https://fcd.terra.dev';
+
+export const chains: any = {
+  "testnet": {
+            "URL": "https://bombay.stakesystems.io",
+            "chainID": "bombay-12"
+        },
+  "mainnet": {
+            "URL": "https://lcd.terra.dev",
+            "chainID": "columbus-5"
+        },
+}
+
+export let fcds: any = {
+  "testnet":"https://bombay-fcd.terra.dev",
+  "mainnet":'https://fcd.terra.dev',
+}
+
 
 interface NFTInfo {
   address: string;
@@ -73,10 +88,11 @@ function getNftsFromTxList(
 }
 
 async function getNewInteractedNfts(
+  network: string, 
   address: string,
   last_block_height: number | undefined = undefined
 ) {
-  const terra = new LCDClient(env['chain']);
+  const terra = new LCDClient(chains[network]);
 
   let nftsInteracted: Set<string> = new Set();
   let behind_last_block_height: boolean = true;
@@ -86,7 +102,7 @@ async function getNewInteractedNfts(
     console.log('New fcd query');
     let tx_data = await axios
       .get(
-        `${fcdUrl}/v1/txs?offset=${offset}&limit=${limit}&account=${address}`
+        `${fcds[network]}/v1/txs?offset=${offset}&limit=${limit}&account=${address}`
       )
       .catch((error: any) => {
         if (error.response.status == 500) {
@@ -113,47 +129,77 @@ async function getNewInteractedNfts(
   return nftsInteracted;
 }
 
-export async function getBlockHeight() {
-  const terra = new LCDClient(env['chain']);
+export async function getBlockHeight(network: string) {
+  const terra = new LCDClient(chains[network]);
   return await terra.tendermint
     .blockInfo()
     .then((response: any) => response.block.header.height);
 }
 
 export async function getNewDatabaseInfo(
+  network: string, 
   address: string,
   blockHeight: number | undefined = undefined
 ) {
-  const terra = new LCDClient(env['chain']);
-  return await getNewInteractedNfts(address, blockHeight);
+  return await getNewInteractedNfts(network, address, blockHeight);
 }
 
 export async function parseNFTSet(
+  network: string,
   nfts: Set<string> | string[],
   address: string
 ) {
   let promiseArray: any[] = [];
   for (let nft of nfts) {
     let contract = createWrapperProxy(
-      new Query(new LCDClient(env['chain']), undefined, nft)
+      new Query(new LCDClient(chains[network]), undefined, nft)
     );
     promiseArray.push(
       contract
         .tokens({
           owner: address
         })
-        .then((token_id: any) => {
-          return {
-            [nft]: token_id.tokens
-          };
+        .catch(() => {
+            
         })
-        .catch(() => console.log('Error for', nft))
+        .then((token_id: any) => {
+          if(token_id)
+          {
+            // We try to fetch the token_id info
+            return Promise.all(  
+              token_id["tokens"].map((token_id: any)=>{
+                return contract.nft_info({token_id:token_id})
+                  .then((nft_info:any) => {
+                    return {
+                      token_id: token_id,
+                      nft_info: nft_info
+                    }
+                  })
+              })
+            )
+            .catch(() => {
+              return token_id["tokens"].map((token_id: any)=>{
+                return {
+                  token_id:token_id,
+                  nft_info:{}
+                }
+              })
+            })
+          }
+        })
+        .then((response: any) =>{
+          if(response != undefined){
+            return {
+              [nft]:{
+                contract: nft,
+                tokens: response
+              }
+            }
+          }
+        })
     );
   }
   return await Promise.all(promiseArray).then((response: any) => {
-    response = response.filter(function (x: any) {
-      return x !== undefined;
-    });
     let owned_nfts = {};
     response.forEach((response: any) => {
       owned_nfts = { ...owned_nfts, ...response };
@@ -163,10 +209,11 @@ export async function parseNFTSet(
 }
 
 async function main() {
+  let net = "mainnet";
   let address = 'terra1pa9tyjtxv0qd5pgqyu6ugtedds0d42wt5rxk4w';
-  let response = await getNewDatabaseInfo(address);
-  let owned_nfts = await parseNFTSet(response, address);
-  console.log(owned_nfts);
+  let response = await getNewDatabaseInfo(net,address);
+  let owned_nfts = await parseNFTSet(net, response, address);
+  
 }
 
-//main()
+main()

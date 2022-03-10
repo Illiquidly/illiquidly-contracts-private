@@ -1,13 +1,13 @@
 use cosmwasm_std::{Coin, DepsMut, Env, MessageInfo, Response, Uint128};
 
+use cw1155::Cw1155ExecuteMsg;
 use cw20::Cw20ExecuteMsg;
 use cw721::Cw721ExecuteMsg;
-use cw1155::Cw1155ExecuteMsg;
 
 use crate::error::ContractError;
 use crate::state::{
-    add_cw20_coin, add_cw721_coin, add_cw1155_coin, add_funds, can_suggest_counter_trade, is_counter_trader,
-    load_trade, COUNTER_TRADE_INFO, TRADE_INFO,
+    add_cw1155_coin, add_cw20_coin, add_cw721_coin, add_funds, can_suggest_counter_trade,
+    is_counter_trader, load_trade, COUNTER_TRADE_INFO, TRADE_INFO,
 };
 use p2p_trading_export::msg::into_cosmos_msg;
 use p2p_trading_export::state::{AssetInfo, TradeInfo, TradeState};
@@ -183,6 +183,7 @@ pub fn add_nft_to_counter_trade(
         .add_attribute("token_id", token_id))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn add_cw1155_to_counter_trade(
     deps: DepsMut,
     env: Env,
@@ -190,7 +191,7 @@ pub fn add_cw1155_to_counter_trade(
     trade_id: u64,
     counter_id: u64,
     token: String,
-    token_id: String, 
+    token_id: String,
     sent_amount: Uint128,
 ) -> Result<Response, ContractError> {
     let counter_info = is_counter_trader(
@@ -217,7 +218,7 @@ pub fn add_cw1155_to_counter_trade(
         to: env.contract.address.into(),
         token_id: token_id.clone(),
         value: sent_amount,
-        msg:None
+        msg: None,
     };
 
     Ok(Response::new()

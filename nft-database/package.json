@@ -8,7 +8,7 @@
     "build": "tsc --preserveWatchOutput",
     "test": "node dist/index.js",
     "base": "node dist/database.js",
-    "dev": "nodemon --watch src -e ts,ejs --exec npm run base",
+    "dev": "nodemon --watch dist -e ts,ejs --exec npm run base",
     "prettier-format": "prettier --config .prettierrc 'src/**/*.ts' --write"
   },
   "author": "",

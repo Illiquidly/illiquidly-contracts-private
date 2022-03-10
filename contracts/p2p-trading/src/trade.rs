@@ -5,14 +5,14 @@ use cosmwasm_std::{
 use std::collections::HashSet;
 use std::iter::FromIterator;
 
+use cw1155::Cw1155ExecuteMsg;
 use cw20::Cw20ExecuteMsg;
 use cw721::Cw721ExecuteMsg;
-use cw1155::Cw1155ExecuteMsg;
 
 use crate::error::ContractError;
 use crate::state::{
-    add_cw20_coin, add_cw721_coin, add_cw1155_coin, add_funds, is_trader, load_counter_trade, CONTRACT_INFO,
-    COUNTER_TRADE_INFO, TRADE_INFO,
+    add_cw1155_coin, add_cw20_coin, add_cw721_coin, add_funds, is_trader, load_counter_trade,
+    CONTRACT_INFO, COUNTER_TRADE_INFO, TRADE_INFO,
 };
 
 use p2p_trading_export::msg::into_cosmos_msg;
@@ -165,7 +165,7 @@ pub fn add_cw1155_to_trade(
     trader: String,
     trade_id: u64,
     token: String,
-    token_id: String, 
+    token_id: String,
     sent_amount: Uint128,
 ) -> Result<Response, ContractError> {
     let trade_info = is_trader(deps.storage, &deps.api.addr_validate(&trader)?, trade_id)?;
@@ -188,7 +188,7 @@ pub fn add_cw1155_to_trade(
         to: env.contract.address.into(),
         token_id: token_id.clone(),
         value: sent_amount,
-        msg:None
+        msg: None,
     };
 
     Ok(Response::new()
@@ -718,6 +718,7 @@ pub fn try_withdraw_assets_unsafe(
     Ok(())
 }
 
+#[allow(clippy::ptr_arg)]
 pub fn create_withdraw_messages(
     contract_address: &Addr,
     recipient: &Addr,
@@ -749,7 +750,7 @@ pub fn create_withdraw_messages(
                     to: recipient.to_string(),
                     token_id: cw1155.token_id.clone(),
                     value: cw1155.value,
-                    msg:None
+                    msg: None,
                 };
                 res = res.add_message(into_cosmos_msg(message, cw1155.address.clone())?);
             }
