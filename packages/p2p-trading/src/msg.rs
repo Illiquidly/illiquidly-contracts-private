@@ -53,22 +53,22 @@ pub enum ExecuteMsg {
         whitelisted_users: Option<Vec<String>>,
     },
     AddFundsToTrade {
-        trade_id: u64,
+        trade_id: Option<u64>,
     },
     AddCw20 {
-        trade_id: u64,
+        trade_id: Option<u64>,
         counter_id: Option<u64>,
         address: String,
         amount: Uint128,
     },
     AddCw721 {
-        trade_id: u64,
+        trade_id: Option<u64>,
         counter_id: Option<u64>,
         address: String,
         token_id: String,
     },
     AddCw1155 {
-        trade_id: u64,
+        trade_id: Option<u64>,
         counter_id: Option<u64>,
         address: String,
         token_id: String,
@@ -88,11 +88,11 @@ pub enum ExecuteMsg {
         whitelisted_users: Vec<String>,
     },
     SetComment {
-        trade_id: u64,
+        trade_id: Option<u64>,
         comment: String,
     },
     AddNFTsWanted {
-        trade_id: u64,
+        trade_id: Option<u64>,
         nfts_wanted: Vec<String>,
     },
     RemoveNFTsWanted {
@@ -101,7 +101,7 @@ pub enum ExecuteMsg {
     },
     /// Is used by the Trader to confirm they completed their end of the trade.
     ConfirmTrade {
-        trade_id: u64,
+        trade_id: Option<u64>,
     },
     /// Can be used to initiate Counter Trade, but also to add new tokens to it
     SuggestCounterTrade {
@@ -195,6 +195,12 @@ pub enum QueryMsg {
     GetAllTrades {
         start_after: Option<u64>,
         limit: Option<u32>,
+        filters: Option<QueryFilters>,
+    },
+    GetAllTradesByCounterer {
+        start_after: Option<u16>,
+        limit: Option<u32>,
+        counterer: String, 
         filters: Option<QueryFilters>,
     },
     GetCounterTrades {

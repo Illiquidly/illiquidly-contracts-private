@@ -1,0 +1,27 @@
+Feb 20 12:48:26.624  INFO cargo_tarpaulin::report: Coverage Results:
+|| Uncovered Lines:
+|| contracts/iliq_token/src/allowances.rs: 253-254, 264-265, 267, 274-277
+|| contracts/iliq_token/src/contract.rs: 26, 33-38, 41, 45, 51-53, 55-56, 61-62, 67, 72, 77-78, 84, 89, 94-100, 102, 107-108, 110-111
+|| contracts/iliq_token/src/msg.rs: 21-22, 25, 27-28, 32-33, 37-38, 40, 44-47, 49, 52-55, 57-59, 62
+|| contracts/multisender/src/allowances.rs: 253-254, 264-265, 267, 274-277
+|| contracts/multisender/src/contract.rs: 21, 29, 31-33, 37, 44, 48, 55-56, 63-67, 69-71, 73, 75, 77-78, 80, 84, 88-94, 96, 101-102, 104-105
+|| contracts/multisender/src/msg.rs: 11, 13-14, 18, 22-25, 27, 97-98, 101, 105, 107, 109, 111
+|| contracts/p2p-trading/src/contract.rs: 179-180, 182-183, 185, 187, 189-190, 192, 216, 253-259
+|| contracts/p2p-trading/src/counter_trade.rs: 38-39, 48, 63, 190-191, 215-216, 223
+
+|| contracts/p2p-trading/src/trade.rs: 271, 274, 297-300, 304, 312, 315, 351, 366-367, 374
+|| packages/p2p-trading/src/msg.rs: 9, 14-15, 18, 22, 24, 26, 28, 55
+
+
+
+Unreachable code: 
+message.rs : 63
+state.rs : 26-27, 47-48, 68-69
+trade.rs : 166, 220, 246
+
+
+Unreachable code in tests: 
+trade.rs : 33, 236-237
+
+No need to test : 
+msg.rs : 9, 14-15

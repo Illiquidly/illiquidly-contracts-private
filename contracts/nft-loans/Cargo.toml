@@ -1,5 +1,5 @@
 [package]
-name = "p2p-trading"
+name = "nft-loans"
 version = "0.9.0"
 authors = ["Nicolas KOWALSKI <kowalski.kowalskin@gmail.com>"]
 edition = "2018"
@@ -28,6 +28,7 @@ schemars = "0.8.1"
 serde = { version = "1.0.103", default-features = false, features = ["derive"] }
 thiserror = { version = "1.0.23" }
 nft-loans-export = { path = "../../packages/nft-loans", version = "0.1.0" }
+utils = { path = "../../packages/utils", version = "0.1.0" }
 p2p-trading-export = { path = "../../packages/p2p-trading", version = "0.1.0" }
 
 

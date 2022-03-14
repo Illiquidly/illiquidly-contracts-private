@@ -27,7 +27,7 @@ use crate::trade::{
 
 use crate::messages::review_counter_trade;
 use crate::query::{
-    query_all_counter_trades, query_all_trades, query_contract_info, query_counter_trades,
+    query_all_counter_trades, query_all_trades, query_all_trades_by_counterer, query_contract_info, query_counter_trades,
 };
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -77,7 +77,7 @@ pub fn execute(
                     deps,
                     env,
                     info.sender.into(),
-                    trade_id,
+                    trade_id.unwrap(),
                     counter,
                     address,
                     amount,
@@ -98,7 +98,7 @@ pub fn execute(
                     deps,
                     env,
                     info.sender.into(),
-                    trade_id,
+                    trade_id.unwrap(),
                     counter,
                     address,
                     token_id,
@@ -120,7 +120,7 @@ pub fn execute(
                     deps,
                     env,
                     info.sender.into(),
-                    trade_id,
+                    trade_id.unwrap(),
                     counter,
                     address,
                     token_id,
@@ -440,6 +440,12 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             limit,
             filters,
         } => to_binary(&query_all_trades(deps, start_after, limit, filters)?),
+        QueryMsg::GetAllTradesByCounterer {
+            start_after,
+            limit,
+            counterer,
+            filters,
+        } => to_binary(&query_all_trades_by_counterer(deps, start_after, limit, counterer, filters)?),
     }
 }
 
@@ -539,7 +545,7 @@ pub mod tests {
             env,
             info,
             ExecuteMsg::AddWhitelistedUsers {
-                trade_id,
+                trade_id: trade_id,
                 whitelisted_users: users,
             },
         );
@@ -580,7 +586,7 @@ pub mod tests {
             env,
             info,
             ExecuteMsg::AddNFTsWanted {
-                trade_id: trade_id,
+                trade_id: Some(trade_id),
                 nfts_wanted: confirm,
             },
         )
@@ -600,7 +606,7 @@ pub mod tests {
             env,
             info,
             ExecuteMsg::RemoveNFTsWanted {
-                trade_id: trade_id,
+                trade_id,
                 nfts_wanted: confirm,
             },
         )
@@ -619,7 +625,9 @@ pub mod tests {
             deps,
             env,
             info,
-            ExecuteMsg::AddFundsToTrade { trade_id: trade_id },
+            ExecuteMsg::AddFundsToTrade {
+                trade_id: Some(trade_id),
+            },
         )
     }
 
@@ -637,7 +645,7 @@ pub mod tests {
             env,
             info,
             ExecuteMsg::AddCw20 {
-                trade_id,
+                trade_id: Some(trade_id),
                 counter_id: None,
                 address: token.to_string(),
                 amount: Uint128::from(100u64),
@@ -659,7 +667,7 @@ pub mod tests {
             env,
             info,
             ExecuteMsg::AddCw721 {
-                trade_id,
+                trade_id: Some(trade_id),
                 counter_id: None,
                 address: token.to_string(),
                 token_id: "58".to_string(),
@@ -682,7 +690,7 @@ pub mod tests {
             env,
             info,
             ExecuteMsg::AddCw1155 {
-                trade_id,
+                trade_id: Some(trade_id),
                 counter_id: None,
                 address: token.to_string(),
                 token_id: "58".to_string(),
@@ -725,7 +733,9 @@ pub mod tests {
             deps,
             env,
             info,
-            ExecuteMsg::ConfirmTrade { trade_id: trade_id },
+            ExecuteMsg::ConfirmTrade {
+                trade_id: Some(trade_id),
+            },
         )
     }
 
@@ -2494,7 +2504,7 @@ pub mod tests {
             env,
             info,
             ExecuteMsg::AddCw20 {
-                trade_id,
+                trade_id: Some(trade_id),
                 counter_id: Some(counter_id),
                 address: token.to_string(),
                 amount: Uint128::from(100u64),
@@ -2517,7 +2527,7 @@ pub mod tests {
             env,
             info,
             ExecuteMsg::AddCw721 {
-                trade_id,
+                trade_id: Some(trade_id),
                 counter_id: Some(counter_id),
                 address: token.to_string(),
                 token_id: "58".to_string(),

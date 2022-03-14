@@ -1,5 +1,6 @@
 use cosmwasm_std::{
-    Addr, Api, BankMsg, Coin, DepsMut, Env, MessageInfo, Response, StdError, StdResult, Uint128,
+    Addr, Api, BankMsg, Coin, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult,
+    Uint128,
 };
 
 use std::collections::HashSet;
@@ -10,13 +11,28 @@ use cw20::Cw20ExecuteMsg;
 use cw721::Cw721ExecuteMsg;
 
 use crate::error::ContractError;
+use crate::query::query_all_trades;
 use crate::state::{
     add_cw1155_coin, add_cw20_coin, add_cw721_coin, add_funds, is_trader, load_counter_trade,
     CONTRACT_INFO, COUNTER_TRADE_INFO, TRADE_INFO,
 };
 
-use p2p_trading_export::msg::into_cosmos_msg;
+use p2p_trading_export::msg::{into_cosmos_msg, QueryFilters};
 use p2p_trading_export::state::{AssetInfo, CounterTradeInfo, TradeInfo, TradeState};
+
+pub fn get_last_trade_id_created(deps: Deps, by: String) -> StdResult<u64> {
+    Ok(query_all_trades(
+        deps,
+        None,
+        None,
+        Some(QueryFilters {
+            owner: Some(by),
+            ..QueryFilters::default()
+        }),
+    )?
+    .trades[0]
+        .trade_id)
+}
 
 pub fn create_trade(
     deps: DepsMut,
@@ -70,8 +86,13 @@ pub fn add_funds_to_trade(
     deps: DepsMut,
     _env: Env,
     info: MessageInfo,
-    trade_id: u64,
+    trade_id: Option<u64>,
 ) -> Result<Response, ContractError> {
+    let trade_id = match trade_id {
+        Some(trade_id) => Ok(trade_id),
+        None => get_last_trade_id_created(deps.as_ref(), info.sender.to_string()),
+    }?;
+
     is_trader(deps.storage, &info.sender, trade_id)?;
 
     let trade_info = TRADE_INFO.load(deps.storage, trade_id.into())?;
@@ -92,10 +113,15 @@ pub fn add_token_to_trade(
     deps: DepsMut,
     env: Env,
     trader: String,
-    trade_id: u64,
+    trade_id: Option<u64>,
     token: String,
     sent_amount: Uint128,
 ) -> Result<Response, ContractError> {
+    let trade_id = match trade_id {
+        Some(trade_id) => Ok(trade_id),
+        None => get_last_trade_id_created(deps.as_ref(), trader.clone()),
+    }?;
+
     let trade_info = is_trader(deps.storage, &deps.api.addr_validate(&trader)?, trade_id)?;
 
     if trade_info.state != TradeState::Created {
@@ -128,10 +154,14 @@ pub fn add_nft_to_trade(
     deps: DepsMut,
     env: Env,
     trader: String,
-    trade_id: u64,
+    trade_id: Option<u64>,
     token: String,
     token_id: String,
 ) -> Result<Response, ContractError> {
+    let trade_id = match trade_id {
+        Some(trade_id) => Ok(trade_id),
+        None => get_last_trade_id_created(deps.as_ref(), trader.clone()),
+    }?;
     let trade_info = is_trader(deps.storage, &deps.api.addr_validate(&trader)?, trade_id)?;
 
     if trade_info.state != TradeState::Created {
@@ -163,11 +193,15 @@ pub fn add_cw1155_to_trade(
     deps: DepsMut,
     env: Env,
     trader: String,
-    trade_id: u64,
+    trade_id: Option<u64>,
     token: String,
     token_id: String,
     sent_amount: Uint128,
 ) -> Result<Response, ContractError> {
+    let trade_id = match trade_id {
+        Some(trade_id) => Ok(trade_id),
+        None => get_last_trade_id_created(deps.as_ref(), trader.clone()),
+    }?;
     let trade_info = is_trader(deps.storage, &deps.api.addr_validate(&trader)?, trade_id)?;
 
     if trade_info.state != TradeState::Created {
@@ -262,9 +296,13 @@ pub fn add_nfts_wanted(
     deps: DepsMut,
     _env: Env,
     info: MessageInfo,
-    trade_id: u64,
+    trade_id: Option<u64>,
     nfts_wanted: Vec<String>,
 ) -> Result<Response, ContractError> {
+    let trade_id = match trade_id {
+        Some(trade_id) => Ok(trade_id),
+        None => get_last_trade_id_created(deps.as_ref(), info.sender.to_string()),
+    }?;
     let mut trade_info = is_trader(deps.storage, &info.sender, trade_id)?;
     if trade_info.state != TradeState::Created {
         return Err(ContractError::WrongTradeState {
@@ -314,9 +352,13 @@ pub fn set_comment(
     deps: DepsMut,
     _env: Env,
     info: MessageInfo,
-    trade_id: u64,
+    trade_id: Option<u64>,
     comment: String,
 ) -> Result<Response, ContractError> {
+    let trade_id = match trade_id {
+        Some(trade_id) => Ok(trade_id),
+        None => get_last_trade_id_created(deps.as_ref(), info.sender.to_string()),
+    }?;
     let mut trade_info = is_trader(deps.storage, &info.sender, trade_id)?;
     trade_info.additionnal_info.comment = Some(comment.clone());
     TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
@@ -329,8 +371,12 @@ pub fn confirm_trade(
     deps: DepsMut,
     _env: Env,
     info: MessageInfo,
-    trade_id: u64,
+    trade_id: Option<u64>,
 ) -> Result<Response, ContractError> {
+    let trade_id = match trade_id {
+        Some(trade_id) => Ok(trade_id),
+        None => get_last_trade_id_created(deps.as_ref(), info.sender.to_string()),
+    }?;
     is_trader(deps.storage, &info.sender, trade_id)?;
 
     TRADE_INFO.update(

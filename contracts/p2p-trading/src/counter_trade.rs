@@ -1,4 +1,4 @@
-use cosmwasm_std::{Coin, DepsMut, Env, MessageInfo, Response, Uint128};
+use cosmwasm_std::{Coin, DepsMut, Env, MessageInfo, Response, Uint128, StdError};
 
 use cw1155::Cw1155ExecuteMsg;
 use cw20::Cw20ExecuteMsg;
@@ -7,7 +7,7 @@ use cw721::Cw721ExecuteMsg;
 use crate::error::ContractError;
 use crate::state::{
     add_cw1155_coin, add_cw20_coin, add_cw721_coin, add_funds, can_suggest_counter_trade,
-    is_counter_trader, load_trade, COUNTER_TRADE_INFO, TRADE_INFO,
+    is_counter_trader, load_trade, COUNTER_TRADE_INFO, TRADE_INFO, USER_COUNTERED_TRADES
 };
 use p2p_trading_export::msg::into_cosmos_msg;
 use p2p_trading_export::state::{AssetInfo, TradeInfo, TradeState};
@@ -69,6 +69,15 @@ pub fn suggest_counter_trade(
             },
         )?;
     }
+
+    // We update the counter trade helper structure with trade info : 
+    USER_COUNTERED_TRADES.update::<_, StdError>(deps.storage, info.sender.clone(), |trade_vec|{
+        match trade_vec{
+            Some(mut trades) => { trades.push(trade_id); Ok(trades)}
+            None => Ok(vec![trade_id])
+        }
+    })?;
+
 
     Ok(Response::new()
         .add_attribute("counter", "created")
