@@ -18,6 +18,7 @@ backtraces = ["cosmwasm-std/backtraces"]
 library = []
 
 [dependencies]
+itertools = "0.10.3"
 cw20 = "0.9.0"
 cw721 = "0.9.0"
 cw1155 = "0.9.0"
@@ -27,9 +28,9 @@ cosmwasm-std = { version = "0.16.0" }
 schemars = "0.8.1"
 serde = { version = "1.0.103", default-features = false, features = ["derive"] }
 thiserror = { version = "1.0.23" }
+getrandom = { version="^0.2", features = ["js"] }
 nft-loans-export = { path = "../../packages/nft-loans", version = "0.1.0" }
 p2p-trading-export = { path = "../../packages/p2p-trading", version = "0.1.0" }
-
 
 [dev-dependencies]
 cosmwasm-schema = { version = "0.16.0" }

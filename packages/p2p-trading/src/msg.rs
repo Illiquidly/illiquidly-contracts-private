@@ -165,7 +165,6 @@ pub enum ExecuteMsg {
     SetNewOwner {
         owner: String,
     },
-
     SetNewFeeContract {
         fee_contract: String,
     },
@@ -176,6 +175,7 @@ pub enum ExecuteMsg {
 pub struct QueryFilters {
     pub states: Option<Vec<String>>,
     pub owner: Option<String>,
+    pub counterer: Option<String>,
     pub whitelisted_user: Option<String>,
     pub contains_token: Option<String>,
     pub wanted_nft: Option<String>,
@@ -195,12 +195,6 @@ pub enum QueryMsg {
     GetAllTrades {
         start_after: Option<u64>,
         limit: Option<u32>,
-        filters: Option<QueryFilters>,
-    },
-    GetAllTradesByCounterer {
-        start_after: Option<u16>,
-        limit: Option<u32>,
-        counterer: String, 
         filters: Option<QueryFilters>,
     },
     GetCounterTrades {

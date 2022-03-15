@@ -1,16 +1,17 @@
 use cosmwasm_std::{Api, Pair};
 #[cfg(not(feature = "library"))]
-use cosmwasm_std::{Deps, Order, StdResult, Addr};
+use cosmwasm_std::{Deps, Order, StdResult};
 
 use cw_storage_plus::{Bound, PrimaryKey, U64Key};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::convert::TryInto;
 
-use crate::state::{CONTRACT_INFO, COUNTER_TRADE_INFO, TRADE_INFO, USER_COUNTERED_TRADES};
+use crate::state::{CONTRACT_INFO, COUNTER_TRADE_INFO, TRADE_INFO};
 use p2p_trading_export::msg::QueryFilters;
 use p2p_trading_export::state::{AssetInfo, ContractInfo, CounterTradeInfo, TradeInfo};
 
+use itertools::Itertools;
 // settings for pagination
 const MAX_LIMIT: u32 = 30;
 const DEFAULT_LIMIT: u32 = 10;
@@ -92,7 +93,7 @@ pub fn trade_filter(
     }
 }
 
-pub fn query_all_trades(
+pub fn query_all_trades_raw(
     deps: Deps,
     start_after: Option<u64>,
     limit: Option<u32>,
@@ -111,38 +112,80 @@ pub fn query_all_trades(
     Ok(AllTradesResponse { trades: trades? })
 }
 
+pub fn query_all_trades(
+    deps: Deps,
+    start_after: Option<u64>,
+    limit: Option<u32>,
+    filters: Option<QueryFilters>,
+) -> StdResult<AllTradesResponse> {
+    if let Some(f) = filters.clone() {
+        if let Some(counterer) = f.counterer {
+            query_all_trades_by_counterer(deps, start_after, limit, counterer, filters)
+        } else {
+            query_all_trades_raw(deps, start_after, limit, filters)
+        }
+    } else {
+        query_all_trades_raw(deps, start_after, limit, filters)
+    }
+}
+
 pub fn query_all_trades_by_counterer(
     deps: Deps,
-    start_after: Option<u16>,
+    start_after: Option<u64>,
     limit: Option<u32>,
     counterer: String,
     filters: Option<QueryFilters>,
 ) -> StdResult<AllTradesResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
-    let counterer = deps.api.addr_validate(&counterer)?;
 
-    let trade_ids = USER_COUNTERED_TRADES.load(deps.storage, counterer)?;
+    let start =
+        start_after.map(|s| Bound::Exclusive((U64Key::new(s), U64Key::new(0)).joined_key()));
 
-    let start_after_vec = match start_after{
-        Some(start_after) => &trade_ids[0..start_after.into()],
-        None => trade_ids.as_slice()
+    let counter_filters = Some(QueryFilters {
+        owner: Some(counterer),
+        ..QueryFilters::default()
+    });
+
+    let trades: StdResult<Vec<TradeResponse>> = COUNTER_TRADE_INFO
+        .range(deps.storage, None, start, Order::Descending)
+        .map(|kv_item| parse_all_counter_trades(deps.api, kv_item))
+        .filter(|response| trade_filter(deps.api, response, &counter_filters))
+        .filter_map(|response| response.ok())
+        // Now we get back the trade_id and query the trade_info
+        .map(|response| response.trade_id)
+        .unique()
+        .map(|trade_id| {
+            Ok((
+                U64Key::new(trade_id).joined_key(),
+                TRADE_INFO.load(deps.storage, trade_id.into())?,
+            ))
+        })
+        .map(|kv_item| parse_trades(deps.api, kv_item))
+        .filter(|response| trade_filter(deps.api, response, &filters))
+        .take(limit)
+        .collect();
+
+    /*
+    let start_after_vec = match start_after {
+        Some(start_after) => &trade_ids[0..start_after as usize],
+        None => trade_ids.as_slice(),
     };
 
     let mut query_results = vec![];
-    let mut added_elements = 0;;
-    for &x in start_after_vec.iter().rev(){
+    let mut added_elements = 0;
+    for &x in start_after_vec.iter().rev() {
         let trade = TRADE_INFO.load(deps.storage, (x).into())?;
         let trade_info = parse_trades(deps.api, Ok((U64Key::new(x).joined_key(), trade)))?;
-        if trade_filter(deps.api, &Ok(trade_info.clone()), &filters){
+        if trade_filter(deps.api, &Ok(trade_info.clone()), &filters) {
             query_results.push(trade_info);
-            added_elements+=1;
+            added_elements += 1;
         }
-        if added_elements > limit{
+        if added_elements > limit {
             break;
         }
     }
-
-    Ok(AllTradesResponse { trades: query_results })
+    */
+    Ok(AllTradesResponse { trades: trades? })
 }
 
 // parse counter trades to human readable format

@@ -15,7 +15,9 @@ use cw1155::Cw1155ExecuteMsg;
 use cw721::Cw721ExecuteMsg;
 
 use nft_loans_export::msg::{ExecuteMsg, InstantiateMsg, LoanTerms, QueryMsg};
-use nft_loans_export::state::{BorrowerInfo, CollateralInfo, ContractInfo, LoanInfo, LoanState};
+use nft_loans_export::state::{
+    BorrowerInfo, CollateralInfo, ContractInfo, LoanState, OfferInfo, OfferState,
+};
 use utils::msg::into_cosmos_msg;
 use utils::state::{AssetInfo, Cw1155Coin, Cw721Coin};
 
@@ -61,11 +63,25 @@ pub fn execute(
         ExecuteMsg::AcceptLoan { borrower, loan_id } => {
             accept_loan(deps, env, info, borrower, loan_id)
         }
+
+        ExecuteMsg::AcceptOffer { loan_id, offer_id } => {
+            accept_offer(deps, env, info, loan_id, offer_id)
+        }
         ExecuteMsg::MakeOffer {
             borrower,
             loan_id,
             terms,
         } => make_offer(deps, env, info, borrower, loan_id, terms),
+
+        ExecuteMsg::CancelOffer {
+            borrower,
+            loan_id,
+            offer_id,
+        } => cancel_offer(deps, env, info, borrower, loan_id, offer_id),
+
+        ExecuteMsg::RefuseOffer { loan_id, offer_id } => {
+            refuse_offer(deps, env, info, loan_id, offer_id)
+        }
         // Internal Contract Logic
         ExecuteMsg::SetNewOwner { owner } => set_new_owner(deps, env, info, owner),
 
@@ -268,9 +284,10 @@ pub fn make_offer(
     }
     // The we can same the new offer
 
-    collateral.offers.push(LoanInfo {
+    collateral.offers.push(OfferInfo {
         lender: info.sender.clone(),
         terms,
+        state: OfferState::Published,
         deposited_funds: Some(info.funds[0].clone()),
     });
 
@@ -278,8 +295,68 @@ pub fn make_offer(
     COLLATERAL_INFO.save(deps.storage, (&borrower, loan_id.into()), &collateral)?;
 
     Ok(Response::new()
-        .add_attribute("accepted", "loan")
-        .add_attribute("let's", "go"))
+        .add_attribute("made", "offer")
+        .add_attribute("offer_id", (collateral.offers.len() - 1).to_string()))
+}
+
+pub fn cancel_offer(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    borrower: String,
+    loan_id: u64,
+    offer_id: u64,
+) -> Result<Response, ContractError> {
+    let borrower = deps.api.addr_validate(&borrower)?;
+    let mut collateral = COLLATERAL_INFO.load(deps.storage, (&borrower, loan_id.into()))?;
+
+    // We need to verify the offer exists
+    let offer_id = offer_id as usize;
+    let cancel_response = if offer_id < collateral.offers.len() {
+        if info.sender != collateral.offers[offer_id].lender {
+            Err(ContractError::Unauthorized {})
+        } else {
+            collateral.offers[offer_id].state = OfferState::Cancelled;
+
+            // We save the changes to the collateral object
+            COLLATERAL_INFO.save(deps.storage, (&borrower, loan_id.into()), &collateral)?;
+            Ok(Response::new()
+                .add_attribute("cancelled", "offer")
+                .add_attribute("offer_id", offer_id.to_string()))
+        }
+    } else {
+        return Err(ContractError::OfferNotFound {});
+    };
+    cancel_response
+    //withdraw_cancelled_offer(deps, env, info, borrower, loan_id, offer_id)
+    //TODO we need to make the funds withdrawable
+}
+
+pub fn refuse_offer(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    loan_id: u64,
+    offer_id: u64,
+) -> Result<Response, ContractError> {
+    let borrower = info.sender;
+    let mut collateral = COLLATERAL_INFO.load(deps.storage, (&borrower, loan_id.into()))?;
+
+    // We need to verify the offer exists
+    let offer_id = offer_id as usize;
+    if offer_id < collateral.offers.len() {
+        collateral.offers[offer_id as usize].state = OfferState::Refused;
+
+        // We save the changes to the collateral object
+        COLLATERAL_INFO.save(deps.storage, (&borrower, loan_id.into()), &collateral)?;
+        Ok(Response::new()
+            .add_attribute("refused", "offer")
+            .add_attribute("offer_id", offer_id.to_string()))
+    } else {
+        Err(ContractError::Std(StdError::generic_err(
+            "No such offer_id",
+        )))
+    }
 }
 
 pub fn accept_loan(
@@ -306,9 +383,10 @@ pub fn accept_loan(
         // The loan can start, the deposit is sufficient
         collateral.state = LoanState::Started;
         collateral.start_block = Some(env.block.height);
-        collateral.offers = vec![LoanInfo {
+        collateral.offers = vec![OfferInfo {
             lender: info.sender,
             terms,
+            state: OfferState::Published,
             deposited_funds: None,
         }];
         collateral.active_loan = Some(0);
@@ -317,6 +395,30 @@ pub fn accept_loan(
             "Fund sent do not match the loan terms",
         )));
     }
+
+    // We change the loan state
+    COLLATERAL_INFO.save(deps.storage, (&borrower, loan_id.into()), &collateral)?;
+
+    Ok(Response::new()
+        .add_attribute("accepted", "loan")
+        .add_attribute("let's", "go"))
+}
+
+pub fn accept_offer(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    loan_id: u64,
+    offer_id: u64,
+) -> Result<Response, ContractError> {
+    let borrower = info.sender;
+    let mut collateral = COLLATERAL_INFO.load(deps.storage, (&borrower, loan_id.into()))?;
+    is_loan_acceptable(&collateral)?;
+
+    // We can start the loan right away !
+    collateral.state = LoanState::Started;
+    collateral.start_block = Some(env.block.height);
+    collateral.active_loan = Some(offer_id);
 
     // We change the loan state
     COLLATERAL_INFO.save(deps.storage, (&borrower, loan_id.into()), &collateral)?;
@@ -649,9 +751,10 @@ pub mod tests {
                 state: LoanState::Started,
                 active_loan: Some(0),
                 start_block: Some(12345),
-                offers: vec![LoanInfo {
+                offers: vec![OfferInfo {
                     lender: deps.api.addr_validate("anyone").unwrap(),
                     terms,
+                    state: OfferState::Published,
                     deposited_funds: None,
                 }]
             }

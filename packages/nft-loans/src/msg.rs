@@ -44,6 +44,16 @@ pub enum ExecuteMsg {
         loan_id: u64,
         terms: LoanTerms,
     },
+    MakeOffer {
+        borrower: String,
+        loan_id: u64,
+        terms: LoanTerms,
+    },
+    CancelOffer {
+        borrower: String,
+        loan_id: u64,
+        offer_id: u64,
+    },
     RefuseOffer {
         loan_id: u64,
         offer_id: u64,
@@ -55,11 +65,6 @@ pub enum ExecuteMsg {
     AcceptLoan {
         borrower: String,
         loan_id: u64,
-    },
-    MakeOffer {
-        borrower: String,
-        loan_id: u64,
-        terms: LoanTerms,
     },
     WithdrawCancelledOffer {},
     WithdrawEndedLoan {},

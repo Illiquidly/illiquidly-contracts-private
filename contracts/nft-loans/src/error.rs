@@ -31,6 +31,9 @@ pub enum ContractError {
     #[error("Sorry, this loan doesn't exist :/")]
     LoanNotFound {},
 
+    #[error("Sorry, this offer doesn't exist :/")]
+    OfferNotFound {},
+
     #[error("Wrong state of the trade for the current operation : {state:?}")]
     WrongTradeState { state: TradeState },
 

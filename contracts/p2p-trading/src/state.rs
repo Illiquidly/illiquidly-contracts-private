@@ -13,8 +13,6 @@ pub const TRADE_INFO: Map<U64Key, TradeInfo> = Map::new("trade_info");
 
 pub const COUNTER_TRADE_INFO: Map<(U64Key, U64Key), TradeInfo> = Map::new("counter_trade_info");
 
-pub const USER_COUNTERED_TRADES: Map<Addr, Vec<u64>> = Map::new("user_countered_trades");
-
 pub fn add_funds(funds: Vec<Coin>) -> impl FnOnce(Option<TradeInfo>) -> StdResult<TradeInfo> {
     move |d: Option<TradeInfo>| -> StdResult<TradeInfo> {
         match d {

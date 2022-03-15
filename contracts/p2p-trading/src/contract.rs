@@ -27,7 +27,7 @@ use crate::trade::{
 
 use crate::messages::review_counter_trade;
 use crate::query::{
-    query_all_counter_trades, query_all_trades, query_all_trades_by_counterer, query_contract_info, query_counter_trades,
+    query_all_counter_trades, query_all_trades, query_contract_info, query_counter_trades,
 };
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -440,12 +440,6 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             limit,
             filters,
         } => to_binary(&query_all_trades(deps, start_after, limit, filters)?),
-        QueryMsg::GetAllTradesByCounterer {
-            start_after,
-            limit,
-            counterer,
-            filters,
-        } => to_binary(&query_all_trades_by_counterer(deps, start_after, limit, counterer, filters)?),
     }
 }
 
@@ -2653,7 +2647,10 @@ pub mod tests {
 
     pub mod counter_trade_tests {
         use super::*;
-        use cosmwasm_std::{coin, SubMsg};
+        use crate::query::{AllTradesResponse, TradeResponse};
+        use cosmwasm_std::{coin, from_binary, Api, SubMsg};
+        use p2p_trading_export::msg::QueryFilters;
+        use p2p_trading_export::state::CounterTradeInfo;
 
         #[test]
         fn create_counter_trade() {
@@ -3371,6 +3368,110 @@ pub mod tests {
                     from: TradeState::Accepted,
                     to: TradeState::Countered
                 }
+            );
+        }
+
+        #[test]
+        fn query_trades_by_counterer() {
+            let mut deps = mock_dependencies(&[]);
+            init_helper(deps.as_mut());
+
+            create_trade_helper(deps.as_mut(), "creator");
+            confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
+
+            // When no counter_trades
+            let env = mock_env();
+            let res: AllTradesResponse = from_binary(
+                &query(
+                    deps.as_ref(),
+                    env,
+                    QueryMsg::GetAllTrades {
+                        start_after: None,
+                        limit: None,
+                        filters: Some(QueryFilters {
+                            counterer: Some("counterer".to_string()),
+                            ..QueryFilters::default()
+                        }),
+                    },
+                )
+                .unwrap(),
+            )
+            .unwrap();
+
+            assert_eq!(res.trades, vec![]);
+
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 0).unwrap();
+            confirm_counter_trade_helper(deps.as_mut(), "counterer", 0, 0).unwrap();
+            accept_trade_helper(deps.as_mut(), "creator", 0, 0).unwrap();
+
+            create_trade_helper(deps.as_mut(), "creator");
+            confirm_trade_helper(deps.as_mut(), "creator", 1).unwrap();
+            create_trade_helper(deps.as_mut(), "creator");
+            confirm_trade_helper(deps.as_mut(), "creator", 2).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "bad_person", 1).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "bad_person", 1).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "bad_person", 1).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "bad_person", 1).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "bad_person", 1).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "bad_person", 1).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "bad_person", 1).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "bad_person", 1).unwrap();
+
+            suggest_counter_trade_helper(deps.as_mut(), "counterer", 2).unwrap();
+
+            let env = mock_env();
+            let res: AllTradesResponse = from_binary(
+                &query(
+                    deps.as_ref(),
+                    env,
+                    QueryMsg::GetAllTrades {
+                        start_after: None,
+                        limit: None,
+                        filters: Some(QueryFilters {
+                            counterer: Some("counterer".to_string()),
+                            ..QueryFilters::default()
+                        }),
+                    },
+                )
+                .unwrap(),
+            )
+            .unwrap();
+
+            assert_eq!(
+                res.trades,
+                vec![
+                    {
+                        TradeResponse {
+                            trade_id: 2,
+                            counter_id: None,
+                            trade_info: TradeInfo {
+                                owner: deps.api.addr_validate("creator").unwrap(),
+                                last_counter_id: Some(0),
+                                state: TradeState::Countered,
+                                ..Default::default()
+                            },
+                        }
+                    },
+                    {
+                        TradeResponse {
+                            trade_id: 0,
+                            counter_id: None,
+                            trade_info: TradeInfo {
+                                owner: deps.api.addr_validate("creator").unwrap(),
+                                last_counter_id: Some(3),
+                                state: TradeState::Accepted,
+                                accepted_info: Some(CounterTradeInfo {
+                                    trade_id: 0,
+                                    counter_id: 0,
+                                }),
+                                ..Default::default()
+                            },
+                        }
+                    }
+                ]
             );
         }
     }

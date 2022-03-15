@@ -16,8 +16,8 @@ pub struct CollateralInfo {
     pub terms: Option<LoanTerms>,
     pub associated_asset: AssetInfo,
     pub state: LoanState,
-    pub offers: Vec<LoanInfo>,
-    pub active_loan: Option<u32>,
+    pub offers: Vec<OfferInfo>,
+    pub active_loan: Option<u64>,
     pub start_block: Option<u64>,
 }
 
@@ -46,9 +46,10 @@ pub struct BorrowerInfo {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub struct LoanInfo {
+pub struct OfferInfo {
     pub lender: Addr,
     pub terms: LoanTerms,
+    pub state: OfferState,
     pub deposited_funds: Option<Coin>,
 }
 
@@ -60,6 +61,14 @@ pub enum LoanState {
     Defaulted,
     Ended,
     AssetWithdrawn,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug, strum_macros::Display)]
+#[serde(rename_all = "snake_case")]
+pub enum OfferState {
+    Published,
+    Refused,
+    Cancelled,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
