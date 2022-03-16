@@ -10,6 +10,7 @@
     "p2p-test": "node dist/p2p-flow-test.js",
     "new_token": "node dist/upload_new_token.js",
     "upload-p2p": "node dist/upload_p2p.js",
+    "withdraw": "node dist/withdraw_all.js",
     "init": "node dist/send_funds.js"
   },
   "keywords": [

@@ -1,6 +1,6 @@
 use strum_macros;
 
-use cosmwasm_std::{Addr, Coin, Uint128};
+use cosmwasm_std::{Addr, Coin, Timestamp, Uint128};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -66,8 +66,17 @@ pub struct CounterTradeInfo {
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug, Default)]
 #[serde(rename_all = "snake_case")]
 pub struct AdditionnalTradeInfo {
-    pub comment: Option<String>,
+    pub time: Timestamp,
+    pub owner_comment: Option<Comment>,
+    pub trader_comment: Option<Comment>,
     pub nfts_wanted: HashSet<Addr>,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug, Default)]
+#[serde(rename_all = "snake_case")]
+pub struct Comment {
+    pub time: Timestamp,
+    pub comment: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]

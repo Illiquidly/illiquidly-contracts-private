@@ -1,11 +1,13 @@
 use crate::error::ContractError;
-use crate::state::{is_trader, load_counter_trade, COUNTER_TRADE_INFO, TRADE_INFO};
+use crate::state::{
+    is_counter_trader, is_trader, load_counter_trade, COUNTER_TRADE_INFO, TRADE_INFO,
+};
 use cosmwasm_std::{DepsMut, Env, MessageInfo, Response};
-use p2p_trading_export::state::TradeState;
+use p2p_trading_export::state::{Comment, TradeState};
 
 pub fn review_counter_trade(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     trade_id: u64,
     counter_id: u64,
@@ -33,7 +35,10 @@ pub fn review_counter_trade(
     }
 
     counter_info.state = TradeState::Created;
-    counter_info.additionnal_info.comment = comment;
+    counter_info.additionnal_info.trader_comment = comment.map(|comment| Comment {
+        time: env.block.time,
+        comment,
+    });
 
     // Then we need to change the trade status that we may have changed
     TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
@@ -47,4 +52,34 @@ pub fn review_counter_trade(
         .add_attribute("review", "counter")
         .add_attribute("trade", trade_id.to_string())
         .add_attribute("counter", counter_id.to_string()))
+}
+
+pub fn set_comment(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    trade_id: u64,
+    counter_id: Option<u64>,
+    comment: String,
+) -> Result<Response, ContractError> {
+    let comment = Comment {
+        time: env.block.time,
+        comment: comment,
+    };
+
+    if let Some(counter_id) = counter_id {
+        let mut counter_info = is_counter_trader(deps.storage, &info.sender, trade_id, counter_id)?;
+        counter_info.additionnal_info.owner_comment = Some(comment);
+        COUNTER_TRADE_INFO.save(
+            deps.storage,
+            (trade_id.into(), counter_id.into()),
+            &counter_info,
+        )?;
+    } else {
+        let mut trade_info = is_trader(deps.storage, &info.sender, trade_id)?;
+        trade_info.additionnal_info.owner_comment = Some(comment);
+        TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
+    }
+
+    Ok(Response::new().add_attribute("set", "comment"))
 }

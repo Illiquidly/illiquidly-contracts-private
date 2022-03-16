@@ -1,24 +1,48 @@
-use cosmwasm_std::{Coin, DepsMut, Env, MessageInfo, Response, Uint128};
+use cosmwasm_std::{
+    Addr, Coin, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult, Uint128,
+};
 
 use cw1155::Cw1155ExecuteMsg;
 use cw20::Cw20ExecuteMsg;
 use cw721::Cw721ExecuteMsg;
 
+use p2p_trading_export::msg::{into_cosmos_msg, QueryFilters};
+use p2p_trading_export::state::{AdditionnalTradeInfo, AssetInfo, TradeInfo, TradeState};
+
 use crate::error::ContractError;
+use crate::messages::set_comment;
+use crate::query::query_all_counter_trades;
 use crate::state::{
     add_cw1155_coin, add_cw20_coin, add_cw721_coin, add_funds, can_suggest_counter_trade,
     is_counter_trader, load_trade, COUNTER_TRADE_INFO, TRADE_INFO,
 };
-use p2p_trading_export::msg::into_cosmos_msg;
-use p2p_trading_export::state::{AssetInfo, TradeInfo, TradeState};
-
 use crate::trade::{are_assets_in_trade, create_withdraw_messages, try_withdraw_assets_unsafe};
 
+pub fn get_last_counter_id_created(deps: Deps, by: String, trade_id: u64) -> StdResult<u64> {
+    let counter_trade = &query_all_counter_trades(
+        deps,
+        None,
+        Some(1),
+        Some(QueryFilters {
+            owner: Some(by),
+            ..QueryFilters::default()
+        }),
+    )?
+    .counter_trades[0];
+    if counter_trade.trade_id != trade_id {
+        Err(StdError::generic_err(
+            "Wrong trade id for the last counter trade",
+        ))
+    } else {
+        Ok(counter_trade.counter_id.unwrap())
+    }
+}
 pub fn suggest_counter_trade(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     trade_id: u64,
+    comment: Option<String>,
 ) -> Result<Response, ContractError> {
     // We start by verifying it is possible to suggest a counter trade to that trade
     // It also checks if the trade exists
@@ -64,10 +88,18 @@ pub fn suggest_counter_trade(
             &TradeInfo {
                 owner: info.sender.clone(),
                 // We add the funds sent along with this transaction
-                associated_funds: info.funds,
+                associated_funds: info.funds.clone(),
+                additionnal_info: AdditionnalTradeInfo {
+                    time: env.block.time,
+                    ..Default::default()
+                },
                 ..Default::default()
             },
         )?;
+    }
+
+    if let Some(comment) = comment {
+        set_comment(deps, env, info, trade_id, Some(counter_id), comment)?;
     }
 
     Ok(Response::new()
@@ -76,19 +108,36 @@ pub fn suggest_counter_trade(
         .add_attribute("counter_id", counter_id.to_string()))
 }
 
-pub fn add_funds_to_counter_trade(
-    deps: DepsMut,
-    _env: Env,
-    info: MessageInfo,
+pub fn prepare_counter_asset_addition(
+    deps: Deps,
+    trader: Addr,
     trade_id: u64,
-    counter_id: u64,
-) -> Result<Response, ContractError> {
-    let counter_info = is_counter_trader(deps.storage, &info.sender, trade_id, counter_id)?;
+    counter_id: Option<u64>,
+) -> Result<u64, ContractError> {
+    let counter_id = match counter_id {
+        Some(counter_id) => Ok(counter_id),
+        None => get_last_counter_id_created(deps, trader.to_string(), trade_id),
+    }?;
+
+    let counter_info = is_counter_trader(deps.storage, &trader, trade_id, counter_id)?;
+
     if counter_info.state != TradeState::Created {
         return Err(ContractError::WrongTradeState {
             state: counter_info.state,
         });
     }
+    return Ok(counter_id);
+}
+
+pub fn add_funds_to_counter_trade(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    trade_id: u64,
+    counter_id: Option<u64>,
+) -> Result<Response, ContractError> {
+    let counter_id =
+        prepare_counter_asset_addition(deps.as_ref(), info.sender.clone(), trade_id, counter_id)?;
 
     COUNTER_TRADE_INFO.update(
         deps.storage,
@@ -102,26 +151,17 @@ pub fn add_funds_to_counter_trade(
         .add_attribute("counter_id", counter_id.to_string()))
 }
 
-pub fn add_token_to_counter_trade(
+pub fn add_cw20_to_counter_trade(
     deps: DepsMut,
     env: Env,
-    trader: String,
+    trader: Addr,
     trade_id: u64,
-    counter_id: u64,
+    counter_id: Option<u64>,
     token: String,
     sent_amount: Uint128,
 ) -> Result<Response, ContractError> {
-    let counter_info = is_counter_trader(
-        deps.storage,
-        &deps.api.addr_validate(&trader)?,
-        trade_id,
-        counter_id,
-    )?;
-    if counter_info.state != TradeState::Created {
-        return Err(ContractError::WrongTradeState {
-            state: counter_info.state,
-        });
-    }
+    let counter_id =
+        prepare_counter_asset_addition(deps.as_ref(), trader.clone(), trade_id, counter_id)?;
 
     COUNTER_TRADE_INFO.update(
         deps.storage,
@@ -131,7 +171,7 @@ pub fn add_token_to_counter_trade(
 
     // Now we need to transfer the token
     let message = Cw20ExecuteMsg::TransferFrom {
-        owner: trader,
+        owner: trader.to_string(),
         recipient: env.contract.address.into(),
         amount: sent_amount,
     };
@@ -143,26 +183,17 @@ pub fn add_token_to_counter_trade(
         .add_attribute("amount", sent_amount))
 }
 
-pub fn add_nft_to_counter_trade(
+pub fn add_cw721_to_counter_trade(
     deps: DepsMut,
     env: Env,
-    trader: String,
+    trader: Addr,
     trade_id: u64,
-    counter_id: u64,
+    counter_id: Option<u64>,
     token: String,
     token_id: String,
 ) -> Result<Response, ContractError> {
-    let counter_info = is_counter_trader(
-        deps.storage,
-        &deps.api.addr_validate(&trader)?,
-        trade_id,
-        counter_id,
-    )?;
-    if counter_info.state != TradeState::Created {
-        return Err(ContractError::WrongTradeState {
-            state: counter_info.state,
-        });
-    }
+    let counter_id =
+        prepare_counter_asset_addition(deps.as_ref(), trader.clone(), trade_id, counter_id)?;
 
     COUNTER_TRADE_INFO.update(
         deps.storage,
@@ -187,24 +218,15 @@ pub fn add_nft_to_counter_trade(
 pub fn add_cw1155_to_counter_trade(
     deps: DepsMut,
     env: Env,
-    trader: String,
+    trader: Addr,
     trade_id: u64,
-    counter_id: u64,
+    counter_id: Option<u64>,
     token: String,
     token_id: String,
     sent_amount: Uint128,
 ) -> Result<Response, ContractError> {
-    let counter_info = is_counter_trader(
-        deps.storage,
-        &deps.api.addr_validate(&trader)?,
-        trade_id,
-        counter_id,
-    )?;
-    if counter_info.state != TradeState::Created {
-        return Err(ContractError::WrongTradeState {
-            state: counter_info.state,
-        });
-    }
+    let counter_id =
+        prepare_counter_asset_addition(deps.as_ref(), trader.clone(), trade_id, counter_id)?;
 
     COUNTER_TRADE_INFO.update(
         deps.storage,
@@ -214,7 +236,7 @@ pub fn add_cw1155_to_counter_trade(
 
     // Now we need to transfer the token
     let message = Cw1155ExecuteMsg::SendFrom {
-        from: trader,
+        from: trader.to_string(),
         to: env.contract.address.into(),
         token_id: token_id.clone(),
         value: sent_amount,
@@ -306,7 +328,8 @@ pub fn cancel_counter_trade(
 
     Ok(Response::new()
         .add_attribute("cancelled", "counter")
-        .add_attribute("trade", trade_id.to_string()))
+        .add_attribute("trade", trade_id.to_string())
+        .add_attribute("counter", counter_id.to_string()))
 }
 
 pub fn withdraw_counter_trade_assets_while_creating(
@@ -320,7 +343,7 @@ pub fn withdraw_counter_trade_assets_while_creating(
 ) -> Result<Response, ContractError> {
     let mut counter_info = is_counter_trader(deps.storage, &info.sender, trade_id, counter_id)?;
 
-    if counter_info.state != TradeState::Created {
+    if counter_info.state != TradeState::Created && counter_info.state != TradeState::Cancelled {
         return Err(ContractError::CounterTradeAlreadyPublished {});
     }
 

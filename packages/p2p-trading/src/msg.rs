@@ -51,6 +51,7 @@ impl InstantiateMsg {
 pub enum ExecuteMsg {
     CreateTrade {
         whitelisted_users: Option<Vec<String>>,
+        comment: Option<String>,
     },
     AddFundsToTrade {
         trade_id: Option<u64>,
@@ -60,12 +61,16 @@ pub enum ExecuteMsg {
         counter_id: Option<u64>,
         address: String,
         amount: Uint128,
+        to_last_trade: Option<bool>,
+        to_last_counter: Option<bool>,
     },
     AddCw721 {
         trade_id: Option<u64>,
         counter_id: Option<u64>,
         address: String,
         token_id: String,
+        to_last_trade: Option<bool>,
+        to_last_counter: Option<bool>,
     },
     AddCw1155 {
         trade_id: Option<u64>,
@@ -73,6 +78,8 @@ pub enum ExecuteMsg {
         address: String,
         token_id: String,
         value: Uint128,
+        to_last_trade: Option<bool>,
+        to_last_counter: Option<bool>,
     },
     RemoveFromTrade {
         trade_id: u64,
@@ -88,7 +95,8 @@ pub enum ExecuteMsg {
         whitelisted_users: Vec<String>,
     },
     SetComment {
-        trade_id: Option<u64>,
+        trade_id: u64,
+        counter_id: Option<u64>,
         comment: String,
     },
     AddNFTsWanted {
@@ -106,10 +114,11 @@ pub enum ExecuteMsg {
     /// Can be used to initiate Counter Trade, but also to add new tokens to it
     SuggestCounterTrade {
         trade_id: u64,
+        comment: Option<String>,
     },
     AddFundsToCounterTrade {
         trade_id: u64,
-        counter_id: u64,
+        counter_id: Option<u64>,
     },
     RemoveFromCounterTrade {
         trade_id: u64,
@@ -161,7 +170,6 @@ pub enum ExecuteMsg {
         trade_id: u64,
         counter_id: u64,
     },
-
     SetNewOwner {
         owner: String,
     },
@@ -198,7 +206,10 @@ pub enum QueryMsg {
         filters: Option<QueryFilters>,
     },
     GetCounterTrades {
-        trade_id: u64,
+        trade_id: u64, 
+        start_after: Option<CounterTradeInfo>,
+        limit: Option<u32>,
+        filters: Option<QueryFilters>,
     },
     GetAllCounterTrades {
         start_after: Option<CounterTradeInfo>,

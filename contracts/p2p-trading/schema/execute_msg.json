@@ -11,6 +11,12 @@
         "create_trade": {
           "type": "object",
           "properties": {
+            "comment": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "whitelisted_users": {
               "type": [
                 "array",
@@ -74,6 +80,18 @@
               "format": "uint64",
               "minimum": 0.0
             },
+            "to_last_counter": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "to_last_trade": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
             "trade_id": {
               "type": [
                 "integer",
@@ -110,6 +128,18 @@
               ],
               "format": "uint64",
               "minimum": 0.0
+            },
+            "to_last_counter": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "to_last_trade": {
+              "type": [
+                "boolean",
+                "null"
+              ]
             },
             "token_id": {
               "type": "string"
@@ -151,6 +181,18 @@
               ],
               "format": "uint64",
               "minimum": 0.0
+            },
+            "to_last_counter": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "to_last_trade": {
+              "type": [
+                "boolean",
+                "null"
+              ]
             },
             "token_id": {
               "type": "string"
@@ -298,17 +340,23 @@
         "set_comment": {
           "type": "object",
           "required": [
-            "comment"
+            "comment",
+            "trade_id"
           ],
           "properties": {
             "comment": {
               "type": "string"
             },
-            "trade_id": {
+            "counter_id": {
               "type": [
                 "integer",
                 "null"
               ],
+              "format": "uint64",
+              "minimum": 0.0
+            },
+            "trade_id": {
+              "type": "integer",
               "format": "uint64",
               "minimum": 0.0
             }
@@ -413,6 +461,12 @@
             "trade_id"
           ],
           "properties": {
+            "comment": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "trade_id": {
               "type": "integer",
               "format": "uint64",
@@ -432,12 +486,14 @@
         "add_funds_to_counter_trade": {
           "type": "object",
           "required": [
-            "counter_id",
             "trade_id"
           ],
           "properties": {
             "counter_id": {
-              "type": "integer",
+              "type": [
+                "integer",
+                "null"
+              ],
               "format": "uint64",
               "minimum": 0.0
             },

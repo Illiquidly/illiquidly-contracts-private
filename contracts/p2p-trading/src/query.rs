@@ -165,26 +165,6 @@ pub fn query_all_trades_by_counterer(
         .take(limit)
         .collect();
 
-    /*
-    let start_after_vec = match start_after {
-        Some(start_after) => &trade_ids[0..start_after as usize],
-        None => trade_ids.as_slice(),
-    };
-
-    let mut query_results = vec![];
-    let mut added_elements = 0;
-    for &x in start_after_vec.iter().rev() {
-        let trade = TRADE_INFO.load(deps.storage, (x).into())?;
-        let trade_info = parse_trades(deps.api, Ok((U64Key::new(x).joined_key(), trade)))?;
-        if trade_filter(deps.api, &Ok(trade_info.clone()), &filters) {
-            query_results.push(trade_info);
-            added_elements += 1;
-        }
-        if added_elements > limit {
-            break;
-        }
-    }
-    */
     Ok(AllTradesResponse { trades: trades? })
 }
 
@@ -249,11 +229,26 @@ fn parse_counter_trades(
     })
 }
 
-pub fn query_counter_trades(deps: Deps, trade_id: u64) -> StdResult<AllCounterTradesResponse> {
+pub fn query_counter_trades(
+    deps: Deps, 
+    trade_id: u64,
+    start_after: Option<CounterTradeInfo>,
+    limit: Option<u32>,
+    filters: Option<QueryFilters>,
+) -> StdResult<AllCounterTradesResponse> {
+
+    let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
+
+    let start = start_after.map(|s| {
+        Bound::Exclusive((U64Key::new(s.trade_id), U64Key::new(s.counter_id)).joined_key())
+    });
+
     let counter_trades: StdResult<Vec<TradeResponse>> = COUNTER_TRADE_INFO
         .prefix(trade_id.into())
-        .range(deps.storage, None, None, Order::Descending)
+        .range(deps.storage, None, start, Order::Descending)
         .map(|kv_item| parse_counter_trades(deps.api, kv_item, U64Key::new(trade_id).joined_key()))
+        .filter(|response| trade_filter(deps.api, response, &filters))
+        .take(limit)
         .collect();
 
     Ok(AllCounterTradesResponse {

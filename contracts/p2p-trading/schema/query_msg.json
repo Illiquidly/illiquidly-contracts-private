@@ -116,6 +116,34 @@
             "trade_id"
           ],
           "properties": {
+            "filters": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/QueryFilters"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "limit": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "start_after": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/CounterTradeInfo"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "trade_id": {
               "type": "integer",
               "format": "uint64",
@@ -193,6 +221,12 @@
       "type": "object",
       "properties": {
         "contains_token": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "counterer": {
           "type": [
             "string",
             "null"

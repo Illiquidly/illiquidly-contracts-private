@@ -1,6 +1,6 @@
 use cosmwasm_std::{
     Addr, Api, BankMsg, Coin, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult,
-    Uint128,
+    Storage, Uint128,
 };
 
 use std::collections::HashSet;
@@ -10,21 +10,23 @@ use cw1155::Cw1155ExecuteMsg;
 use cw20::Cw20ExecuteMsg;
 use cw721::Cw721ExecuteMsg;
 
+use p2p_trading_export::msg::{into_cosmos_msg, QueryFilters};
+use p2p_trading_export::state::{
+    AdditionnalTradeInfo, AssetInfo, CounterTradeInfo, TradeInfo, TradeState,
+};
+
 use crate::error::ContractError;
+use crate::messages::set_comment;
 use crate::query::query_all_trades;
 use crate::state::{
     add_cw1155_coin, add_cw20_coin, add_cw721_coin, add_funds, is_trader, load_counter_trade,
     CONTRACT_INFO, COUNTER_TRADE_INFO, TRADE_INFO,
 };
-
-use p2p_trading_export::msg::{into_cosmos_msg, QueryFilters};
-use p2p_trading_export::state::{AssetInfo, CounterTradeInfo, TradeInfo, TradeState};
-
 pub fn get_last_trade_id_created(deps: Deps, by: String) -> StdResult<u64> {
     Ok(query_all_trades(
         deps,
         None,
-        None,
+        Some(1),
         Some(QueryFilters {
             owner: Some(by),
             ..QueryFilters::default()
@@ -39,6 +41,7 @@ pub fn create_trade(
     env: Env,
     info: MessageInfo,
     whitelisted_users: Option<Vec<String>>,
+    comment: Option<String>,
 ) -> Result<Response, ContractError> {
     // We start by creating a new trade_id (simply incremented from the last id)
     let trade_id: u64 = CONTRACT_INFO
@@ -68,18 +71,54 @@ pub fn create_trade(
                 owner: info.sender.clone(),
                 // We add the funds sent along with this transaction
                 associated_funds: info.funds.clone(),
+                additionnal_info: AdditionnalTradeInfo {
+                    time: env.block.time,
+                    ..Default::default()
+                },
                 ..Default::default()
             },
         )?;
     }
 
     if let Some(whitelist) = whitelisted_users {
-        add_whitelisted_users(deps, env, info, trade_id, whitelist)?;
+        add_whitelisted_users(
+            deps.storage,
+            deps.api,
+            env.clone(),
+            info.clone(),
+            trade_id,
+            whitelist,
+        )?;
+    }
+
+    if let Some(comment) = comment {
+        set_comment(deps, env, info, trade_id, None, comment)?;
     }
 
     Ok(Response::new()
         .add_attribute("trade", "created")
         .add_attribute("trade_id", trade_id.to_string()))
+}
+
+pub fn prepare_trade_asset_addition(
+    deps: Deps,
+    trader: Addr,
+    trade_id: Option<u64>,
+) -> Result<u64, ContractError> {
+    let trade_id = match trade_id {
+        Some(trade_id) => Ok(trade_id),
+        None => get_last_trade_id_created(deps, trader.to_string()),
+    }?;
+
+    let trade_info = is_trader(deps.storage, &trader, trade_id)?;
+
+    //let trade_info = TRADE_INFO.load(deps.storage, trade_id.into())?;
+    if trade_info.state != TradeState::Created {
+        return Err(ContractError::WrongTradeState {
+            state: trade_info.state,
+        });
+    }
+    return Ok(trade_id);
 }
 
 pub fn add_funds_to_trade(
@@ -88,19 +127,7 @@ pub fn add_funds_to_trade(
     info: MessageInfo,
     trade_id: Option<u64>,
 ) -> Result<Response, ContractError> {
-    let trade_id = match trade_id {
-        Some(trade_id) => Ok(trade_id),
-        None => get_last_trade_id_created(deps.as_ref(), info.sender.to_string()),
-    }?;
-
-    is_trader(deps.storage, &info.sender, trade_id)?;
-
-    let trade_info = TRADE_INFO.load(deps.storage, trade_id.into())?;
-    if trade_info.state != TradeState::Created {
-        return Err(ContractError::WrongTradeState {
-            state: trade_info.state,
-        });
-    }
+    let trade_id = prepare_trade_asset_addition(deps.as_ref(), info.sender, trade_id)?;
 
     TRADE_INFO.update(deps.storage, trade_id.into(), add_funds(info.funds))?;
 
@@ -109,26 +136,15 @@ pub fn add_funds_to_trade(
         .add_attribute("trade_id", trade_id.to_string()))
 }
 
-pub fn add_token_to_trade(
+pub fn add_cw20_to_trade(
     deps: DepsMut,
     env: Env,
-    trader: String,
+    trader: Addr,
     trade_id: Option<u64>,
     token: String,
     sent_amount: Uint128,
 ) -> Result<Response, ContractError> {
-    let trade_id = match trade_id {
-        Some(trade_id) => Ok(trade_id),
-        None => get_last_trade_id_created(deps.as_ref(), trader.clone()),
-    }?;
-
-    let trade_info = is_trader(deps.storage, &deps.api.addr_validate(&trader)?, trade_id)?;
-
-    if trade_info.state != TradeState::Created {
-        return Err(ContractError::WrongTradeState {
-            state: trade_info.state,
-        });
-    }
+    let trade_id = prepare_trade_asset_addition(deps.as_ref(), trader.clone(), trade_id)?;
 
     TRADE_INFO.update(
         deps.storage,
@@ -138,7 +154,7 @@ pub fn add_token_to_trade(
 
     // Now we need to transfer the token
     let message = Cw20ExecuteMsg::TransferFrom {
-        owner: trader,
+        owner: trader.to_string(),
         recipient: env.contract.address.into(),
         amount: sent_amount,
     };
@@ -150,25 +166,15 @@ pub fn add_token_to_trade(
         .add_attribute("amount", sent_amount))
 }
 
-pub fn add_nft_to_trade(
+pub fn add_cw721_to_trade(
     deps: DepsMut,
     env: Env,
-    trader: String,
+    trader: Addr,
     trade_id: Option<u64>,
     token: String,
     token_id: String,
 ) -> Result<Response, ContractError> {
-    let trade_id = match trade_id {
-        Some(trade_id) => Ok(trade_id),
-        None => get_last_trade_id_created(deps.as_ref(), trader.clone()),
-    }?;
-    let trade_info = is_trader(deps.storage, &deps.api.addr_validate(&trader)?, trade_id)?;
-
-    if trade_info.state != TradeState::Created {
-        return Err(ContractError::WrongTradeState {
-            state: trade_info.state,
-        });
-    }
+    let trade_id = prepare_trade_asset_addition(deps.as_ref(), trader.clone(), trade_id)?;
 
     TRADE_INFO.update(
         deps.storage,
@@ -192,23 +198,13 @@ pub fn add_nft_to_trade(
 pub fn add_cw1155_to_trade(
     deps: DepsMut,
     env: Env,
-    trader: String,
+    trader: Addr,
     trade_id: Option<u64>,
     token: String,
     token_id: String,
     sent_amount: Uint128,
 ) -> Result<Response, ContractError> {
-    let trade_id = match trade_id {
-        Some(trade_id) => Ok(trade_id),
-        None => get_last_trade_id_created(deps.as_ref(), trader.clone()),
-    }?;
-    let trade_info = is_trader(deps.storage, &deps.api.addr_validate(&trader)?, trade_id)?;
-
-    if trade_info.state != TradeState::Created {
-        return Err(ContractError::WrongTradeState {
-            state: trade_info.state,
-        });
-    }
+    let trade_id = prepare_trade_asset_addition(deps.as_ref(), trader.clone(), trade_id)?;
 
     TRADE_INFO.update(
         deps.storage,
@@ -218,7 +214,7 @@ pub fn add_cw1155_to_trade(
 
     // Now we need to transfer the token
     let message = Cw1155ExecuteMsg::SendFrom {
-        from: trader,
+        from: trader.to_string(),
         to: env.contract.address.into(),
         token_id: token_id.clone(),
         value: sent_amount,
@@ -241,28 +237,28 @@ pub fn validate_addresses(api: &dyn Api, whitelisted_users: &[String]) -> StdRes
 }
 
 pub fn add_whitelisted_users(
-    deps: DepsMut,
+    storage: &mut dyn Storage,
+    api: &dyn Api,
     _env: Env,
     info: MessageInfo,
     trade_id: u64,
     whitelisted_users: Vec<String>,
 ) -> Result<Response, ContractError> {
-    let mut trade_info = is_trader(deps.storage, &info.sender, trade_id)?;
+    let mut trade_info = is_trader(storage, &info.sender, trade_id)?;
     if trade_info.state != TradeState::Created {
         return Err(ContractError::WrongTradeState {
             state: trade_info.state,
         });
     }
 
-    let hash_set: HashSet<Addr> =
-        HashSet::from_iter(validate_addresses(deps.api, &whitelisted_users)?);
+    let hash_set: HashSet<Addr> = HashSet::from_iter(validate_addresses(api, &whitelisted_users)?);
     trade_info.whitelisted_users = trade_info
         .whitelisted_users
         .union(&hash_set)
         .cloned()
         .collect();
 
-    TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
+    TRADE_INFO.save(storage, trade_id.into(), &trade_info)?;
 
     Ok(Response::new().add_attribute("added", "whitelisted_users"))
 }
@@ -346,25 +342,6 @@ pub fn remove_nfts_wanted(
     TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
 
     Ok(Response::new().add_attribute("removed", "nfts_wanted"))
-}
-
-pub fn set_comment(
-    deps: DepsMut,
-    _env: Env,
-    info: MessageInfo,
-    trade_id: Option<u64>,
-    comment: String,
-) -> Result<Response, ContractError> {
-    let trade_id = match trade_id {
-        Some(trade_id) => Ok(trade_id),
-        None => get_last_trade_id_created(deps.as_ref(), info.sender.to_string()),
-    }?;
-    let mut trade_info = is_trader(deps.storage, &info.sender, trade_id)?;
-    trade_info.additionnal_info.comment = Some(comment.clone());
-    TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
-    Ok(Response::new()
-        .add_attribute("set", "comment")
-        .add_attribute("comment", comment))
 }
 
 pub fn confirm_trade(
@@ -550,7 +527,7 @@ pub fn withdraw_trade_assets_while_creating(
     funds: Vec<(u16, Coin)>,
 ) -> Result<Response, ContractError> {
     let mut trade_info = is_trader(deps.storage, &info.sender, trade_id)?;
-    if trade_info.state != TradeState::Created {
+    if trade_info.state != TradeState::Created && trade_info.state != TradeState::Cancelled {
         return Err(ContractError::TradeAlreadyPublished {});
     }
 

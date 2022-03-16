@@ -25,7 +25,7 @@ async function main(){
 			all_handlers.map((handler)=>{
 				return {
 					address:handler.getAddress(),
-					amount: "1000000"
+					amount: "1000000000"
 				}
 			})
 		

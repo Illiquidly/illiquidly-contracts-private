@@ -49,6 +49,19 @@ class Transaction extends LCDClientWrapper{
 		});	
 		return response;
 	}
+	async executeSome(msgs: Object[]){
+		let response = await this.post(msgs)
+		.catch((response: any)=>{
+			if (isTxError(response)) {
+			  throw new Error(
+			    `store code failed. code: ${response.code}, codespace: ${response.codespace}, raw_log: ${response.raw_log}`
+			  );
+			}else{
+				console.log(response["response"]["data"])
+			}
+		});	
+		return response;
+	}
 }
 /// Query Msg Handler
 /// Removes a lot of code overhead
