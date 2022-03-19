@@ -307,8 +307,6 @@ async function main() {
     if (validate(network, res)) {
       const currentData = await db.get(toKey(network, address));
 
-      console.error("current data", JSON.stringify(currentData));
-
       res
         .status(200)
         .send(
