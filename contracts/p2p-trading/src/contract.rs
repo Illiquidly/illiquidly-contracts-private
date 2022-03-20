@@ -2910,7 +2910,7 @@ pub mod tests {
             info,
             ExecuteMsg::ConfirmCounterTrade {
                 trade_id: trade_id,
-                counter_id: counter_id,
+                counter_id: Some(counter_id),
             },
         )
     }
@@ -3156,6 +3156,9 @@ pub mod tests {
             create_trade_helper(deps.as_mut(), "creator");
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
             create_trade_helper(deps.as_mut(), "creator");
+            confirm_trade_helper(deps.as_mut(), "creator", 1).unwrap();
+            suggest_counter_trade_helper(deps.as_mut(), "creator", 1).unwrap();
+            
             suggest_counter_trade_helper(deps.as_mut(), "creator", 0).unwrap();
 
             execute(
@@ -3185,6 +3188,19 @@ pub mod tests {
             )
             .unwrap();
 
+            let info = mock_info("creator", &[]);
+            let env = mock_env();
+
+            execute(
+                deps.as_mut(),
+                env,
+                info,
+                ExecuteMsg::ConfirmCounterTrade {
+                    trade_id: 0,
+                    counter_id: None,
+                },
+            ).unwrap();
+
             let trade_info = COUNTER_TRADE_INFO
                 .load(&deps.storage, (0u64.into(), 0u64.into()))
                 .unwrap();
@@ -3196,6 +3212,8 @@ pub mod tests {
                 })]
             );
             assert_eq!(trade_info.associated_funds, coins(97u128, "uluna"));
+            assert_eq!(trade_info.state, TradeState::Published);
+           
         }
 
         #[test]

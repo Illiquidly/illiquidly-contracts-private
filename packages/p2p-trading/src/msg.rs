@@ -129,7 +129,7 @@ pub enum ExecuteMsg {
     /// Is used by the Client to confirm they completed their end of the trade.
     ConfirmCounterTrade {
         trade_id: u64,
-        counter_id: u64,
+        counter_id: Option<u64>,
     },
     /// Accept the Trade plain and simple, swap it up !
     AcceptTrade {
@@ -186,7 +186,7 @@ pub struct QueryFilters {
     pub counterer: Option<String>,
     pub whitelisted_user: Option<String>,
     pub contains_token: Option<String>,
-    pub wanted_nft: Option<String>,
+    pub wanted_nft: Option<String>
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

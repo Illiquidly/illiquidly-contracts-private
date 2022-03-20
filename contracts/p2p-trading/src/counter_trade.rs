@@ -11,7 +11,7 @@ use p2p_trading_export::state::{AdditionnalTradeInfo, AssetInfo, TradeInfo, Trad
 
 use crate::error::ContractError;
 use crate::messages::set_comment;
-use crate::query::query_all_counter_trades;
+use crate::query::query_counter_trades;
 use crate::state::{
     add_cw1155_coin, add_cw20_coin, add_cw721_coin, add_funds, can_suggest_counter_trade,
     is_counter_trader, load_trade, COUNTER_TRADE_INFO, TRADE_INFO,
@@ -19,8 +19,9 @@ use crate::state::{
 use crate::trade::{are_assets_in_trade, create_withdraw_messages, try_withdraw_assets_unsafe};
 
 pub fn get_last_counter_id_created(deps: Deps, by: String, trade_id: u64) -> StdResult<u64> {
-    let counter_trade = &query_all_counter_trades(
+    let counter_trade = &query_counter_trades(
         deps,
+        trade_id,
         None,
         Some(1),
         Some(QueryFilters {
@@ -256,9 +257,15 @@ pub fn confirm_counter_trade(
     _env: Env,
     info: MessageInfo,
     trade_id: u64,
-    counter_id: u64,
+    counter_id: Option<u64>,
 ) -> Result<Response, ContractError> {
     let mut trade_info = load_trade(deps.storage, trade_id)?;
+
+     let counter_id = match counter_id {
+        Some(counter_id) => Ok(counter_id),
+        None => get_last_counter_id_created(deps.as_ref(), info.sender.clone().to_string(), trade_id),
+    }?;
+
 
     is_counter_trader(deps.storage, &info.sender, trade_id, counter_id)?;
 

@@ -439,9 +439,9 @@ pub fn refuse_counter_trade(
     counter_id: u64,
 ) -> Result<Response, ContractError> {
     // Only the initial trader can refuse a trade
-    let mut trade_info = is_trader(deps.storage, &info.sender, trade_id)?;
+    let trade_info = is_trader(deps.storage, &info.sender, trade_id)?;
     // We check the counter trade exists
-    load_counter_trade(deps.storage, trade_id, counter_id)?;
+    let mut counter_info = load_counter_trade(deps.storage, trade_id, counter_id)?;
 
     if trade_info.state == TradeState::Accepted {
         return Err(ContractError::TradeAlreadyAccepted {});
@@ -450,42 +450,9 @@ pub fn refuse_counter_trade(
         return Err(ContractError::TradeCancelled {});
     }
 
-    trade_info.state = TradeState::Refused;
+    counter_info.state = TradeState::Refused;
 
-    TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
-
-    /*
-    // We go through all counter trades, to cancel the counter_id and to update the current trade state
-    let mut is_countered = false;
-    // We get all the counter trades for this trade
-    let counter_trade_keys: Vec<Vec<u8>> = COUNTER_TRADE_INFO
-        .prefix(trade_id.into())
-        .keys(deps.storage, None, None, Order::Ascending)
-        .collect();
-
-    // We go through all of them and change their status
-    for key in counter_trade_keys {
-        COUNTER_TRADE_INFO.update(
-            deps.storage,
-            (trade_id.into(), &key),
-            |d: Option<TradeInfo>| -> Result<TradeInfo, ContractError> {
-                match d {
-                    Some(mut one) => {
-                        let id: &[u8] = &key;
-                        if id == counter_id.to_be_bytes() {
-                            one.state =
-                        }else if one.state == TradeState::Published {
-                            is_countered = true;
-                        }
-                        Ok(one)
-                    }
-                    // TARPAULIN : Unreachable
-                    None => Err(ContractError::NotFoundInCounterTradeInfo {}),
-                }
-            },
-        )?;
-    }
-    */
+    COUNTER_TRADE_INFO.save(deps.storage, (trade_id.into(),counter_id.into()), &counter_info)?;
 
     Ok(Response::new()
         .add_attribute("refuse", "counter")
