@@ -122,6 +122,7 @@ async function updateInteractedNfts(
 
   let nftsInteracted: Set<string> = new Set();
   let query_next: boolean = true;
+  let networkError = false;
   let limit = 100;
   let offset;
   if(lastTxIdSaved){
@@ -148,6 +149,7 @@ async function updateInteractedNfts(
       if (error.response != undefined && error.response.status == 500) {
         // No more results
       } else {
+        networkError = true;
         console.log(error);
       }
       return null;
@@ -178,7 +180,7 @@ async function updateInteractedNfts(
       await callback(nftsInteracted, {newest : newestTxIdSeen, oldest: lastTxIdSeen});
     }
   }
-  let hasTimedOut = Date.now() >= timeout;
+  let hasTimedOut = (Date.now() >= timeout) || networkError;
 
   return [nftsInteracted, {newest : newestTxIdSeen, oldest: lastTxIdSeen}, hasTimedOut];
 }

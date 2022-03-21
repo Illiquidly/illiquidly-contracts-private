@@ -10,7 +10,7 @@ import {
 import express from 'express';
 
 const UPDATE_INTERVAL = 80_000;
-const IDLE_UPDATE_INTERVAL = 10_000;
+const IDLE_UPDATE_INTERVAL = 20_000;
 const WALLET_CONTENT_UPDATE_INTERVAL = 20_000;
 const PORT = 8080;
 const QUERY_TIMEOUT = 50_000;
@@ -60,11 +60,16 @@ async function updateOwnedNfts(
   address: string,
   currentData: NFTsInteracted,
   ){
-  currentData.owned_nfts = await parseNFTSet(
+  let ownedNfts = await parseNFTSet(
     network,
     currentData.interacted_nfts,
     address
   );
+  if(Object.entries(ownedNfts).length !== 0){
+    console.log("not empty");
+    currentData.owned_nfts = ownedNfts;
+    currentData.last_wallet_content_update = Date.now();
+  }
 }
 
 
@@ -116,7 +121,7 @@ async function updateAddress(
   if (!currentData) {
     currentData = default_api_structure();
   }
-
+  let willQueryBefore = currentData.state != NFTState.Full;
   // We update currentData to prevent multiple updates
   currentData.state = NFTState.isUpdating;
   currentData.last_update_start_time = Date.now();
@@ -136,14 +141,14 @@ async function updateAddress(
 
   // We start by querying new data
   let [new_nfts, seenTx, hasTimedOut] = await queryAfterNewest(network, address, currentData.queried_transactions.newest, timeout, queryCallback);
-
   currentData = await saveNewData(network, address, new_nfts, { ...currentData }, seenTx, hasTimedOut);
-  currentData.state = NFTState.isUpdating;
+
   // We then query old data if not finalized
-  [new_nfts,seenTx, hasTimedOut] = await queryBeforeOldest(network, address, currentData.queried_transactions.oldest, timeout, queryCallback);
-
-  currentData = await saveNewData(network, address, new_nfts, currentData,seenTx, hasTimedOut);
-
+  if(willQueryBefore){
+    currentData.state = NFTState.isUpdating;
+    [new_nfts,seenTx, hasTimedOut] = await queryBeforeOldest(network, address, currentData.queried_transactions.oldest, timeout, queryCallback);
+    currentData = await saveNewData(network, address, new_nfts, currentData,seenTx, hasTimedOut);
+  }
   await db.put(to_key(network, address), currentData);
 
   return currentData;
@@ -197,7 +202,7 @@ async function main() {
 
   // Create database instance
   const db = await orbitdb.keyvalue('wallet-nfts');
-  db.load();
+  await db.load();
   console.log('Created database at', db.address);
 
   app.get('/nfts', (req: any, res: any) => {
@@ -222,12 +227,11 @@ async function main() {
       }
 
       // In general, we query the NFTs the address actually owns
-       if (
+      if (
           currentData && (!currentData.last_wallet_content_update || Date.now() > currentData.last_wallet_content_update + WALLET_CONTENT_UPDATE_INTERVAL)
           )
-       {
-         console.log("Querying NFT data from LCD");
-        currentData.last_wallet_content_update = Date.now();
+      {
+        console.log("Querying NFT data from LCD");
         await updateOwnedNfts(
           network,
           address,
