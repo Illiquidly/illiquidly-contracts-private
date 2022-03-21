@@ -1,5 +1,5 @@
 const IPFS = require('ipfs');
-const OrbitDB = require("orbit-db");
+const OrbitDB = require('orbit-db');
 import {
   queryAfterNewest,
   queryBeforeOldest,
@@ -30,9 +30,9 @@ interface NFTsInteracted {
   last_wallet_content_update: number;
 }
 
-interface Timeouts{
-  before: number,
-  after: number,
+interface Timeouts {
+  before: number;
+  after: number;
 }
 
 const app = express();
@@ -46,7 +46,7 @@ function default_api_structure(): NFTsInteracted {
     interacted_nfts: [],
     owned_nfts: {},
     state: NFTState.Full,
-    queried_transactions:{
+    queried_transactions: {
       oldest: null,
       newest: null
     },
@@ -56,45 +56,49 @@ function default_api_structure(): NFTsInteracted {
 }
 
 async function updateOwnedNfts(
-  network: string, 
+  network: string,
   address: string,
-  currentData: NFTsInteracted,
-  ){
+  currentData: NFTsInteracted
+) {
   let ownedNfts = await parseNFTSet(
     network,
     currentData.interacted_nfts,
     address
   );
-  if(Object.entries(ownedNfts).length !== 0){
-    console.log("not empty");
+  if (Object.entries(ownedNfts).length !== 0) {
+    console.log('not empty');
     currentData.owned_nfts = ownedNfts;
     currentData.last_wallet_content_update = Date.now();
   }
 }
 
-
-
-
 async function saveNewData(
-  network: string, 
+  network: string,
   address: string,
   new_nfts: Set<string>,
   currentData: NFTsInteracted,
   new_queried_transactions: TxInterval,
   hasTimedOut: boolean
- ){
-
+) {
   if (new_nfts.size) {
     let nfts: Set<string> = new Set(currentData.interacted_nfts);
     new_nfts.forEach((nft) => nfts.add(nft));
 
     currentData.interacted_nfts = [...nfts];
-  } 
+  }
 
-  if(currentData.queried_transactions.newest == null || (new_queried_transactions.newest && new_queried_transactions.newest > currentData.queried_transactions.newest)){
+  if (
+    currentData.queried_transactions.newest == null ||
+    (new_queried_transactions.newest &&
+      new_queried_transactions.newest > currentData.queried_transactions.newest)
+  ) {
     currentData.queried_transactions.newest = new_queried_transactions.newest;
   }
-  if(currentData.queried_transactions.oldest == null || (new_queried_transactions.oldest&& new_queried_transactions.oldest < currentData.queried_transactions.oldest)){
+  if (
+    currentData.queried_transactions.oldest == null ||
+    (new_queried_transactions.oldest &&
+      new_queried_transactions.oldest < currentData.queried_transactions.oldest)
+  ) {
     currentData.queried_transactions.oldest = new_queried_transactions.oldest;
   }
   if (hasTimedOut) {
@@ -102,10 +106,8 @@ async function saveNewData(
   } else {
     currentData.state = NFTState.Full;
   }
-  return currentData
+  return currentData;
 }
-
-
 
 async function updateAddress(
   db: any,
@@ -127,27 +129,57 @@ async function updateAddress(
   currentData.last_update_start_time = Date.now();
   await db.put(to_key(network, address), currentData);
 
-
   let queryCallback = async (newNfts: Set<string>, txSeen: TxInterval) => {
-    if(!currentData){
+    if (!currentData) {
       currentData = default_api_structure();
     }
-    currentData = await saveNewData(network, address, newNfts, currentData, txSeen, true);
+    currentData = await saveNewData(
+      network,
+      address,
+      newNfts,
+      currentData,
+      txSeen,
+      true
+    );
     currentData.state = NFTState.isUpdating;
     await db.put(to_key(network, address), currentData);
-  }
-
-
+  };
 
   // We start by querying new data
-  let [new_nfts, seenTx, hasTimedOut] = await queryAfterNewest(network, address, currentData.queried_transactions.newest, timeout, queryCallback);
-  currentData = await saveNewData(network, address, new_nfts, { ...currentData }, seenTx, hasTimedOut);
+  let [new_nfts, seenTx, hasTimedOut] = await queryAfterNewest(
+    network,
+    address,
+    currentData.queried_transactions.newest,
+    timeout,
+    queryCallback
+  );
+  currentData = await saveNewData(
+    network,
+    address,
+    new_nfts,
+    { ...currentData },
+    seenTx,
+    hasTimedOut
+  );
 
   // We then query old data if not finalized
-  if(willQueryBefore){
+  if (willQueryBefore) {
     currentData.state = NFTState.isUpdating;
-    [new_nfts,seenTx, hasTimedOut] = await queryBeforeOldest(network, address, currentData.queried_transactions.oldest, timeout, queryCallback);
-    currentData = await saveNewData(network, address, new_nfts, currentData,seenTx, hasTimedOut);
+    [new_nfts, seenTx, hasTimedOut] = await queryBeforeOldest(
+      network,
+      address,
+      currentData.queried_transactions.oldest,
+      timeout,
+      queryCallback
+    );
+    currentData = await saveNewData(
+      network,
+      address,
+      new_nfts,
+      currentData,
+      seenTx,
+      hasTimedOut
+    );
   }
   await db.put(to_key(network, address), currentData);
 
@@ -167,31 +199,31 @@ function validate(network: string, res: any): boolean {
 }
 // Allow any to access this API.
 app.use(function (req: any, res: any, next: any) {
-  res.header("Access-Control-Allow-Origin", "*");
+  res.header('Access-Control-Allow-Origin', '*');
   res.header(
-    "Access-Control-Allow-Headers",
-    "Origin, X-Requested-With, Content-Type, Accept"
+    'Access-Control-Allow-Headers',
+    'Origin, X-Requested-With, Content-Type, Accept'
   );
   next();
 });
 
 // Handle generic errors thrown by the express application.
 function expressErrorHandler(err: any) {
-  if (err.code === "EADDRINUSE")
+  if (err.code === 'EADDRINUSE')
     console.error(
       `Port ${PORT} is already in use. Is this program already running?`
     );
   else console.error(JSON.stringify(err, null, 2));
 
-  console.error("Express could not start!");
+  console.error('Express could not start!');
   process.exit(0);
 }
 
 async function main() {
   // Create IPFS instance
-  const ipfsOptions = { 
+  const ipfsOptions = {
     repo: './ipfs',
-     EXPERIMENTAL: {
+    EXPERIMENTAL: {
       pubsub: true
     }
   };
@@ -221,39 +253,39 @@ async function main() {
       const action = req.query.action;
 
       // In case you only want adresses (without updating)
-      if(action == "plain_db"){
+      if (action == 'plain_db') {
         res.status(200).send(currentData);
         return;
       }
 
       // In general, we query the NFTs the address actually owns
       if (
-          currentData && (!currentData.last_wallet_content_update || Date.now() > currentData.last_wallet_content_update + WALLET_CONTENT_UPDATE_INTERVAL)
-          )
-      {
-        console.log("Querying NFT data from LCD");
-        await updateOwnedNfts(
-          network,
-          address,
-          currentData
-        );
+        currentData &&
+        (!currentData.last_wallet_content_update ||
+          Date.now() >
+            currentData.last_wallet_content_update +
+              WALLET_CONTENT_UPDATE_INTERVAL)
+      ) {
+        console.log('Querying NFT data from LCD');
+        await updateOwnedNfts(network, address, currentData);
         await db.put(to_key(network, address), currentData);
       }
       res.status(200).send(currentData);
 
       // If we want to update, we do it in the background
       // Force update restarts everything from scratch
-      if(action == "force_update"){
-        currentData = default_api_structure()
+      if (action == 'force_update') {
+        currentData = default_api_structure();
       }
-      if(action == "update" || action == "force_update"){
-        if ( 
-          currentData && (
-            (currentData.state == NFTState.isUpdating &&
-            Date.now() < currentData.last_update_start_time + UPDATE_INTERVAL)
-            || Date.now() < currentData.last_update_start_time + IDLE_UPDATE_INTERVAL
-          ) 
-        ){
+      if (action == 'update' || action == 'force_update') {
+        if (
+          currentData &&
+          ((currentData.state == NFTState.isUpdating &&
+            Date.now() <
+              currentData.last_update_start_time + UPDATE_INTERVAL) ||
+            Date.now() <
+              currentData.last_update_start_time + IDLE_UPDATE_INTERVAL)
+        ) {
           console.log('Wait inbetween updates please');
           return;
         }
@@ -262,7 +294,7 @@ async function main() {
           network,
           address,
           currentData,
-          QUERY_TIMEOUT,
+          QUERY_TIMEOUT
         );
       }
     }

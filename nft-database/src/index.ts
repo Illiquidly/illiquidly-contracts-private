@@ -1,10 +1,10 @@
 import { LCDClient, MnemonicKey, Wallet } from '@terra-money/terra.js';
-import axios  from "axios";
+import axios from 'axios';
 import pLimit from 'p-limit';
 const limitNFT = pLimit(10);
 const limitToken = pLimit(15);
 
-export interface TxInterval{
+export interface TxInterval {
   oldest: number | null;
   newest: number | null;
 }
@@ -37,10 +37,10 @@ interface NFTInfo {
 }
 
 function addFromWasmEvents(tx: any, nftsInteracted: any) {
-  if (!tx.rw_log || !tx.raw_log.includes("token_id")) {
+  if (!tx.raw_log || !tx.raw_log.includes('token_id')) {
     return;
   }
-  if(tx.logs){
+  if (tx.logs) {
     for (let log of tx.logs) {
       for (let event of log.events) {
         if (event.type == 'wasm') {
@@ -48,7 +48,10 @@ function addFromWasmEvents(tx: any, nftsInteracted: any) {
           let contract;
           // We check the tx transfered an NFT
           for (let attribute of event.attributes) {
-            if (attribute.value == 'transfer_nft' || attribute.value == 'mint') {
+            if (
+              attribute.value == 'transfer_nft' ||
+              attribute.value == 'mint'
+            ) {
               hasNftTransfered = true;
             }
             if (attribute.key == 'contract_address') {
@@ -78,9 +81,7 @@ function addFromMsg(tx: any, nftsInteracted: any) {
   }
 }
 
-function getNftsFromTxList(
-  tx_data: any
-): [Set<string>, number, number] {
+function getNftsFromTxList(tx_data: any): [Set<string>, number, number] {
   var nftsInteracted: Set<string> = new Set();
   let lastTxIdSeen = 0;
   let newestTxIdSeen = 0;
@@ -100,13 +101,38 @@ function getNftsFromTxList(
   return [nftsInteracted, lastTxIdSeen, newestTxIdSeen];
 }
 
-
-export async function queryAfterNewest(network: string, address: string, newestTxId: number | null, timeout: number, callback: any){
-  return updateInteractedNfts(network, address, newestTxId, null, timeout, callback);
+export async function queryAfterNewest(
+  network: string,
+  address: string,
+  newestTxId: number | null,
+  timeout: number,
+  callback: any
+) {
+  return updateInteractedNfts(
+    network,
+    address,
+    newestTxId,
+    null,
+    timeout,
+    callback
+  );
 }
 
-export async function queryBeforeOldest(network: string, address: string, last_id: number | null, timeout: number, callback: any){
-  return updateInteractedNfts(network, address, null, last_id,timeout, callback);
+export async function queryBeforeOldest(
+  network: string,
+  address: string,
+  last_id: number | null,
+  timeout: number,
+  callback: any
+) {
+  return updateInteractedNfts(
+    network,
+    address,
+    null,
+    last_id,
+    timeout,
+    callback
+  );
 }
 
 async function updateInteractedNfts(
@@ -117,7 +143,6 @@ async function updateInteractedNfts(
   timeout: number,
   callback: any
 ): Promise<[Set<string>, TxInterval, boolean]> {
-
   const terra = new LCDClient(chains[network]);
 
   let nftsInteracted: Set<string> = new Set();
@@ -125,9 +150,9 @@ async function updateInteractedNfts(
   let networkError = false;
   let limit = 100;
   let offset;
-  if(lastTxIdSaved){
+  if (lastTxIdSaved) {
     offset = lastTxIdSaved;
-  }else{
+  } else {
     offset = 0;
   }
   timeout += Date.now();
@@ -141,23 +166,23 @@ async function updateInteractedNfts(
       source.cancel();
     }, timeout - Date.now());
     let tx_data = await axios
-    .get(
-      `${fcds[network]}/v1/txs?offset=${offset}&limit=${limit}&account=${address}`,
-      { cancelToken: source.token }
-    )
-    .catch((error: any) => {
-      if (error.response != undefined && error.response.status == 500) {
-        // No more results
-      } else {
-        networkError = true;
-        console.log(error);
-      }
-      return null;
-    })
-    .then((response: any) => {
-      clearTimeout(axiosTimeout);
-      return response;
-    });
+      .get(
+        `${fcds[network]}/v1/txs?offset=${offset}&limit=${limit}&account=${address}`,
+        { cancelToken: source.token }
+      )
+      .catch((error: any) => {
+        if (error.response != undefined && error.response.status == 500) {
+          // No more results
+        } else {
+          networkError = true;
+          console.log(error);
+        }
+        return null;
+      })
+      .then((response: any) => {
+        clearTimeout(axiosTimeout);
+        return response;
+      });
     console.log('New fcd query done');
     if (tx_data == null) {
       query_next = false;
@@ -165,24 +190,31 @@ async function updateInteractedNfts(
       // We query the NFTs from the transaction result and messages
       let [new_nfts, lastTxId, newestTxId] = getNftsFromTxList(tx_data);
       offset = lastTxId;
-      if(newestTxIdSeen == null || newestTxId > newestTxIdSeen){
+      if (newestTxIdSeen == null || newestTxId > newestTxIdSeen) {
         newestTxIdSeen = newestTxId;
-      } 
-      if(lastTxIdSeen == null || lastTxId < lastTxIdSeen){
+      }
+      if (lastTxIdSeen == null || lastTxId < lastTxIdSeen) {
         lastTxIdSeen = lastTxId;
-      } 
+      }
       // Stopping tests
-      if(newestTxIdSaved != null && newestTxIdSaved > lastTxIdSeen){
+      if (newestTxIdSaved != null && newestTxIdSaved > lastTxIdSeen) {
         query_next = false;
       }
 
       new_nfts.forEach((nft) => nftsInteracted.add(nft));
-      await callback(nftsInteracted, {newest : newestTxIdSeen, oldest: lastTxIdSeen});
+      await callback(nftsInteracted, {
+        newest: newestTxIdSeen,
+        oldest: lastTxIdSeen
+      });
     }
   }
-  let hasTimedOut = (Date.now() >= timeout) || networkError;
+  let hasTimedOut = Date.now() >= timeout || networkError;
 
-  return [nftsInteracted, {newest : newestTxIdSeen, oldest: lastTxIdSeen}, hasTimedOut];
+  return [
+    nftsInteracted,
+    { newest: newestTxIdSeen, oldest: lastTxIdSeen },
+    hasTimedOut
+  ];
 }
 
 // We limit the request concurrency to 10 elements
@@ -195,48 +227,56 @@ export async function parseNFTSet(
 
   let promiseArray = Array.from(nfts).map(async (nft) => {
     return limitNFT(() => {
-      return lcdClient.wasm.contractQuery(nft, {
-        tokens: { owner: address },
-      })
-      .catch(() => {})
-      .then((tokenId: any) => {
-        if (tokenId) {
-          return Promise.all(
-            tokenId["tokens"].map((id: any)=>{
-              return limitToken(() => {
-                return lcdClient.wasm.contractQuery(nft, {
-                  nft_info: { token_id: id },
-                })
-                .then((nftInfo:any) => {
-                  return {
-                    tokenId: id,
-                    nftInfo: nftInfo
-                  }
-                })
-              });
-            })
-          )
-          .catch(() => {
-            return tokenId["tokens"].map((token_id: any)=>{
-              return {
-                token_id:token_id,
-                nft_info:{}
-              }
-            })
-          })
-        }
-      }) 
-      .then((response: any) =>{
-        if(response != undefined){
-          return {
-            [nft]:{
-              contract: nft,
-              tokens: response
-            }
+      console.log(nft);
+      return lcdClient.wasm
+        .contractQuery(nft, {
+          tokens: { owner: address }
+        })
+        .catch((error) => {
+          if (error && error.request && error.request.response) {
+            console.log(error!.request!.response!.data);
+          } else {
+            console.log(error);
           }
-        }
-      })
-    })
+        })
+        .then((tokenId: any) => {
+          if (tokenId) {
+            return Promise.all(
+              tokenId['tokens'].map((id: any) => {
+                return limitToken(() => {
+                  return lcdClient.wasm
+                    .contractQuery(nft, {
+                      nft_info: { token_id: id }
+                    })
+                    .then((nftInfo: any) => {
+                      return {
+                        tokenId: id,
+                        nftInfo: nftInfo
+                      };
+                    });
+                });
+              })
+            ).catch(() => {
+              return tokenId['tokens'].map((token_id: any) => {
+                return {
+                  token_id: token_id,
+                  nft_info: {}
+                };
+              });
+            });
+          }
+        })
+        .then((response: any) => {
+          if (response != undefined) {
+            return {
+              [nft]: {
+                contract: nft,
+                tokens: response
+              }
+            };
+          }
+        });
+    });
   });
 
   return await Promise.all(promiseArray).then((response: any) => {
