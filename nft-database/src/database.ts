@@ -15,6 +15,10 @@ const WALLET_CONTENT_UPDATE_INTERVAL = 20_000;
 const PORT = 8080;
 const QUERY_TIMEOUT = 50_000;
 
+const updateLock: any = {}
+const lastUpdateStartTime: any = {}
+const lastWalletContentUpdate: any = {}
+
 enum NFTState {
   Full,
   Partial,
@@ -70,6 +74,7 @@ async function updateOwnedNfts(
     currentData.owned_nfts = ownedNfts;
     currentData.last_wallet_content_update = Date.now();
   }
+  return currentData;
 }
 
 async function saveNewData(
@@ -137,7 +142,7 @@ async function updateAddress(
       network,
       address,
       newNfts,
-      currentData,
+      {...currentData},
       txSeen,
       true
     );
@@ -176,7 +181,7 @@ async function updateAddress(
       network,
       address,
       new_nfts,
-      currentData,
+      {...currentData},
       seenTx,
       hasTimedOut
     );
@@ -237,8 +242,8 @@ async function main() {
   await db.load();
   console.log('Created database at', db.address);
 
-  app.get('/nfts', (req: any, res: any) => {
-    res.status(200).send('You got the wrong syntax, sorry mate');
+  app.get('/nfts', async (req: any, res: any) => {
+    await res.status(200).send('You got the wrong syntax, sorry mate');
   });
 
   // Simple query, just query the current state
@@ -254,48 +259,53 @@ async function main() {
 
       // In case you only want adresses (without updating)
       if (action == 'plain_db') {
-        res.status(200).send(currentData);
+        await res.status(200).send(currentData);
         return;
       }
 
       // In general, we query the NFTs the address actually owns
       if (
         currentData &&
-        (!currentData.last_wallet_content_update ||
+        (!lastWalletContentUpdate[to_key(network,address)] ||
           Date.now() >
-            currentData.last_wallet_content_update +
+            lastWalletContentUpdate[to_key(network,address)] +
               WALLET_CONTENT_UPDATE_INTERVAL)
       ) {
         console.log('Querying NFT data from LCD');
-        await updateOwnedNfts(network, address, currentData);
+        lastWalletContentUpdate[to_key(network,address)] = Date.now();
+        currentData = await updateOwnedNfts(network, address, {...currentData});
         await db.put(to_key(network, address), currentData);
       }
-      res.status(200).send(currentData);
+      await res.status(200).send({...currentData});
 
       // If we want to update, we do it in the background
       // Force update restarts everything from scratch
-      if (action == 'force_update') {
-        currentData = default_api_structure();
-      }
       if (action == 'update' || action == 'force_update') {
         if (
           currentData &&
-          ((currentData.state == NFTState.isUpdating &&
+          ((updateLock[to_key(network,address)] &&
             Date.now() <
-              currentData.last_update_start_time + UPDATE_INTERVAL) ||
+              lastUpdateStartTime[to_key(network,address)] + UPDATE_INTERVAL) ||
             Date.now() <
-              currentData.last_update_start_time + IDLE_UPDATE_INTERVAL)
+              lastUpdateStartTime[to_key(network,address)] + IDLE_UPDATE_INTERVAL) 
         ) {
           console.log('Wait inbetween updates please');
           return;
         }
+        if (action == 'force_update') {
+          console.log("resetData");
+          currentData = default_api_structure();
+        }
+        updateLock[to_key(network,address)] = true;
+        lastUpdateStartTime[to_key(network,address)] = Date.now();
         currentData = await updateAddress(
           db,
           network,
           address,
-          currentData,
+          {...currentData},
           QUERY_TIMEOUT
         );
+        updateLock[to_key(network,address)] = false;
       }
     }
   });
