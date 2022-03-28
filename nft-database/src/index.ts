@@ -2,7 +2,7 @@ import { LCDClient, MnemonicKey, Wallet } from '@terra-money/terra.js';
 import axios from 'axios';
 import pLimit from 'p-limit';
 const limitNFT = pLimit(10);
-const limitToken = pLimit(15);
+const limitToken = pLimit(50);
 
 export interface TxInterval {
   oldest: number | null;
@@ -175,7 +175,6 @@ async function updateInteractedNfts(
           // No more results
         } else {
           networkError = true;
-          console.log(error);
         }
         return null;
       })
@@ -226,17 +225,10 @@ async function getOneTokenBatchFromNFT(lcdClient: LCDClient, address: string, nf
       start_after: start_after 
     }
   })
-  .catch((error) => {
-    if (error && error.request && error.request.response) {
-      console.log(error!.request!.response!.data);
-    } else {
-      console.log(error);
-    }
-  })
   .then((tokenId: any) => {
     if (tokenId) {
       return Promise.all(
-        tokenId['tokens'].map((id: string) => getOneTokenInfo(lcdClient, nft, id))
+        tokenId['tokens'].map((id: string) =>  limitToken(() => getOneTokenInfo(lcdClient, nft, id)))
       ).catch(() => 
         tokenId['tokens'].map((token_id: any) => ({
             token_id: token_id,
@@ -246,6 +238,9 @@ async function getOneTokenBatchFromNFT(lcdClient: LCDClient, address: string, nf
       );
     }
   })
+  .catch((error) => {
+    console.log(error);
+  })
 }
 
 
@@ -253,6 +248,7 @@ async function parseTokensFromOneNft(lcdClient: LCDClient, address: string, nft:
   let tokens: any;
   let start_after: string | undefined = undefined;
   let allTokens: any[] = [];
+
 
   do{
     tokens = await getOneTokenBatchFromNFT(lcdClient, address, nft, start_after);
@@ -262,30 +258,38 @@ async function parseTokensFromOneNft(lcdClient: LCDClient, address: string, nft:
     }
   }
   while(tokens && tokens.length > 0);
-
-  return {
-    [nft]: {
-      contract: nft,
-      tokens: allTokens
-    }
-  };
+  if(!allTokens){
+      return {
+      [nft]: {
+        contract: nft,
+        tokens: []
+      }
+    };
+  }else if(allTokens.length == 0){
+    return undefined;
+  }else{
+    return {
+      [nft]: {
+        contract: nft,
+        tokens: allTokens
+      }
+    };
+  }
 }  
 
 
 
 async function getOneTokenInfo(lcdClient: LCDClient, nft: string, id: string){
-  return limitToken(() => {
-    return lcdClient.wasm
-      .contractQuery(nft, {
-        nft_info: { token_id: id }
-      })
-      .then((nftInfo: any) => {
-        return {
-          tokenId: id,
-          nftInfo: nftInfo
-        };
-      });
-  });
+  return lcdClient.wasm
+    .contractQuery(nft, {
+      nft_info: { token_id: id }
+    })
+    .then((nftInfo: any) => {
+      return {
+        tokenId: id,
+        nftInfo: nftInfo
+      };
+    });
 }
 
 
@@ -304,7 +308,9 @@ export async function parseNFTSet(
   return await Promise.all(promiseArray).then((response: any) => {
     let owned_nfts = {};
     response.forEach((response: any) => {
-      owned_nfts = { ...owned_nfts, ...response };
+      if(response){
+        owned_nfts = { ...owned_nfts, ...response };
+      }
     });
     return owned_nfts;
   });
@@ -314,19 +320,10 @@ async function main() {
   let mainnet = 'mainnet';
   let testnet = 'testnet';
   let address = 'terra1pa9tyjtxv0qd5pgqyu6ugtedds0d42wt5rxk4w';
-  let testnet_address = 'terra1dcegyrekltswvyy0xy69ydgxn9x8x32zdtapd8';
-  let [response, seenTx, hasTimedOut] = await updateInteractedNfts(
-    testnet,
-    testnet_address,
-    null,
-    null,
-    10_000,
-    undefined
-  );
+  let testnet_address = 'terra1vchq78v89nydypd3xn8hc6s2a28ks80fhtulfr';
 
-  let owned_nfts = await parseNFTSet(testnet, response, testnet_address);
-  console.log(response, seenTx, hasTimedOut);
+  let owned_nfts = await parseNFTSet(testnet, new Set(["terra1q30g8fvancxm4v5te07r2zprh2mqpuy3a0k8mj"]), testnet_address);
   console.log(owned_nfts);
 }
 
-//main();
+//main()
