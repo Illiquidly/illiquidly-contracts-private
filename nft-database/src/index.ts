@@ -217,6 +217,78 @@ async function updateInteractedNfts(
   ];
 }
 
+
+async function getOneTokenBatchFromNFT(lcdClient: LCDClient, address: string, nft: string, start_after: string | undefined = undefined){
+  return lcdClient.wasm
+  .contractQuery(nft, {
+    tokens: { 
+      owner: address, 
+      start_after: start_after 
+    }
+  })
+  .catch((error) => {
+    if (error && error.request && error.request.response) {
+      console.log(error!.request!.response!.data);
+    } else {
+      console.log(error);
+    }
+  })
+  .then((tokenId: any) => {
+    if (tokenId) {
+      return Promise.all(
+        tokenId['tokens'].map((id: string) => getOneTokenInfo(lcdClient, nft, id))
+      ).catch(() => 
+        tokenId['tokens'].map((token_id: any) => ({
+            token_id: token_id,
+            nft_info: {}
+          }
+        ))
+      );
+    }
+  })
+}
+
+
+async function parseTokensFromOneNft(lcdClient: LCDClient, address: string, nft: string){
+  let tokens: any;
+  let start_after: string | undefined = undefined;
+  let allTokens: any[] = [];
+
+  do{
+    tokens = await getOneTokenBatchFromNFT(lcdClient, address, nft, start_after);
+    if(tokens && tokens.length > 0){
+      start_after = tokens[tokens.length - 1].tokenId;
+      allTokens = allTokens.concat(tokens);
+    }
+  }
+  while(tokens && tokens.length > 0);
+
+  return {
+    [nft]: {
+      contract: nft,
+      tokens: allTokens
+    }
+  };
+}  
+
+
+
+async function getOneTokenInfo(lcdClient: LCDClient, nft: string, id: string){
+  return limitToken(() => {
+    return lcdClient.wasm
+      .contractQuery(nft, {
+        nft_info: { token_id: id }
+      })
+      .then((nftInfo: any) => {
+        return {
+          tokenId: id,
+          nftInfo: nftInfo
+        };
+      });
+  });
+}
+
+
 // We limit the request concurrency to 10 elements
 export async function parseNFTSet(
   network: string,
@@ -226,57 +298,7 @@ export async function parseNFTSet(
   const lcdClient = new LCDClient(chains[network]);
 
   let promiseArray = Array.from(nfts).map(async (nft) => {
-    return limitNFT(() => {
-      console.log(nft);
-      return lcdClient.wasm
-        .contractQuery(nft, {
-          tokens: { owner: address }
-        })
-        .catch((error) => {
-          if (error && error.request && error.request.response) {
-            console.log(error!.request!.response!.data);
-          } else {
-            console.log(error);
-          }
-        })
-        .then((tokenId: any) => {
-          if (tokenId) {
-            return Promise.all(
-              tokenId['tokens'].map((id: any) => {
-                return limitToken(() => {
-                  return lcdClient.wasm
-                    .contractQuery(nft, {
-                      nft_info: { token_id: id }
-                    })
-                    .then((nftInfo: any) => {
-                      return {
-                        tokenId: id,
-                        nftInfo: nftInfo
-                      };
-                    });
-                });
-              })
-            ).catch(() => {
-              return tokenId['tokens'].map((token_id: any) => {
-                return {
-                  token_id: token_id,
-                  nft_info: {}
-                };
-              });
-            });
-          }
-        })
-        .then((response: any) => {
-          if (response != undefined) {
-            return {
-              [nft]: {
-                contract: nft,
-                tokens: response
-              }
-            };
-          }
-        });
-    });
+    return limitNFT(() => parseTokensFromOneNft(lcdClient, address, nft));
   });
 
   return await Promise.all(promiseArray).then((response: any) => {
