@@ -9,14 +9,15 @@ import {
 } from './index.js';
 import express from 'express';
 
-const UPDATE_INTERVAL = 120_000;
+const UPDATE_INTERVAL = 200_000;
+const FORCE_END_UPDATE = 120_000;
 const IDLE_UPDATE_INTERVAL = 20_000;
 const PORT = 8080;
 const QUERY_TIMEOUT = 50_000;
 
-const updateLock: any = {}
-const lastUpdateStartTime: any = {}
-const lastWalletContentUpdate: any = {}
+const updateLock: any = {};
+const lastUpdateStartTime: any = {};
+const lastWalletContentUpdate: any = {};
 
 enum NFTState {
   Full,
@@ -52,7 +53,7 @@ function default_api_structure(): NFTsInteracted {
       oldest: null,
       newest: null
     },
-    last_update_start_time: 0,
+    last_update_start_time: 0
   };
 }
 
@@ -62,14 +63,10 @@ async function updateOwnedNfts(
   newNfts: Set<string>,
   currentData: NFTsInteracted
 ) {
-  let ownedNfts: any = await parseNFTSet(
-    network,
-    newNfts,
-    address
-  );
+  let ownedNfts: any = await parseNFTSet(network, newNfts, address);
   Object.keys(ownedNfts).forEach((nft, tokens) => {
     console.log(nft, ownedNfts[nft]);
-     currentData.owned_nfts[nft] = ownedNfts[nft];
+    currentData.owned_nfts[nft] = ownedNfts[nft];
   });
 
   return currentData;
@@ -86,13 +83,14 @@ async function updateOwnedAndSave(
   if (new_nfts.size) {
     let nfts: Set<string> = new Set(currentData.interacted_nfts);
 
-
     // For new nft interactions, we update the owned nfts
     console.log('Querying NFT data from LCD');
 
     new_nfts.forEach((nft) => nfts.add(nft));
     currentData.interacted_nfts = [...nfts];
-    currentData = await updateOwnedNfts(network, address, new_nfts, {...currentData});
+    currentData = await updateOwnedNfts(network, address, new_nfts, {
+      ...currentData
+    });
   }
 
   if (
@@ -116,7 +114,6 @@ async function updateOwnedAndSave(
   }
   return currentData;
 }
-
 
 async function updateAddress(
   db: any,
@@ -146,7 +143,7 @@ async function updateAddress(
       network,
       address,
       newNfts,
-      {...currentData},
+      { ...currentData },
       txSeen,
       true
     );
@@ -185,7 +182,7 @@ async function updateAddress(
       network,
       address,
       new_nfts,
-      {...currentData},
+      { ...currentData },
       seenTx,
       hasTimedOut
     );
@@ -267,38 +264,39 @@ async function main() {
       if (action == 'update' || action == 'force_update') {
         if (
           currentData &&
-          ((updateLock[to_key(network,address)] &&
+          ((updateLock[to_key(network, address)] &&
             Date.now() <
-              lastUpdateStartTime[to_key(network,address)] + UPDATE_INTERVAL) ||
+              lastUpdateStartTime[to_key(network, address)] +
+                UPDATE_INTERVAL) ||
             Date.now() <
-              lastUpdateStartTime[to_key(network,address)] + IDLE_UPDATE_INTERVAL) 
+              lastUpdateStartTime[to_key(network, address)] +
+                IDLE_UPDATE_INTERVAL)
         ) {
           console.log('Wait inbetween updates please');
-          await res.status(200).send({...currentData});
+          await res.status(200).send({ ...currentData });
           return;
         }
 
         // Force update restarts everything from scratch
         if (action == 'force_update') {
-          console.log("resetData");
+          console.log('resetData');
           currentData = default_api_structure();
         }
+        let returnData = { ...currentData };
+        returnData.state = NFTState.isUpdating;
+        await res.status(200).send({ ...returnData });
 
-        currentData.state = NFTState.isUpdating;
-        await res.status(200).send({...currentData});
-
-        updateLock[to_key(network,address)] = true;
-        lastUpdateStartTime[to_key(network,address)] = Date.now();
-        currentData = await updateAddress(
-          db,
-          network,
-          address,
-          {...currentData},
-          QUERY_TIMEOUT
-        );
-        updateLock[to_key(network,address)] = false;
-      }else{
-        await res.status(200).send({...currentData});
+        updateLock[to_key(network, address)] = true;
+        lastUpdateStartTime[to_key(network, address)] = Date.now();
+        await Promise.race([
+          new Promise((res) =>
+            setTimeout(() => res(undefined), FORCE_END_UPDATE)
+          ),
+          updateAddress(db, network, address, { ...currentData }, QUERY_TIMEOUT)
+        ]);
+        updateLock[to_key(network, address)] = false;
+      } else {
+        await res.status(200).send({ ...currentData });
       }
     }
   });
