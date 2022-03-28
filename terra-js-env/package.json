@@ -8,11 +8,21 @@
     "build:dev": "tsc --watch --preserveWatchOutput",
     "start": "node dist/index.js",
     "p2p-test": "node dist/p2p-flow-test.js",
+    "p2p-load-test": "node dist/p2p-load-test.js",
+    "p2p-query-test": "node dist/p2p-query-test.js",
     "new_token": "node dist/upload_new_token.js",
     "upload-p2p": "node dist/upload_p2p.js",
+    "update-fee": "node dist/update_fee.js",
     "withdraw": "node dist/withdraw_all.js",
     "pun": "node dist/punctual_test.js",
-    "init": "node dist/send_funds.js"
+    "init": "node dist/send_funds.js",
+
+    "upload-loan": "node dist/loans/upload_loan.js",
+    "loan-flow-test": "node dist/loans/loan_flow.js",
+    "loan-query": "node dist/loans/loan_query.js",
+    "upload-nft": "node dist/nft/upload_new_nft.js"
+
+
   },
   "keywords": [
     "terra"

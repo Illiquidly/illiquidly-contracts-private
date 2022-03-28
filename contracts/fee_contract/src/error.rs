@@ -1,4 +1,4 @@
-use cosmwasm_std::{StdError};
+use cosmwasm_std::StdError;
 use thiserror::Error;
 
 #[derive(Error, Debug, PartialEq)]
@@ -10,8 +10,11 @@ pub enum ContractError {
     Unauthorized {},
 
     #[error("Fee not paid correctly, required: {required:?}uust, provided {provided:?}uust")]
-    FeeNotPaidCorrectly { required: u128, provided: u128},
+    FeeNotPaidCorrectly { required: u128, provided: u128 },
 
     #[error("Fee not paid")]
     FeeNotPaid {},
+
+    #[error("Trade not accepted")]
+    TradeNotAccepted {},
 }

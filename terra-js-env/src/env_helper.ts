@@ -21,6 +21,18 @@ function add_uploaded_token(codeName: string, address: string){
 	fs.writeFileSync('env.json', data);
 }
 
+function add_uploaded_nft(codeName: string, address: string){
+
+	let current_env = require("../env.json");
+	if(!current_env[env_name]["cw721"]){
+		current_env[env_name]["cw721"] = {};
+	}
+	current_env[env_name]["cw721"][codeName] = address;
+
+	let data = JSON.stringify(current_env, undefined, 4);
+	fs.writeFileSync('env.json', data);
+}
+
 function add_contract(contractName: string, address: string){
 	let current_env = require("../env.json");
 	if(!current_env[env_name]["contracts"]){
@@ -33,4 +45,4 @@ function add_contract(contractName: string, address: string){
 
 }
 
-export { env, add_uploaded_token, add_contract };
+export { env, add_uploaded_token, add_uploaded_nft, add_contract };

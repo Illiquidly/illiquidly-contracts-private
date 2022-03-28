@@ -64,7 +64,7 @@ pub fn set_comment(
 ) -> Result<Response, ContractError> {
     let comment = Comment {
         time: env.block.time,
-        comment: comment,
+        comment,
     };
 
     if let Some(counter_id) = counter_id {

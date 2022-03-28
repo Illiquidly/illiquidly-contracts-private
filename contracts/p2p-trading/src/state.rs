@@ -207,17 +207,17 @@ pub fn can_suggest_counter_trade(
     storage: &dyn Storage,
     trade_id: u64,
     sender: &Addr,
-) -> Result<(), ContractError> {
+) -> Result<TradeInfo, ContractError> {
     if let Ok(Some(trade)) = TRADE_INFO.may_load(storage, trade_id.into()) {
         if (trade.state == TradeState::Published) | (trade.state == TradeState::Countered) {
             if !trade.whitelisted_users.is_empty() {
                 if !trade.whitelisted_users.contains(sender) {
                     Err(ContractError::AddressNotWhitelisted {})
                 } else {
-                    Ok(())
+                    Ok(trade)
                 }
             } else {
-                Ok(())
+                Ok(trade)
             }
         } else {
             Err(ContractError::NotCounterable {})

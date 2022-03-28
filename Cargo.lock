@@ -350,6 +350,7 @@ dependencies = [
  "cw20",
  "cw20-base",
  "cw721",
+ "p2p-trading-export",
  "schemars",
  "serde",
  "strum",

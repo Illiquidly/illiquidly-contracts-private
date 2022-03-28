@@ -135,6 +135,7 @@ pub enum ExecuteMsg {
     AcceptTrade {
         trade_id: u64,
         counter_id: u64,
+        comment: Option<String>,
     },
     /// Cancel the Trade :/ No luck there mate ?
     CancelTrade {
@@ -162,11 +163,12 @@ pub enum ExecuteMsg {
         trade_id: u64,
     },
     /// You can Withdraw funds only at specific steps of the trade, but you're allowed to try anytime !
-    WithdrawCancelledTrade {
+    WithdrawAllFromTrade {
         trade_id: u64,
     },
     /// You can Withdraw funds when your counter trade is aborted (refused or cancelled)
-    WithdrawAbortedCounter {
+    /// Or when you are creating the trade and you just want to cancel it all
+    WithdrawAllFromCounter {
         trade_id: u64,
         counter_id: u64,
     },
@@ -186,7 +188,8 @@ pub struct QueryFilters {
     pub counterer: Option<String>,
     pub whitelisted_user: Option<String>,
     pub contains_token: Option<String>,
-    pub wanted_nft: Option<String>
+    pub wanted_nft: Option<String>,
+    pub assets_withdrawn: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -206,8 +209,8 @@ pub enum QueryMsg {
         filters: Option<QueryFilters>,
     },
     GetCounterTrades {
-        trade_id: u64, 
-        start_after: Option<CounterTradeInfo>,
+        trade_id: u64,
+        start_after: Option<u64>,
         limit: Option<u32>,
         filters: Option<QueryFilters>,
     },

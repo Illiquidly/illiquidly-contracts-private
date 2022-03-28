@@ -1,99 +1,15 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "ExecuteMsg",
+  "description": "This contract nevers holds any funds In case it does, it's that an error occured TODO, we need to provide a way to make sure we can get those funds back",
   "oneOf": [
     {
       "type": "object",
       "required": [
-        "create_trade"
+        "deposit_collateral"
       ],
       "properties": {
-        "create_trade": {
-          "type": "object",
-          "properties": {
-            "whitelisted_users": {
-              "type": [
-                "array",
-                "null"
-              ],
-              "items": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
-        "add_funds_to_trade"
-      ],
-      "properties": {
-        "add_funds_to_trade": {
-          "type": "object",
-          "properties": {
-            "trade_id": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
-        "add_cw20"
-      ],
-      "properties": {
-        "add_cw20": {
-          "type": "object",
-          "required": [
-            "address",
-            "amount"
-          ],
-          "properties": {
-            "address": {
-              "type": "string"
-            },
-            "amount": {
-              "$ref": "#/definitions/Uint128"
-            },
-            "counter_id": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "uint64",
-              "minimum": 0.0
-            },
-            "trade_id": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
-        "add_cw721"
-      ],
-      "properties": {
-        "add_cw721": {
+        "deposit_collateral": {
           "type": "object",
           "required": [
             "address",
@@ -103,615 +19,28 @@
             "address": {
               "type": "string"
             },
-            "counter_id": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "uint64",
-              "minimum": 0.0
-            },
-            "token_id": {
-              "type": "string"
-            },
-            "trade_id": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
-        "add_cw1155"
-      ],
-      "properties": {
-        "add_cw1155": {
-          "type": "object",
-          "required": [
-            "address",
-            "token_id",
-            "value"
-          ],
-          "properties": {
-            "address": {
-              "type": "string"
-            },
-            "counter_id": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "uint64",
-              "minimum": 0.0
-            },
-            "token_id": {
-              "type": "string"
-            },
-            "trade_id": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "uint64",
-              "minimum": 0.0
-            },
-            "value": {
-              "$ref": "#/definitions/Uint128"
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
-        "remove_from_trade"
-      ],
-      "properties": {
-        "remove_from_trade": {
-          "type": "object",
-          "required": [
-            "assets",
-            "funds",
-            "trade_id"
-          ],
-          "properties": {
-            "assets": {
-              "type": "array",
-              "items": {
-                "type": "array",
-                "items": [
-                  {
-                    "type": "integer",
-                    "format": "uint16",
-                    "minimum": 0.0
-                  },
-                  {
-                    "$ref": "#/definitions/AssetInfo"
-                  }
-                ],
-                "maxItems": 2,
-                "minItems": 2
-              }
-            },
-            "funds": {
-              "type": "array",
-              "items": {
-                "type": "array",
-                "items": [
-                  {
-                    "type": "integer",
-                    "format": "uint16",
-                    "minimum": 0.0
-                  },
-                  {
-                    "$ref": "#/definitions/Coin"
-                  }
-                ],
-                "maxItems": 2,
-                "minItems": 2
-              }
-            },
-            "trade_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
-        "add_whitelisted_users"
-      ],
-      "properties": {
-        "add_whitelisted_users": {
-          "type": "object",
-          "required": [
-            "trade_id",
-            "whitelisted_users"
-          ],
-          "properties": {
-            "trade_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            },
-            "whitelisted_users": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
-        "remove_whitelisted_users"
-      ],
-      "properties": {
-        "remove_whitelisted_users": {
-          "type": "object",
-          "required": [
-            "trade_id",
-            "whitelisted_users"
-          ],
-          "properties": {
-            "trade_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            },
-            "whitelisted_users": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
-        "set_comment"
-      ],
-      "properties": {
-        "set_comment": {
-          "type": "object",
-          "required": [
-            "comment"
-          ],
-          "properties": {
-            "comment": {
-              "type": "string"
-            },
-            "trade_id": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
-        "add_n_f_ts_wanted"
-      ],
-      "properties": {
-        "add_n_f_ts_wanted": {
-          "type": "object",
-          "required": [
-            "nfts_wanted"
-          ],
-          "properties": {
-            "nfts_wanted": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            "trade_id": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
-        "remove_n_f_ts_wanted"
-      ],
-      "properties": {
-        "remove_n_f_ts_wanted": {
-          "type": "object",
-          "required": [
-            "nfts_wanted",
-            "trade_id"
-          ],
-          "properties": {
-            "nfts_wanted": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            "trade_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "description": "Is used by the Trader to confirm they completed their end of the trade.",
-      "type": "object",
-      "required": [
-        "confirm_trade"
-      ],
-      "properties": {
-        "confirm_trade": {
-          "type": "object",
-          "properties": {
-            "trade_id": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "description": "Can be used to initiate Counter Trade, but also to add new tokens to it",
-      "type": "object",
-      "required": [
-        "suggest_counter_trade"
-      ],
-      "properties": {
-        "suggest_counter_trade": {
-          "type": "object",
-          "required": [
-            "trade_id"
-          ],
-          "properties": {
-            "trade_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
-        "add_funds_to_counter_trade"
-      ],
-      "properties": {
-        "add_funds_to_counter_trade": {
-          "type": "object",
-          "required": [
-            "counter_id",
-            "trade_id"
-          ],
-          "properties": {
-            "counter_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            },
-            "trade_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
-        "remove_from_counter_trade"
-      ],
-      "properties": {
-        "remove_from_counter_trade": {
-          "type": "object",
-          "required": [
-            "assets",
-            "counter_id",
-            "funds",
-            "trade_id"
-          ],
-          "properties": {
-            "assets": {
-              "type": "array",
-              "items": {
-                "type": "array",
-                "items": [
-                  {
-                    "type": "integer",
-                    "format": "uint16",
-                    "minimum": 0.0
-                  },
-                  {
-                    "$ref": "#/definitions/AssetInfo"
-                  }
-                ],
-                "maxItems": 2,
-                "minItems": 2
-              }
-            },
-            "counter_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            },
-            "funds": {
-              "type": "array",
-              "items": {
-                "type": "array",
-                "items": [
-                  {
-                    "type": "integer",
-                    "format": "uint16",
-                    "minimum": 0.0
-                  },
-                  {
-                    "$ref": "#/definitions/Coin"
-                  }
-                ],
-                "maxItems": 2,
-                "minItems": 2
-              }
-            },
-            "trade_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "description": "Is used by the Client to confirm they completed their end of the trade.",
-      "type": "object",
-      "required": [
-        "confirm_counter_trade"
-      ],
-      "properties": {
-        "confirm_counter_trade": {
-          "type": "object",
-          "required": [
-            "counter_id",
-            "trade_id"
-          ],
-          "properties": {
-            "counter_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            },
-            "trade_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "description": "Accept the Trade plain and simple, swap it up !",
-      "type": "object",
-      "required": [
-        "accept_trade"
-      ],
-      "properties": {
-        "accept_trade": {
-          "type": "object",
-          "required": [
-            "counter_id",
-            "trade_id"
-          ],
-          "properties": {
-            "counter_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            },
-            "trade_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "description": "Cancel the Trade :/ No luck there mate ?",
-      "type": "object",
-      "required": [
-        "cancel_trade"
-      ],
-      "properties": {
-        "cancel_trade": {
-          "type": "object",
-          "required": [
-            "trade_id"
-          ],
-          "properties": {
-            "trade_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "description": "Cancel the Counter Trade :/ No luck there mate ?",
-      "type": "object",
-      "required": [
-        "cancel_counter_trade"
-      ],
-      "properties": {
-        "cancel_counter_trade": {
-          "type": "object",
-          "required": [
-            "counter_id",
-            "trade_id"
-          ],
-          "properties": {
-            "counter_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            },
-            "trade_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "description": "Refuse the Trade plain and simple, no madam, I'm not interested in your tokens !",
-      "type": "object",
-      "required": [
-        "refuse_counter_trade"
-      ],
-      "properties": {
-        "refuse_counter_trade": {
-          "type": "object",
-          "required": [
-            "counter_id",
-            "trade_id"
-          ],
-          "properties": {
-            "counter_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            },
-            "trade_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "description": "Some parts of the traded tokens were interesting, but you can't accept the trade as is",
-      "type": "object",
-      "required": [
-        "review_counter_trade"
-      ],
-      "properties": {
-        "review_counter_trade": {
-          "type": "object",
-          "required": [
-            "counter_id",
-            "trade_id"
-          ],
-          "properties": {
-            "comment": {
-              "type": [
-                "string",
-                "null"
+            "terms": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/LoanTerms"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
-            "counter_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            },
-            "trade_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "description": "The fee contract can Withdraw funds via this function only when the trade is accepted.",
-      "type": "object",
-      "required": [
-        "withdraw_pending_assets"
-      ],
-      "properties": {
-        "withdraw_pending_assets": {
-          "type": "object",
-          "required": [
-            "trade_id",
-            "trader"
-          ],
-          "properties": {
-            "trade_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            },
-            "trader": {
+            "token_id": {
               "type": "string"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/Uint128"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           }
         }
@@ -719,19 +48,19 @@
       "additionalProperties": false
     },
     {
-      "description": "You can Withdraw funds only at specific steps of the trade, but you're allowed to try anytime !",
+      "description": "Used to withdraw the collateral before the loan starts",
       "type": "object",
       "required": [
-        "withdraw_cancelled_trade"
+        "withdraw_collateral"
       ],
       "properties": {
-        "withdraw_cancelled_trade": {
+        "withdraw_collateral": {
           "type": "object",
           "required": [
-            "trade_id"
+            "loan_id"
           ],
           "properties": {
-            "trade_id": {
+            "loan_id": {
               "type": "integer",
               "format": "uint64",
               "minimum": 0.0
@@ -742,25 +71,84 @@
       "additionalProperties": false
     },
     {
-      "description": "You can Withdraw funds when your counter trade is aborted (refused or cancelled)",
       "type": "object",
       "required": [
-        "withdraw_aborted_counter"
+        "set_terms"
       ],
       "properties": {
-        "withdraw_aborted_counter": {
+        "set_terms": {
           "type": "object",
           "required": [
-            "counter_id",
-            "trade_id"
+            "loan_id",
+            "terms"
           ],
           "properties": {
-            "counter_id": {
+            "loan_id": {
               "type": "integer",
               "format": "uint64",
               "minimum": 0.0
             },
-            "trade_id": {
+            "terms": {
+              "$ref": "#/definitions/LoanTerms"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "make_offer"
+      ],
+      "properties": {
+        "make_offer": {
+          "type": "object",
+          "required": [
+            "borrower",
+            "loan_id",
+            "terms"
+          ],
+          "properties": {
+            "borrower": {
+              "type": "string"
+            },
+            "loan_id": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            },
+            "terms": {
+              "$ref": "#/definitions/LoanTerms"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "cancel_offer"
+      ],
+      "properties": {
+        "cancel_offer": {
+          "type": "object",
+          "required": [
+            "borrower",
+            "loan_id",
+            "offer_id"
+          ],
+          "properties": {
+            "borrower": {
+              "type": "string"
+            },
+            "loan_id": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            },
+            "offer_id": {
               "type": "integer",
               "format": "uint64",
               "minimum": 0.0
@@ -773,10 +161,173 @@
     {
       "type": "object",
       "required": [
-        "set_new_owner"
+        "refuse_offer"
       ],
       "properties": {
-        "set_new_owner": {
+        "refuse_offer": {
+          "type": "object",
+          "required": [
+            "loan_id",
+            "offer_id"
+          ],
+          "properties": {
+            "loan_id": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            },
+            "offer_id": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "withdraw_refused_offer"
+      ],
+      "properties": {
+        "withdraw_refused_offer": {
+          "type": "object",
+          "required": [
+            "borrower",
+            "loan_id",
+            "offer_id"
+          ],
+          "properties": {
+            "borrower": {
+              "type": "string"
+            },
+            "loan_id": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            },
+            "offer_id": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "accept_offer"
+      ],
+      "properties": {
+        "accept_offer": {
+          "type": "object",
+          "required": [
+            "loan_id",
+            "offer_id"
+          ],
+          "properties": {
+            "loan_id": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            },
+            "offer_id": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "accept_loan"
+      ],
+      "properties": {
+        "accept_loan": {
+          "type": "object",
+          "required": [
+            "borrower",
+            "loan_id"
+          ],
+          "properties": {
+            "borrower": {
+              "type": "string"
+            },
+            "loan_id": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "repay_borrowed_funds"
+      ],
+      "properties": {
+        "repay_borrowed_funds": {
+          "type": "object",
+          "required": [
+            "loan_id"
+          ],
+          "properties": {
+            "loan_id": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "withdraw_defaulted_loan"
+      ],
+      "properties": {
+        "withdraw_defaulted_loan": {
+          "type": "object",
+          "required": [
+            "borrower",
+            "loan_id"
+          ],
+          "properties": {
+            "borrower": {
+              "type": "string"
+            },
+            "loan_id": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "Internal state",
+      "type": "object",
+      "required": [
+        "set_owner"
+      ],
+      "properties": {
+        "set_owner": {
           "type": "object",
           "required": [
             "owner"
@@ -793,17 +344,37 @@
     {
       "type": "object",
       "required": [
-        "set_new_fee_contract"
+        "set_treasury"
       ],
       "properties": {
-        "set_new_fee_contract": {
+        "set_treasury": {
           "type": "object",
           "required": [
-            "fee_contract"
+            "treasury"
           ],
           "properties": {
-            "fee_contract": {
+            "treasury": {
               "type": "string"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "set_fee_rate"
+      ],
+      "properties": {
+        "set_fee_rate": {
+          "type": "object",
+          "required": [
+            "fee_rate"
+          ],
+          "properties": {
+            "fee_rate": {
+              "$ref": "#/definitions/Uint128"
             }
           }
         }
@@ -812,46 +383,6 @@
     }
   ],
   "definitions": {
-    "AssetInfo": {
-      "oneOf": [
-        {
-          "type": "object",
-          "required": [
-            "cw20_coin"
-          ],
-          "properties": {
-            "cw20_coin": {
-              "$ref": "#/definitions/Cw20Coin"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "required": [
-            "cw721_coin"
-          ],
-          "properties": {
-            "cw721_coin": {
-              "$ref": "#/definitions/Cw721Coin"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "required": [
-            "cw1155_coin"
-          ],
-          "properties": {
-            "cw1155_coin": {
-              "$ref": "#/definitions/Cw1155Coin"
-            }
-          },
-          "additionalProperties": false
-        }
-      ]
-    },
     "Coin": {
       "type": "object",
       "required": [
@@ -867,52 +398,55 @@
         }
       }
     },
-    "Cw1155Coin": {
+    "DefaultTerms": {
       "type": "object",
       "required": [
-        "address",
-        "token_id",
-        "value"
+        "can_payback_late"
       ],
       "properties": {
-        "address": {
-          "type": "string"
+        "can_payback_late": {
+          "type": "boolean"
         },
-        "token_id": {
-          "type": "string"
-        },
-        "value": {
-          "$ref": "#/definitions/Uint128"
+        "late_payback_rate": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Uint128"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       }
     },
-    "Cw20Coin": {
+    "LoanTerms": {
       "type": "object",
       "required": [
-        "address",
-        "amount"
+        "duration_in_blocks",
+        "interest",
+        "principle"
       ],
       "properties": {
-        "address": {
-          "type": "string"
+        "default_terms": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/DefaultTerms"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
-        "amount": {
+        "duration_in_blocks": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "interest": {
           "$ref": "#/definitions/Uint128"
-        }
-      }
-    },
-    "Cw721Coin": {
-      "type": "object",
-      "required": [
-        "address",
-        "token_id"
-      ],
-      "properties": {
-        "address": {
-          "type": "string"
         },
-        "token_id": {
-          "type": "string"
+        "principle": {
+          "$ref": "#/definitions/Coin"
         }
       }
     },

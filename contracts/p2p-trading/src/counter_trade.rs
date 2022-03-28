@@ -48,45 +48,31 @@ pub fn suggest_counter_trade(
     // We start by verifying it is possible to suggest a counter trade to that trade
     // It also checks if the trade exists
     // And that the sender is whitelisted (in case the trade is private)
-    can_suggest_counter_trade(deps.storage, trade_id, &info.sender)?;
+    let mut trade_info = can_suggest_counter_trade(deps.storage, trade_id, &info.sender)?;
 
     // We start by creating a new trade_id (simply incremented from the last id)
-    let new_trade_info = TRADE_INFO.update(
-        deps.storage,
-        trade_id.into(),
-        |c| -> Result<TradeInfo, ContractError> {
-            match c {
-                Some(mut trade_info) => {
-                    match trade_info.last_counter_id {
-                        Some(last_counter_id) => {
-                            trade_info.last_counter_id = Some(last_counter_id + 1)
-                        }
-                        None => trade_info.last_counter_id = Some(0),
-                    }
-                    if trade_info.state == TradeState::Published {
-                        trade_info.state = TradeState::Countered;
-                    }
-                    Ok(trade_info)
-                }
-                //TARPAULIN : Unreachable
-                None => Err(ContractError::NotFoundInTradeInfo {}),
-            }
-        },
-    )?;
+    trade_info.last_counter_id = trade_info
+        .last_counter_id
+        .map_or(Some(0), |id| Some(id + 1));
 
-    let counter_id = new_trade_info.last_counter_id.unwrap(); // This is safe, as per the statement above.
+    if trade_info.state == TradeState::Published {
+        trade_info.state = TradeState::Countered;
+    }
+
+    TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
+
+    let counter_id = trade_info.last_counter_id.unwrap(); // This is safe, as per the statement above.
 
     // If the trade id already exists, the contract is faulty
     // Or an external error happened, or whatever...
     // In that case, we emit an error
     // The priority is : We do not want to overwrite existing data
-    if COUNTER_TRADE_INFO.has(deps.storage, (trade_id.into(), counter_id.into())) {
-        return Err(ContractError::ExistsInCounterTradeInfo {});
-    } else {
-        COUNTER_TRADE_INFO.save(
-            deps.storage,
-            (trade_id.into(), counter_id.into()),
-            &TradeInfo {
+    COUNTER_TRADE_INFO.update(
+        deps.storage,
+        (trade_id.into(), counter_id.into()),
+        |counter| match counter {
+            Some(_) => Err(ContractError::ExistsInCounterTradeInfo {}),
+            None => Ok(TradeInfo {
                 owner: info.sender.clone(),
                 // We add the funds sent along with this transaction
                 associated_funds: info.funds.clone(),
@@ -95,9 +81,9 @@ pub fn suggest_counter_trade(
                     ..Default::default()
                 },
                 ..Default::default()
-            },
-        )?;
-    }
+            }),
+        },
+    )?;
 
     if let Some(comment) = comment {
         set_comment(deps, env, info, trade_id, Some(counter_id), comment)?;
@@ -127,7 +113,7 @@ pub fn prepare_counter_asset_addition(
             state: counter_info.state,
         });
     }
-    return Ok(counter_id);
+    Ok(counter_id)
 }
 
 pub fn add_funds_to_counter_trade(
@@ -193,8 +179,7 @@ pub fn add_cw721_to_counter_trade(
     token: String,
     token_id: String,
 ) -> Result<Response, ContractError> {
-    let counter_id =
-        prepare_counter_asset_addition(deps.as_ref(), trader.clone(), trade_id, counter_id)?;
+    let counter_id = prepare_counter_asset_addition(deps.as_ref(), trader, trade_id, counter_id)?;
 
     COUNTER_TRADE_INFO.update(
         deps.storage,
@@ -261,11 +246,10 @@ pub fn confirm_counter_trade(
 ) -> Result<Response, ContractError> {
     let mut trade_info = load_trade(deps.storage, trade_id)?;
 
-     let counter_id = match counter_id {
+    let counter_id = match counter_id {
         Some(counter_id) => Ok(counter_id),
-        None => get_last_counter_id_created(deps.as_ref(), info.sender.clone().to_string(), trade_id),
+        None => get_last_counter_id_created(deps.as_ref(), info.sender.to_string(), trade_id),
     }?;
-
 
     is_counter_trader(deps.storage, &info.sender, trade_id, counter_id)?;
 

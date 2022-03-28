@@ -1,5 +1,5 @@
 use cosmwasm_std::StdError;
-use p2p_trading_export::state::TradeState;
+use nft_loans_export::state::{LoanState, OfferState};
 use thiserror::Error;
 
 #[derive(Error, Debug, PartialEq)]
@@ -16,8 +16,17 @@ pub enum ContractError {
     #[error("An unplanned bug just happened :/")]
     ContractBug {},
 
+    #[error("You need to send exactly one coin with this transaction")]
+    MultipleCoins {},
+
+    #[error("Fund sent do not match the loan terms")]
+    FundsDontMatchTerms {},
+
     #[error("Sorry, your asset is not withdrawable at this stage")]
     NotWithdrawable {},
+
+    #[error("Sorry, no assets to withdraw here")]
+    NoFundsToWithdraw {},
 
     #[error("Sorry, you can't accept this loan")]
     NotAcceptable {},
@@ -34,9 +43,12 @@ pub enum ContractError {
     #[error("Sorry, this offer doesn't exist :/")]
     OfferNotFound {},
 
-    #[error("Wrong state of the trade for the current operation : {state:?}")]
-    WrongTradeState { state: TradeState },
+    #[error("Wrong state of the loan for the current operation : {state:?}")]
+    WrongLoanState { state: LoanState },
 
-    #[error("Can change the state of the trade from {from:?} to {to:?}")]
-    CantChangeTradeState { from: TradeState, to: TradeState },
+    #[error("Wrong state of the offer for the current operation : {state:?}")]
+    WrongOfferState { state: OfferState },
+
+    #[error("Can change the state of the offer from {from:?} to {to:?}")]
+    CantChangeOfferState { from: OfferState, to: OfferState },
 }

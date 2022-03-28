@@ -12,7 +12,7 @@ use cw721::Cw721ExecuteMsg;
 
 use p2p_trading_export::msg::{into_cosmos_msg, QueryFilters};
 use p2p_trading_export::state::{
-    AdditionnalTradeInfo, AssetInfo, CounterTradeInfo, TradeInfo, TradeState,
+    AdditionnalTradeInfo, AssetInfo, Comment, CounterTradeInfo, TradeInfo, TradeState,
 };
 
 use crate::error::ContractError;
@@ -46,11 +46,7 @@ pub fn create_trade(
     // We start by creating a new trade_id (simply incremented from the last id)
     let trade_id: u64 = CONTRACT_INFO
         .update(deps.storage, |mut c| -> StdResult<_> {
-            if let Some(trade_id) = c.last_trade_id {
-                c.last_trade_id = Some(trade_id + 1)
-            } else {
-                c.last_trade_id = Some(0);
-            }
+            c.last_trade_id = c.last_trade_id.map_or(Some(0), |id| Some(id + 1));
             Ok(c)
         })?
         .last_trade_id
@@ -60,25 +56,19 @@ pub fn create_trade(
     // Or an external error happened, or whatever...
     // In that case, we emit an error
     // The priority is : We do not want to overwrite existing data
-    if TRADE_INFO.has(deps.storage, trade_id.into()) {
-        return Err(ContractError::ExistsInTradeInfo {});
-    } else {
-        // We can safely create the TradeInfo
-        TRADE_INFO.save(
-            deps.storage,
-            trade_id.into(),
-            &TradeInfo {
-                owner: info.sender.clone(),
-                // We add the funds sent along with this transaction
-                associated_funds: info.funds.clone(),
-                additionnal_info: AdditionnalTradeInfo {
-                    time: env.block.time,
-                    ..Default::default()
-                },
+    TRADE_INFO.update(deps.storage, trade_id.into(), |trade| match trade {
+        Some(_) => Err(ContractError::ExistsInTradeInfo {}),
+        None => Ok(TradeInfo {
+            owner: info.sender.clone(),
+            // We add the funds sent along with this transaction
+            associated_funds: info.funds.clone(),
+            additionnal_info: AdditionnalTradeInfo {
+                time: env.block.time,
                 ..Default::default()
             },
-        )?;
-    }
+            ..Default::default()
+        }),
+    })?;
 
     if let Some(whitelist) = whitelisted_users {
         add_whitelisted_users(
@@ -118,7 +108,7 @@ pub fn prepare_trade_asset_addition(
             state: trade_info.state,
         });
     }
-    return Ok(trade_id);
+    Ok(trade_id)
 }
 
 pub fn add_funds_to_trade(
@@ -174,7 +164,7 @@ pub fn add_cw721_to_trade(
     token: String,
     token_id: String,
 ) -> Result<Response, ContractError> {
-    let trade_id = prepare_trade_asset_addition(deps.as_ref(), trader.clone(), trade_id)?;
+    let trade_id = prepare_trade_asset_addition(deps.as_ref(), trader, trade_id)?;
 
     TRADE_INFO.update(
         deps.storage,
@@ -354,28 +344,17 @@ pub fn confirm_trade(
         Some(trade_id) => Ok(trade_id),
         None => get_last_trade_id_created(deps.as_ref(), info.sender.to_string()),
     }?;
-    is_trader(deps.storage, &info.sender, trade_id)?;
+    let mut trade_info = is_trader(deps.storage, &info.sender, trade_id)?;
 
-    TRADE_INFO.update(
-        deps.storage,
-        trade_id.into(),
-        |d: Option<TradeInfo>| -> Result<TradeInfo, ContractError> {
-            match d {
-                Some(mut one) => {
-                    if one.state != TradeState::Created {
-                        return Err(ContractError::CantChangeTradeState {
-                            from: one.state,
-                            to: TradeState::Published,
-                        });
-                    }
-                    one.state = TradeState::Published;
-                    Ok(one)
-                }
-                // TARPAULIN : Unreachable code
-                None => Err(ContractError::NotFoundInTradeInfo {}),
-            }
-        },
-    )?;
+    if trade_info.state != TradeState::Created {
+        return Err(ContractError::CantChangeTradeState {
+            from: trade_info.state,
+            to: TradeState::Published,
+        });
+    }
+    trade_info.state = TradeState::Published;
+
+    TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
 
     Ok(Response::new()
         .add_attribute("confirmed", "trade")
@@ -384,10 +363,11 @@ pub fn confirm_trade(
 
 pub fn accept_trade(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     trade_id: u64,
     counter_id: u64,
+    comment: Option<String>,
 ) -> Result<Response, ContractError> {
     // Only the initial trader can accept a trade !
     let mut trade_info = is_trader(deps.storage, &info.sender, trade_id)?;
@@ -402,6 +382,7 @@ pub fn accept_trade(
             to: TradeState::Accepted,
         });
     }
+    // We check this specific counter trade can be accepted
     if counter_info.state != TradeState::Published {
         return Err(ContractError::CantAcceptNotPublishedCounter {});
     }
@@ -414,7 +395,10 @@ pub fn accept_trade(
     };
     trade_info.state = TradeState::Accepted;
     trade_info.accepted_info = Some(accepted_info);
-
+    trade_info.additionnal_info.trader_comment = comment.map(|comment| Comment {
+        time: env.block.time,
+        comment,
+    });
     counter_info.state = TradeState::Accepted;
 
     // And we save that to storage
@@ -452,7 +436,11 @@ pub fn refuse_counter_trade(
 
     counter_info.state = TradeState::Refused;
 
-    COUNTER_TRADE_INFO.save(deps.storage, (trade_id.into(),counter_id.into()), &counter_info)?;
+    COUNTER_TRADE_INFO.save(
+        deps.storage,
+        (trade_id.into(), counter_id.into()),
+        &counter_info,
+    )?;
 
     Ok(Response::new()
         .add_attribute("refuse", "counter")

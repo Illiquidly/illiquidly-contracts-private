@@ -1,12 +1,16 @@
-use cosmwasm_std::{Coin, StdError, StdResult, Uint128};
+use cosmwasm_std::{StdError, StdResult, Uint128};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use utils::msg::is_valid_name;
+
+use crate::state::LoanTerms;
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
 pub struct InstantiateMsg {
     pub name: String,
     pub owner: Option<String>,
+    pub treasury: String,
+    pub fee_rate: Uint128,
 }
 
 impl InstantiateMsg {
@@ -33,10 +37,7 @@ pub enum ExecuteMsg {
         value: Option<Uint128>,
         terms: Option<LoanTerms>,
     },
-    /// Used to withdraw the collateral
-    /// 1. Before the loan starts
-    /// 2. During the loan (by sending funds with the transaction)
-    /// 3. When the loan defaults
+    /// Used to withdraw the collateral before the loan starts
     WithdrawCollateral {
         loan_id: u64,
     },
@@ -58,6 +59,11 @@ pub enum ExecuteMsg {
         loan_id: u64,
         offer_id: u64,
     },
+    WithdrawRefusedOffer {
+        borrower: String,
+        loan_id: u64,
+        offer_id: u64,
+    },
     AcceptOffer {
         loan_id: u64,
         offer_id: u64,
@@ -66,28 +72,28 @@ pub enum ExecuteMsg {
         borrower: String,
         loan_id: u64,
     },
-    WithdrawCancelledOffer {},
-    WithdrawEndedLoan {},
+    RepayBorrowedFunds {
+        loan_id: u64,
+    },
+    ForceDefault {
+        borrower: String,
+        loan_id: u64,
+    },
+    /// Used only when the loan can be paid back late
+    WithdrawDefaultedLoan {
+        borrower: String,
+        loan_id: u64,
+    },
     /// Internal state
-    SetNewOwner {
+    SetOwner {
         owner: String,
     },
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema, Default)]
-#[serde(rename_all = "snake_case")]
-pub struct LoanTerms {
-    pub principle: Option<Coin>,
-    pub rate: Option<String>,
-    pub duration_in_block: Option<u64>,
-    pub default_terms: Option<DefaultTerms>,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema, Default)]
-#[serde(rename_all = "snake_case")]
-pub struct DefaultTerms {
-    pub can_payback_late: bool,
-    pub late_payback_rate: Option<String>,
+    SetTreasury {
+        treasury: String,
+    },
+    SetFeeRate {
+        fee_rate: Uint128,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema, Default)]
@@ -102,4 +108,8 @@ pub struct QueryFilters {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum QueryMsg {}
+pub enum QueryMsg {
+    ContractInfo {},
+    CollateralInfo { borrower: String, loan_id: u64 },
+    BorrowerInfo { borrower: String },
+}

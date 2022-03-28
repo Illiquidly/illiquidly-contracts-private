@@ -12,7 +12,7 @@ class LCDClientWrapper{
 		this.wallet = wallet;
 		this.contractAddress = contractAddress;
 	}
-	execute(msgName:string, msgArgs: Object ){
+	execute(msgName:string, msgArgs: Object, otherArgs: any){
 		console.log("execute not implemented");
 	}
 }
@@ -26,7 +26,7 @@ class Transaction extends LCDClientWrapper{
 		const tx = await this.wallet.createAndSignTx(post_msg);
 		return await this.terra.tx.broadcast(tx);
 	}
-	async execute(msgName:string, msgArgs: Object){
+	async execute(msgName:string, msgArgs: Object, otherArgs: any = {}){
 		let msg = {
 			[msgName]:{
 				...msgArgs
@@ -35,7 +35,8 @@ class Transaction extends LCDClientWrapper{
 		const execute = new MsgExecuteContract(
 		  this.wallet.key.accAddress, // sender
 		  this.contractAddress, // contract account address
-		  { ...msg }, // handle msg
+		  { ...msg }, // handle msg,
+		  otherArgs// sent funds
 		);
 		let response = await this.post([execute])
 		.catch((response: any)=>{
@@ -87,7 +88,7 @@ class Contract {
 	query: Interface;
 	address: string;
 
-	constructor(handler: Address, contractAddress: string ){
+	constructor(handler: Address, contractAddress: string){
 		this.execute = createWrapperProxy(new Transaction(handler.terra, handler.wallet, contractAddress));
 		this.query = createWrapperProxy(new Query(handler.terra, handler.wallet, contractAddress));
 		this.address = contractAddress;
@@ -173,8 +174,8 @@ function createWrapperProxy<T extends LCDClientWrapper>(wrapper: T) :  Interface
     let handler = {
         get: function(target: T, prop: string, receiver: any) {
             if(!(prop in target))
-                return function(args: Object){
-                	return target.execute(prop.toString(),args)
+                return function(args: Object, otherArgs: any){
+                	return target.execute(prop.toString(),args, otherArgs)
                 };
             else 
                 return Reflect.get(target, prop);

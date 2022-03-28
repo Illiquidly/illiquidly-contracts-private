@@ -1,6 +1,9 @@
-use cosmwasm_std::{to_binary, Binary, CosmosMsg, StdError, StdResult, WasmMsg};
+use cosmwasm_std::{to_binary, Binary, CosmosMsg, StdError, StdResult, Uint128, WasmMsg};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+
+use p2p_trading_export::state::TradeInfo;
+
 fn is_valid_name(name: &str) -> bool {
     let bytes = name.as_bytes();
     if bytes.len() < 3 || bytes.len() > 50 {
@@ -53,13 +56,15 @@ pub enum ExecuteMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
-    Fee {
-        trade_id: u64,
-        counter_id: Option<u64>,
-    },
+    Fee { trade_id: u64 },
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
 pub struct FeeResponse {
-    pub fee: String,
+    pub fee: Uint128,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
+pub struct TradeInfoResponse {
+    pub trade_info: TradeInfo,
 }

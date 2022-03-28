@@ -1,2 +1,7 @@
 LocalTerra/
-target/*
+target/
+cw-nfts/
+ec2 proxy/
+Architecture/
+Illiquidly-frontend/
+kcov-master/
