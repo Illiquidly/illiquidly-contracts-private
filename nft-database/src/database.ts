@@ -8,6 +8,10 @@ import {
   TxInterval
 } from './index.js';
 import express from 'express';
+import 'dotenv/config';
+import https from "https";
+import fs from  "fs";
+
 
 const UPDATE_INTERVAL = 200_000;
 const FORCE_END_UPDATE = 120_000;
@@ -43,6 +47,19 @@ const app = express();
 app.listen(PORT, () => {
   console.log("Serveur à l'écoute");
 });
+
+
+function saveToDb(db: any, key: string,currentData: NFTsInteracted){
+  return db.put(key, currentData);
+}
+
+function getDb(db: any, key: string) : NFTsInteracted{
+  let currentData = db.get(key);
+  if(!currentData){
+    currentData = default_api_structure();
+  }
+  return currentData
+}
 
 function default_api_structure(): NFTsInteracted {
   return {
@@ -119,26 +136,17 @@ async function updateAddress(
   db: any,
   network: string,
   address: string,
-  currentData: NFTsInteracted | undefined = undefined,
+  currentData: NFTsInteracted,
   timeout: number
 ) {
-  if (!currentData) {
-    let currentData: NFTsInteracted = await db.get(to_key(network, address));
-    // In case the address was never scanned (or never interacted with any NFT contract)
-  }
-  if (!currentData) {
-    currentData = default_api_structure();
-  }
   let willQueryBefore = currentData.state != NFTState.Full;
   // We update currentData to prevent multiple updates
   currentData.state = NFTState.isUpdating;
   currentData.last_update_start_time = Date.now();
-  await db.put(to_key(network, address), currentData);
+  await saveToDb(db, to_key(network, address),currentData);
 
   let queryCallback = async (newNfts: Set<string>, txSeen: TxInterval) => {
-    if (!currentData) {
-      currentData = default_api_structure();
-    }
+
     currentData = await updateOwnedAndSave(
       network,
       address,
@@ -148,11 +156,11 @@ async function updateAddress(
       true
     );
     currentData.state = NFTState.isUpdating;
-    await db.put(to_key(network, address), currentData);
+    await saveToDb(db, to_key(network, address),currentData);
   };
 
   // We start by querying new data
-  let [new_nfts, seenTx, hasTimedOut] = await queryAfterNewest(
+  let [newNfts, seenTx, hasTimedOut] = await queryAfterNewest(
     network,
     address,
     currentData.queried_transactions.newest,
@@ -162,7 +170,7 @@ async function updateAddress(
   currentData = await updateOwnedAndSave(
     network,
     address,
-    new_nfts,
+    new Set(),
     { ...currentData },
     seenTx,
     hasTimedOut
@@ -171,7 +179,7 @@ async function updateAddress(
   // We then query old data if not finalized
   if (willQueryBefore) {
     currentData.state = NFTState.isUpdating;
-    [new_nfts, seenTx, hasTimedOut] = await queryBeforeOldest(
+    [newNfts, seenTx, hasTimedOut] = await queryBeforeOldest(
       network,
       address,
       currentData.queried_transactions.oldest,
@@ -181,13 +189,13 @@ async function updateAddress(
     currentData = await updateOwnedAndSave(
       network,
       address,
-      new_nfts,
+      new Set(),
       { ...currentData },
       seenTx,
       hasTimedOut
     );
   }
-  await db.put(to_key(network, address), currentData);
+  await saveToDb(db, to_key(network, address),currentData);
 
   return currentData;
 }
@@ -252,10 +260,8 @@ async function main() {
     const address = req.params.address;
     const network = req.params.network;
     if (validate(network, res)) {
-      let currentData = await db.get(to_key(network, address));
-      if (!currentData) {
-        currentData = default_api_structure();
-      }
+      let currentData: NFTsInteracted = await getDb(db,to_key(network, address));
+
       const action = req.query.action;
 
       // In general, we simply return the current database state
@@ -290,7 +296,11 @@ async function main() {
         lastUpdateStartTime[to_key(network, address)] = Date.now();
         await Promise.race([
           new Promise((res) =>
-            setTimeout(() => res(undefined), FORCE_END_UPDATE)
+            setTimeout(async () => {
+              let currentData = await getDb(db,to_key(network, address));
+              currentData.state = NFTState.Partial;
+              await saveToDb(db, to_key(network, address),currentData);
+            }, FORCE_END_UPDATE)
           ),
           updateAddress(db, network, address, { ...currentData }, QUERY_TIMEOUT)
         ]);
@@ -300,5 +310,15 @@ async function main() {
       }
     }
   });
+
+  if(process.env.EXECUTION=="PRODUCTION")
+  {
+    const options = {
+      cert: fs.readFileSync('/home/ubuntu/identity/fullchain.pem'),
+      key: fs.readFileSync('/home/ubuntu/identity/privkey.pem')
+    };
+    https.createServer(options, app).listen(8443);
+  }
+
 }
 main();

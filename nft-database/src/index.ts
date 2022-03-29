@@ -187,7 +187,7 @@ async function updateInteractedNfts(
       query_next = false;
     } else {
       // We query the NFTs from the transaction result and messages
-      let [new_nfts, lastTxId, newestTxId] = getNftsFromTxList(tx_data);
+      let [newNfts, lastTxId, newestTxId] = getNftsFromTxList(tx_data);
       offset = lastTxId;
       if (newestTxIdSeen == null || newestTxId > newestTxIdSeen) {
         newestTxIdSeen = newestTxId;
@@ -200,8 +200,8 @@ async function updateInteractedNfts(
         query_next = false;
       }
 
-      new_nfts.forEach((nft) => nftsInteracted.add(nft));
-      await callback(nftsInteracted, {
+      newNfts.forEach((nft) => nftsInteracted.add(nft));
+      await callback(newNfts, {
         newest: newestTxIdSeen,
         oldest: lastTxIdSeen
       });
@@ -244,7 +244,7 @@ async function getOneTokenBatchFromNFT(
       }
     })
     .catch((error) => {
-      console.log(error);
+      //console.log(error);
     });
 }
 
