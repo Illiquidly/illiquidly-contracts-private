@@ -11,7 +11,9 @@ import express from 'express';
 import 'dotenv/config';
 import https from "https";
 import fs from  "fs";
+const toobusy = require('toobusy-js');
 
+type Nullable<T> = T | null
 
 const UPDATE_INTERVAL = 200_000;
 const FORCE_END_UPDATE = 120_000;
@@ -134,11 +136,17 @@ async function updateOwnedAndSave(
 
 async function updateAddress(
   db: any,
-  network: string,
-  address: string,
-  currentData: NFTsInteracted,
+  network: Nullable<string>,
+  address: Nullable<string>,
+  currentData: Nullable<NFTsInteracted>,
   timeout: number
 ) {
+  if(!currentData){
+    currentData = default_api_structure();
+  }
+  if(!network || !address){
+    return currentData;
+  }
   let willQueryBefore = currentData.state != NFTState.Full;
   // We update currentData to prevent multiple updates
   currentData.state = NFTState.isUpdating;
@@ -146,7 +154,9 @@ async function updateAddress(
   await saveToDb(db, to_key(network, address),currentData);
 
   let queryCallback = async (newNfts: Set<string>, txSeen: TxInterval) => {
-
+    if(!network || !address || ! currentData){
+      return;
+    }
     currentData = await updateOwnedAndSave(
       network,
       address,
@@ -196,8 +206,11 @@ async function updateAddress(
     );
   }
   await saveToDb(db, to_key(network, address),currentData);
-
-  return currentData;
+  let returnData = {...currentData};
+  currentData = null;
+  network = null;
+  address = null;
+  return returnData;
 }
 
 function to_key(network: string, address: string) {
@@ -220,6 +233,15 @@ app.use(function (req: any, res: any, next: any) {
   );
   next();
 });
+
+app.use(function(req, res, next) {
+  if (toobusy()) {
+    res.status(503).send("I'm busy right now, sorry.");
+  } else {
+    next();
+  }
+});
+
 
 // Handle generic errors thrown by the express application.
 function expressErrorHandler(err: any) {

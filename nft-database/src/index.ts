@@ -237,8 +237,8 @@ async function getOneTokenBatchFromNFT(
           )
         ).catch(() =>
           tokenId['tokens'].map((token_id: any) => ({
-            token_id: token_id,
-            nft_info: {}
+            tokenId: token_id,
+            nftInfo: {}
           }))
         );
       }
@@ -255,7 +255,7 @@ async function parseTokensFromOneNft(
 ) {
   let tokens: any;
   let start_after: string | undefined = undefined;
-  let allTokens: any[] = [];
+  let allTokens: any = {};
 
   do {
     tokens = await getOneTokenBatchFromNFT(
@@ -264,19 +264,16 @@ async function parseTokensFromOneNft(
       nft,
       start_after
     );
+
+    console.log(tokens);
     if (tokens && tokens.length > 0) {
       start_after = tokens[tokens.length - 1].tokenId;
-      allTokens = allTokens.concat(tokens);
+      let tokenExport = Object.assign({}, ...tokens.map((token: any) => ({[token.tokenId]: token})));
+      allTokens = {...allTokens, ...tokenExport};
     }
   } while (tokens && tokens.length > 0);
-  if (!allTokens) {
-    return {
-      [nft]: {
-        contract: nft,
-        tokens: []
-      }
-    };
-  } else if (allTokens.length == 0) {
+  
+  if (Object.keys(allTokens).length === 0) {
     return undefined;
   } else {
     return {
