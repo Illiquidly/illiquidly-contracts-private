@@ -2128,10 +2128,6 @@ pub mod tests {
                                     comment: "Q".to_string(),
                                     time: mock_env().block.time,
                                 }),
-                                trader_comment: Some(Comment {
-                                    comment: "You're very kind madam".to_string(),
-                                    time: mock_env().block.time,
-                                }),
                                 time: mock_env().block.time,
                                 ..Default::default()
                             },
@@ -2156,6 +2152,10 @@ pub mod tests {
                             additionnal_info: AdditionnalTradeInfo {
                                 owner_comment: Some(Comment {
                                     comment: "Q".to_string(),
+                                    time: mock_env().block.time,
+                                }),
+                                trader_comment: Some(Comment {
+                                    comment: "You're very kind madam".to_string(),
                                     time: mock_env().block.time,
                                 }),
                                 time: mock_env().block.time,
@@ -2185,6 +2185,10 @@ pub mod tests {
                             additionnal_info: AdditionnalTradeInfo {
                                 owner_comment: Some(Comment {
                                     comment: "Q".to_string(),
+                                    time: mock_env().block.time,
+                                }),
+                                trader_comment: Some(Comment {
+                                    comment: "You're very kind madam".to_string(),
                                     time: mock_env().block.time,
                                 }),
                                 time: mock_env().block.time,
@@ -2283,6 +2287,10 @@ pub mod tests {
                                         comment: "Q".to_string(),
                                         time: mock_env().block.time,
                                     }),
+                                    trader_comment: Some(Comment {
+                                        comment: "You're very kind madam".to_string(),
+                                        time: mock_env().block.time,
+                                    }),
                                     time: mock_env().block.time,
                                     ..Default::default()
                                 },
@@ -2323,6 +2331,10 @@ pub mod tests {
                             additionnal_info: AdditionnalTradeInfo {
                                 owner_comment: Some(Comment {
                                     comment: "Q".to_string(),
+                                    time: mock_env().block.time,
+                                }),
+                                trader_comment: Some(Comment {
+                                    comment: "You're very kind madam".to_string(),
                                     time: mock_env().block.time,
                                 }),
                                 time: mock_env().block.time,
@@ -4012,10 +4024,6 @@ pub mod tests {
                                     owner_comment: Some(Comment {
                                         comment: "Q".to_string(),
                                         time: env.block.time,
-                                    }),
-                                    trader_comment: Some(Comment {
-                                        comment: "You're very kind madam".to_string(),
-                                        time: mock_env().block.time,
                                     }),
                                     time: env.block.time,
                                     ..Default::default()

@@ -32,6 +32,14 @@ enum NFTState {
 }
 
 interface NFTsInteracted {
+  interacted_nfts: Set<string>;
+  owned_nfts: any;
+  state: NFTState;
+  queried_transactions: TxInterval;
+  last_update_start_time: number;
+}
+
+interface SerializableNFTsInteracted {
   interacted_nfts: string[];
   owned_nfts: any;
   state: NFTState;
@@ -51,8 +59,21 @@ app.listen(PORT, () => {
 });
 
 
+function serialise(currentData: NFTsInteracted): SerializableNFTsInteracted{
+  let serialised: any = {...currentData};
+  serialised.interacted_nfts = Array.from(serialised.interacted_nfts);
+  return serialised
+}
+
+function deserialise(serialisedData: SerializableNFTsInteracted): NFTsInteracted{
+  let currentData: any = {...serialisedData};
+  currentData.interacted_nfts = Array.from(currentData.interacted_nfts);
+  return currentData
+}
+
+
 function saveToDb(db: any, key: string,currentData: NFTsInteracted){
-  return db.put(key, currentData);
+  return db.put(key, serialise(currentData));
 }
 
 function getDb(db: any, key: string) : NFTsInteracted{
@@ -60,12 +81,12 @@ function getDb(db: any, key: string) : NFTsInteracted{
   if(!currentData){
     currentData = default_api_structure();
   }
-  return currentData
+  return deserialise(currentData);
 }
 
 function default_api_structure(): NFTsInteracted {
   return {
-    interacted_nfts: [],
+    interacted_nfts: new Set(),
     owned_nfts: {},
     state: NFTState.Full,
     queried_transactions: {
@@ -84,7 +105,6 @@ async function updateOwnedNfts(
 ) {
   let ownedNfts: any = await parseNFTSet(network, newNfts, address);
   Object.keys(ownedNfts).forEach((nft, tokens) => {
-    console.log(nft, ownedNfts[nft]);
     currentData.owned_nfts[nft] = ownedNfts[nft];
   });
 
@@ -106,7 +126,7 @@ async function updateOwnedAndSave(
     console.log('Querying NFT data from LCD');
 
     new_nfts.forEach((nft) => nfts.add(nft));
-    currentData.interacted_nfts = [...nfts];
+    currentData.interacted_nfts = nfts;
     currentData = await updateOwnedNfts(network, address, new_nfts, {
       ...currentData
     });

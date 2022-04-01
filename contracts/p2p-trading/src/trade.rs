@@ -395,7 +395,8 @@ pub fn accept_trade(
     };
     trade_info.state = TradeState::Accepted;
     trade_info.accepted_info = Some(accepted_info);
-    trade_info.additionnal_info.trader_comment = comment.map(|comment| Comment {
+    
+    counter_info.additionnal_info.trader_comment = comment.map(|comment| Comment {
         time: env.block.time,
         comment,
     });
