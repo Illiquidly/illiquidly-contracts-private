@@ -1,5 +1,3 @@
-const IPFS = require('ipfs');
-const OrbitDB = require('orbit-db');
 import {
   queryAfterNewest,
   queryBeforeOldest,
@@ -12,6 +10,7 @@ import 'dotenv/config';
 import https from "https";
 import fs from  "fs";
 const toobusy = require('toobusy-js');
+const redis = require('redis');
 
 type Nullable<T> = T | null
 
@@ -52,36 +51,42 @@ interface Timeouts {
   after: number;
 }
 
-const app = express();
-
-app.listen(PORT, () => {
-  console.log("Serveur à l'écoute");
-});
+function fillEmpty(currentData: Nullable<NFTsInteracted>) : NFTsInteracted{
+   if(!currentData || Object.keys(currentData).length === 0){
+    return default_api_structure();
+  }else{
+    return currentData
+  }
+}
 
 
 function serialise(currentData: NFTsInteracted): SerializableNFTsInteracted{
   let serialised: any = {...currentData};
-  serialised.interacted_nfts = Array.from(serialised.interacted_nfts);
-  return serialised
+  if(serialised.interacted_nfts){
+      serialised.interacted_nfts = Array.from(serialised.interacted_nfts);
+  }
+  return serialised;
 }
 
 function deserialise(serialisedData: SerializableNFTsInteracted): NFTsInteracted{
   let currentData: any = {...serialisedData};
-  currentData.interacted_nfts = Array.from(currentData.interacted_nfts);
+  if(currentData.interacted_nfts){
+      currentData.interacted_nfts = new Set(currentData.interacted_nfts);
+  }
   return currentData
 }
 
 
 function saveToDb(db: any, key: string,currentData: NFTsInteracted){
-  return db.put(key, serialise(currentData));
+  let serialisedData = serialise(currentData);
+  return db.set(key, JSON.stringify(serialisedData));
 }
 
-function getDb(db: any, key: string) : NFTsInteracted{
-  let currentData = db.get(key);
-  if(!currentData){
-    currentData = default_api_structure();
-  }
-  return deserialise(currentData);
+async function getDb(db: any, key: string) : Promise<NFTsInteracted>{
+  let serialisedData = await db.get(key);
+  let currentData = JSON.parse(serialisedData);
+  return fillEmpty(currentData);
+
 }
 
 function default_api_structure(): NFTsInteracted {
@@ -161,9 +166,7 @@ async function updateAddress(
   currentData: Nullable<NFTsInteracted>,
   timeout: number
 ) {
-  if(!currentData){
-    currentData = default_api_structure();
-  }
+  currentData = fillEmpty(currentData);
   if(!network || !address){
     return currentData;
   }
@@ -244,6 +247,13 @@ function validate(network: string, res: any): boolean {
     return true;
   }
 }
+ 
+// We start the server
+const app = express();
+
+app.listen(PORT, () => {
+  console.log("Serveur à l'écoute");
+});
 // Allow any to access this API.
 app.use(function (req: any, res: any, next: any) {
   res.header('Access-Control-Allow-Origin', '*');
@@ -276,27 +286,17 @@ function expressErrorHandler(err: any) {
 }
 
 async function main() {
-  // Create IPFS instance
-  const ipfsOptions = {
-    repo: './ipfs',
-    EXPERIMENTAL: {
-      pubsub: true
-    }
-  };
-  const ipfs = await IPFS.create(ipfsOptions);
 
-  // Create OrbitDB instance
-  const orbitdb = await OrbitDB.createInstance(ipfs);
+  // We start the db
+  const db = redis.createClient();
+  await db.connect();
 
-  // Create database instance
-  const db = await orbitdb.keyvalue('wallet-nfts');
-  await db.load();
-  console.log('Created database at', db.address);
 
+  
   app.get('/nfts', async (req: any, res: any) => {
-    await res.status(200).send('You got the wrong syntax, sorry mate');
+    await res.status(404).send('You got the wrong syntax, sorry mate');
   });
-
+  //db.flushAll();
   // Simple query, just query the current state
   app.get('/nfts/query/:network/:address', async (req: any, res: any) => {
     const address = req.params.address;
@@ -321,7 +321,7 @@ async function main() {
                 IDLE_UPDATE_INTERVAL)
         ) {
           console.log('Wait inbetween updates please');
-          await res.status(200).send({ ...currentData });
+          await res.status(200).send(serialise(currentData));
           return;
         }
 
@@ -332,7 +332,7 @@ async function main() {
         }
         let returnData = { ...currentData };
         returnData.state = NFTState.isUpdating;
-        await res.status(200).send({ ...returnData });
+        await res.status(200).send(serialise(returnData));
 
         updateLock[to_key(network, address)] = true;
         lastUpdateStartTime[to_key(network, address)] = Date.now();
@@ -348,7 +348,7 @@ async function main() {
         ]);
         updateLock[to_key(network, address)] = false;
       } else {
-        await res.status(200).send({ ...currentData });
+        await res.status(200).send(serialise(currentData));
       }
     }
   });

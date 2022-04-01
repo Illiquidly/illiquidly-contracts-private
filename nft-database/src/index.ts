@@ -265,14 +265,13 @@ async function parseTokensFromOneNft(
       start_after
     );
 
-    console.log(tokens);
     if (tokens && tokens.length > 0) {
       start_after = tokens[tokens.length - 1].tokenId;
       let tokenExport = Object.assign({}, ...tokens.map((token: any) => ({[token.tokenId]: token})));
       allTokens = {...allTokens, ...tokenExport};
     }
   } while (tokens && tokens.length > 0);
-  
+
   if (Object.keys(allTokens).length === 0) {
     return undefined;
   } else {
