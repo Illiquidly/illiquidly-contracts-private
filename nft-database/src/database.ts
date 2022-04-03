@@ -356,8 +356,8 @@ async function main() {
   if(process.env.EXECUTION=="PRODUCTION")
   {
     const options = {
-      cert: fs.readFileSync('/home/ubuntu/identity/fullchain.pem'),
-      key: fs.readFileSync('/home/ubuntu/identity/privkey.pem')
+      cert: fs.readFileSync('/home/illiquidly/identity/fullchain.pem'),
+      key: fs.readFileSync('/home/illiquidly/identity/privkey.pem')
     };
     https.createServer(options, app).listen(8443);
   }
