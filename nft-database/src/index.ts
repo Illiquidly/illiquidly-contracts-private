@@ -1,4 +1,4 @@
-import { LCDClient, MnemonicKey, Wallet } from '@terra-money/terra.js';
+import { LCDClient, MnemonicKey, Wallet, TxLog } from '@terra-money/terra.js';
 import axios from 'axios';
 import pLimit from 'p-limit';
 const limitNFT = pLimit(10);
@@ -37,34 +37,20 @@ interface NFTInfo {
 }
 
 function addFromWasmEvents(tx: any, nftsInteracted: any) {
-  if (!tx.raw_log || !tx.raw_log.includes('token_id')) {
-    return;
-  }
   if (tx.logs) {
     for (let log of tx.logs) {
-      for (let event of log.events) {
-        if (event.type == 'wasm') {
-          let hasNftTransfered = false;
-          let contract;
-          // We check the tx transfered an NFT
-          for (let attribute of event.attributes) {
-            if (
-              attribute.value == 'transfer_nft' ||
-              attribute.value == 'mint'
-            ) {
-              hasNftTransfered = true;
-            }
-            if (attribute.key == 'contract_address') {
-              contract = attribute.value;
-            }
-          }
-          if (hasNftTransfered) {
-            nftsInteracted.add(contract);
+      let parsedLog = new TxLog(log.msg_index,log.log, log.events);
+      let from_contract = parsedLog.eventsByType.from_contract
+      if(from_contract){
+        if(from_contract.action){
+          if(from_contract.action.includes("transfer_nft") || from_contract.action.includes("mint")){
+            from_contract.contract_address.forEach(nftsInteracted.add, nftsInteracted);
           }
         }
       }
     }
   }
+  return nftsInteracted;
 }
 
 function addFromMsg(tx: any, nftsInteracted: any) {
@@ -72,13 +58,13 @@ function addFromMsg(tx: any, nftsInteracted: any) {
     if (msg.type == 'wasm/MsgExecuteContract') {
       let execute_msg = msg.value.execute_msg;
       if (
-        (execute_msg.transfer_nft || execute_msg.mint) &&
-        !tx.raw_log.includes('failed')
+        (execute_msg.transfer_nft || execute_msg.mint)
       ) {
         nftsInteracted.add(msg.value.contract);
       }
     }
   }
+  return nftsInteracted;
 }
 
 function getNftsFromTxList(tx_data: any): [Set<string>, number, number] {
@@ -87,8 +73,8 @@ function getNftsFromTxList(tx_data: any): [Set<string>, number, number] {
   let newestTxIdSeen = 0;
   for (let tx of tx_data.data.txs) {
     // We add NFTS interacted with
-    addFromWasmEvents(tx, nftsInteracted);
-    addFromMsg(tx, nftsInteracted);
+    nftsInteracted = addFromWasmEvents(tx, nftsInteracted);
+    nftsInteracted = addFromMsg(tx, nftsInteracted);
 
     // We update the block and id info
     if (lastTxIdSeen === 0 || tx.id < lastTxIdSeen) {
@@ -199,12 +185,16 @@ async function updateInteractedNfts(
       if (newestTxIdSaved != null && newestTxIdSaved > lastTxIdSeen) {
         query_next = false;
       }
-
-      newNfts.forEach((nft) => nftsInteracted.add(nft));
-      await callback(newNfts, {
-        newest: newestTxIdSeen,
-        oldest: lastTxIdSeen
-      });
+      if(newNfts){
+        console.log(nftsInteracted);
+        newNfts.forEach((nft) => nftsInteracted.add(nft));
+        if(callback){
+          await callback(newNfts, {
+            newest: newestTxIdSeen,
+            oldest: lastTxIdSeen
+          });
+        }
+      }
     }
   }
   let hasTimedOut = Date.now() >= timeout || networkError;
@@ -324,7 +314,8 @@ async function main() {
   let mainnet = 'mainnet';
   let testnet = 'testnet';
   let address = 'terra1pa9tyjtxv0qd5pgqyu6ugtedds0d42wt5rxk4w';
-  let testnet_address = 'terra1vchq78v89nydypd3xn8hc6s2a28ks80fhtulfr';
+  let testnet_address = 'terra17lmam6zguazs5q5u6z5mmx76uj63gldnse2pdp';
+  testnet_address = "terra17lmam6zguazs5q5u6z5mmx76uj63gldnse2pdp";
 
   let owned_nfts = await parseNFTSet(
     testnet,
@@ -332,6 +323,21 @@ async function main() {
     testnet_address
   );
   console.log(owned_nfts);
+
+  let test = await queryAfterNewest(
+    testnet, testnet_address, null, 50_000, null
+  );
+  console.log(test);
+
+  owned_nfts = await parseNFTSet(
+    testnet,
+    test[0],
+    testnet_address
+  );
+  console.log(owned_nfts);
+
+
+
 }
 
-//main()
+main()
