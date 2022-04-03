@@ -34,43 +34,17 @@
     {
       "type": "object",
       "required": [
-        "add_funds_to_trade"
+        "add_asset"
       ],
       "properties": {
-        "add_funds_to_trade": {
-          "type": "object",
-          "properties": {
-            "trade_id": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
-        "add_cw20"
-      ],
-      "properties": {
-        "add_cw20": {
+        "add_asset": {
           "type": "object",
           "required": [
-            "address",
-            "amount"
+            "asset"
           ],
           "properties": {
-            "address": {
-              "type": "string"
-            },
-            "amount": {
-              "$ref": "#/definitions/Uint128"
+            "asset": {
+              "$ref": "#/definitions/AssetInfo"
             },
             "counter_id": {
               "type": [
@@ -108,122 +82,13 @@
     {
       "type": "object",
       "required": [
-        "add_cw721"
+        "remove_assets"
       ],
       "properties": {
-        "add_cw721": {
-          "type": "object",
-          "required": [
-            "address",
-            "token_id"
-          ],
-          "properties": {
-            "address": {
-              "type": "string"
-            },
-            "counter_id": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "uint64",
-              "minimum": 0.0
-            },
-            "to_last_counter": {
-              "type": [
-                "boolean",
-                "null"
-              ]
-            },
-            "to_last_trade": {
-              "type": [
-                "boolean",
-                "null"
-              ]
-            },
-            "token_id": {
-              "type": "string"
-            },
-            "trade_id": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
-        "add_cw1155"
-      ],
-      "properties": {
-        "add_cw1155": {
-          "type": "object",
-          "required": [
-            "address",
-            "token_id",
-            "value"
-          ],
-          "properties": {
-            "address": {
-              "type": "string"
-            },
-            "counter_id": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "uint64",
-              "minimum": 0.0
-            },
-            "to_last_counter": {
-              "type": [
-                "boolean",
-                "null"
-              ]
-            },
-            "to_last_trade": {
-              "type": [
-                "boolean",
-                "null"
-              ]
-            },
-            "token_id": {
-              "type": "string"
-            },
-            "trade_id": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "uint64",
-              "minimum": 0.0
-            },
-            "value": {
-              "$ref": "#/definitions/Uint128"
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
-        "remove_from_trade"
-      ],
-      "properties": {
-        "remove_from_trade": {
+        "remove_assets": {
           "type": "object",
           "required": [
             "assets",
-            "funds",
             "trade_id"
           ],
           "properties": {
@@ -245,23 +110,13 @@
                 "minItems": 2
               }
             },
-            "funds": {
-              "type": "array",
-              "items": {
-                "type": "array",
-                "items": [
-                  {
-                    "type": "integer",
-                    "format": "uint16",
-                    "minimum": 0.0
-                  },
-                  {
-                    "$ref": "#/definitions/Coin"
-                  }
-                ],
-                "maxItems": 2,
-                "minItems": 2
-              }
+            "counter_id": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint64",
+              "minimum": 0.0
             },
             "trade_id": {
               "type": "integer",
@@ -478,12 +333,13 @@
       "additionalProperties": false
     },
     {
+      "description": "Is used by the Client to confirm they completed their end of the trade.",
       "type": "object",
       "required": [
-        "add_funds_to_counter_trade"
+        "confirm_counter_trade"
       ],
       "properties": {
-        "add_funds_to_counter_trade": {
+        "confirm_counter_trade": {
           "type": "object",
           "required": [
             "trade_id"
@@ -494,101 +350,6 @@
                 "integer",
                 "null"
               ],
-              "format": "uint64",
-              "minimum": 0.0
-            },
-            "trade_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
-        "remove_from_counter_trade"
-      ],
-      "properties": {
-        "remove_from_counter_trade": {
-          "type": "object",
-          "required": [
-            "assets",
-            "counter_id",
-            "funds",
-            "trade_id"
-          ],
-          "properties": {
-            "assets": {
-              "type": "array",
-              "items": {
-                "type": "array",
-                "items": [
-                  {
-                    "type": "integer",
-                    "format": "uint16",
-                    "minimum": 0.0
-                  },
-                  {
-                    "$ref": "#/definitions/AssetInfo"
-                  }
-                ],
-                "maxItems": 2,
-                "minItems": 2
-              }
-            },
-            "counter_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            },
-            "funds": {
-              "type": "array",
-              "items": {
-                "type": "array",
-                "items": [
-                  {
-                    "type": "integer",
-                    "format": "uint16",
-                    "minimum": 0.0
-                  },
-                  {
-                    "$ref": "#/definitions/Coin"
-                  }
-                ],
-                "maxItems": 2,
-                "minItems": 2
-              }
-            },
-            "trade_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "description": "Is used by the Client to confirm they completed their end of the trade.",
-      "type": "object",
-      "required": [
-        "confirm_counter_trade"
-      ],
-      "properties": {
-        "confirm_counter_trade": {
-          "type": "object",
-          "required": [
-            "counter_id",
-            "trade_id"
-          ],
-          "properties": {
-            "counter_id": {
-              "type": "integer",
               "format": "uint64",
               "minimum": 0.0
             },
@@ -616,6 +377,12 @@
             "trade_id"
           ],
           "properties": {
+            "comment": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "counter_id": {
               "type": "integer",
               "format": "uint64",
@@ -778,10 +545,10 @@
       "description": "You can Withdraw funds only at specific steps of the trade, but you're allowed to try anytime !",
       "type": "object",
       "required": [
-        "withdraw_cancelled_trade"
+        "withdraw_all_from_trade"
       ],
       "properties": {
-        "withdraw_cancelled_trade": {
+        "withdraw_all_from_trade": {
           "type": "object",
           "required": [
             "trade_id"
@@ -798,13 +565,13 @@
       "additionalProperties": false
     },
     {
-      "description": "You can Withdraw funds when your counter trade is aborted (refused or cancelled)",
+      "description": "You can Withdraw funds when your counter trade is aborted (refused or cancelled) Or when you are creating the trade and you just want to cancel it all",
       "type": "object",
       "required": [
-        "withdraw_aborted_counter"
+        "withdraw_all_from_counter"
       ],
       "properties": {
-        "withdraw_aborted_counter": {
+        "withdraw_all_from_counter": {
           "type": "object",
           "required": [
             "counter_id",
@@ -902,6 +669,18 @@
           "properties": {
             "cw1155_coin": {
               "$ref": "#/definitions/Cw1155Coin"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "coin"
+          ],
+          "properties": {
+            "coin": {
+              "$ref": "#/definitions/Coin"
             }
           },
           "additionalProperties": false

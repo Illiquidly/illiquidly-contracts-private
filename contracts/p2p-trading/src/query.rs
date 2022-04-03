@@ -106,6 +106,13 @@ pub fn trade_filter(
         } && match &filters.owner {
             Some(owner) => trade.trade_info.as_ref().unwrap().owner == owner.clone(),
             None => true,
+        } && match &filters.has_whitelist {
+            Some(has_whitelist) => &trade
+                .trade_info
+                .as_ref()
+                .unwrap()
+                .whitelisted_users.is_empty() != has_whitelist,
+            None => true,
         } && match &filters.whitelisted_user {
             Some(whitelisted_user) => trade
                 .trade_info
@@ -131,6 +138,7 @@ pub fn trade_filter(
                 .associated_assets
                 .iter()
                 .any(|asset| match asset {
+                    AssetInfo::Coin(x) => x.denom == token.as_ref(),
                     AssetInfo::Cw20Coin(x) => x.address == token.as_ref(),
                     AssetInfo::Cw721Coin(x) => x.address == token.as_ref(),
                     AssetInfo::Cw1155Coin(x) => x.address == token.as_ref(),

@@ -135,14 +135,12 @@
               "minimum": 0.0
             },
             "start_after": {
-              "anyOf": [
-                {
-                  "$ref": "#/definitions/CounterTradeInfo"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint64",
+              "minimum": 0.0
             },
             "trade_id": {
               "type": "integer",
@@ -220,6 +218,12 @@
     "QueryFilters": {
       "type": "object",
       "properties": {
+        "assets_withdrawn": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
         "contains_token": {
           "type": [
             "string",
@@ -229,6 +233,12 @@
         "counterer": {
           "type": [
             "string",
+            "null"
+          ]
+        },
+        "has_whitelist": {
+          "type": [
+            "boolean",
             "null"
           ]
         },

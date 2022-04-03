@@ -13,20 +13,30 @@ pub const TRADE_INFO: Map<U64Key, TradeInfo> = Map::new("trade_info");
 
 pub const COUNTER_TRADE_INFO: Map<(U64Key, U64Key), TradeInfo> = Map::new("counter_trade_info");
 
-pub fn add_funds(funds: Vec<Coin>) -> impl FnOnce(Option<TradeInfo>) -> StdResult<TradeInfo> {
+pub fn add_funds(fund: Coin, info_funds: Vec<Coin>) -> impl FnOnce(Option<TradeInfo>) -> StdResult<TradeInfo> {
     move |d: Option<TradeInfo>| -> StdResult<TradeInfo> {
         match d {
             Some(mut trade) => {
-                for fund in funds {
-                    let existing_denom = trade
-                        .associated_funds
-                        .iter_mut()
-                        .find(|c| c.denom == fund.denom);
-                    if let Some(existing_fund) = existing_denom {
-                        existing_fund.amount += fund.amount
-                    } else {
-                        trade.associated_funds.push(fund)
-                    }
+                // We check the sent funds are with the right format
+                if info_funds.len() != 1 || fund != info_funds[0]{
+                    return Err(StdError::generic_err("Funds sent do not match message AssetInfo"));
+                } 
+                let existing_denom = trade.associated_assets.iter_mut().find(|c| match c {
+                    AssetInfo::Coin(x) => x.denom == fund.denom,
+                    _ => false,
+                });
+
+                if let Some(existing_fund) = existing_denom {
+                     let current_amount = match existing_fund {
+                        AssetInfo::Coin(x) => x.amount,
+                        _ => Uint128::zero(),
+                    };
+                    *existing_fund = AssetInfo::Coin(Coin {
+                        denom: fund.denom,
+                        amount: current_amount + fund.amount
+                    });
+                } else {
+                    trade.associated_assets.push(AssetInfo::Coin(fund));
                 }
                 Ok(trade)
             }

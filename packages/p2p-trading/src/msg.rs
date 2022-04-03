@@ -1,5 +1,5 @@
 use crate::state::{AssetInfo, CounterTradeInfo};
-use cosmwasm_std::{to_binary, Binary, Coin, CosmosMsg, StdError, StdResult, Uint128, WasmMsg};
+use cosmwasm_std::{to_binary, Binary, CosmosMsg, StdError, StdResult, WasmMsg};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -53,38 +53,17 @@ pub enum ExecuteMsg {
         whitelisted_users: Option<Vec<String>>,
         comment: Option<String>,
     },
-    AddFundsToTrade {
-        trade_id: Option<u64>,
-    },
-    AddCw20 {
+    AddAsset {
         trade_id: Option<u64>,
         counter_id: Option<u64>,
-        address: String,
-        amount: Uint128,
         to_last_trade: Option<bool>,
         to_last_counter: Option<bool>,
+        asset: AssetInfo
     },
-    AddCw721 {
-        trade_id: Option<u64>,
-        counter_id: Option<u64>,
-        address: String,
-        token_id: String,
-        to_last_trade: Option<bool>,
-        to_last_counter: Option<bool>,
-    },
-    AddCw1155 {
-        trade_id: Option<u64>,
-        counter_id: Option<u64>,
-        address: String,
-        token_id: String,
-        value: Uint128,
-        to_last_trade: Option<bool>,
-        to_last_counter: Option<bool>,
-    },
-    RemoveFromTrade {
+    RemoveAssets {
         trade_id: u64,
+        counter_id: Option<u64>,
         assets: Vec<(u16, AssetInfo)>,
-        funds: Vec<(u16, Coin)>,
     },
     AddWhitelistedUsers {
         trade_id: u64,
@@ -115,16 +94,6 @@ pub enum ExecuteMsg {
     SuggestCounterTrade {
         trade_id: u64,
         comment: Option<String>,
-    },
-    AddFundsToCounterTrade {
-        trade_id: u64,
-        counter_id: Option<u64>,
-    },
-    RemoveFromCounterTrade {
-        trade_id: u64,
-        counter_id: u64,
-        assets: Vec<(u16, AssetInfo)>,
-        funds: Vec<(u16, Coin)>,
     },
     /// Is used by the Client to confirm they completed their end of the trade.
     ConfirmCounterTrade {
@@ -186,6 +155,7 @@ pub struct QueryFilters {
     pub states: Option<Vec<String>>,
     pub owner: Option<String>,
     pub counterer: Option<String>,
+    pub has_whitelist: Option<bool>,
     pub whitelisted_user: Option<String>,
     pub contains_token: Option<String>,
     pub wanted_nft: Option<String>,

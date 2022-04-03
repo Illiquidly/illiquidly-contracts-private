@@ -1,5 +1,5 @@
 use cosmwasm_std::{
-    Addr, Coin, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult, Uint128,
+    Addr, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult, 
 };
 
 use cw1155::Cw1155ExecuteMsg;
@@ -74,8 +74,6 @@ pub fn suggest_counter_trade(
             Some(_) => Err(ContractError::ExistsInCounterTradeInfo {}),
             None => Ok(TradeInfo {
                 owner: info.sender.clone(),
-                // We add the funds sent along with this transaction
-                associated_funds: info.funds.clone(),
                 additionnal_info: AdditionnalTradeInfo {
                     time: env.block.time,
                     ..Default::default()
@@ -116,126 +114,102 @@ pub fn prepare_counter_asset_addition(
     Ok(counter_id)
 }
 
-pub fn add_funds_to_counter_trade(
+pub fn add_asset_to_counter_trade(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     trade_id: u64,
     counter_id: Option<u64>,
+    asset: AssetInfo
 ) -> Result<Response, ContractError> {
     let counter_id =
         prepare_counter_asset_addition(deps.as_ref(), info.sender.clone(), trade_id, counter_id)?;
 
-    COUNTER_TRADE_INFO.update(
-        deps.storage,
-        (trade_id.into(), counter_id.into()),
-        add_funds(info.funds),
-    )?;
+    match asset.clone(){
+        AssetInfo::Coin(coin) => {
+             COUNTER_TRADE_INFO.update(
+                deps.storage,
+                (trade_id.into(), counter_id.into()),
+                add_funds(coin, info.funds)
+            )
+        },
+        AssetInfo::Cw20Coin(token) => {
+             COUNTER_TRADE_INFO.update(
+                deps.storage,
+                (trade_id.into(), counter_id.into()),
+                add_cw20_coin(token.address.clone(), token.amount.clone()),
+            )
+        },
+        AssetInfo::Cw721Coin(token) => {
+             COUNTER_TRADE_INFO.update(
+                deps.storage,
+                (trade_id.into(), counter_id.into()),
+                add_cw721_coin(token.address.clone(), token.token_id.clone()),
+            )
+        },
+        AssetInfo::Cw1155Coin(token) => {
+             COUNTER_TRADE_INFO.update(
+                deps.storage,
+                (trade_id.into(), counter_id.into()),
+                add_cw1155_coin(token.address.clone(), token.token_id.clone(), token.value.clone()),
+            )
+        },
+    }?;
 
-    Ok(Response::new()
-        .add_attribute("added funds", "counter")
+
+   
+
+    // Now we need to transfer the token
+    Ok(match asset{
+        AssetInfo::Coin(coin) => {
+            Response::new()
+                .add_attribute("added funds", "counter")
+                .add_attribute("denom", coin.denom)
+                .add_attribute("amount", coin.amount)
+        },
+        AssetInfo::Cw20Coin(token) => {
+            let message = Cw20ExecuteMsg::TransferFrom {
+                owner: info.sender.to_string(),
+                recipient: env.contract.address.into(),
+                amount: token.amount,
+            };
+            Response::new().add_message(into_cosmos_msg(message, token.address.clone())?)
+            .add_attribute("added token", "counter")
+            .add_attribute("token", token.address)
+            .add_attribute("amount", token.amount)
+        },
+        AssetInfo::Cw721Coin(token) => {
+            let message = Cw721ExecuteMsg::TransferNft {
+                recipient: env.contract.address.into(),
+                token_id: token.token_id.clone(),
+            };
+
+            Response::new().add_message(into_cosmos_msg(message, token.address.clone())?)
+            .add_attribute("added token", "counter")
+            .add_attribute("nft", token.address)
+            .add_attribute("token_id", token.token_id)
+        },
+        AssetInfo::Cw1155Coin(token) => {
+            let message = Cw1155ExecuteMsg::SendFrom {
+                from: info.sender.to_string(),
+                to: env.contract.address.into(),
+                token_id: token.token_id.clone(),
+                value: token.value,
+                msg: None,
+            };
+
+            Response::new().add_message(into_cosmos_msg(message, token.address.clone())?)
+            .add_attribute("added Cw1155", "counter")
+            .add_attribute("token", token.address)
+            .add_attribute("token_id", token.token_id)
+            .add_attribute("amount", token.value)
+        }
+    } 
         .add_attribute("trade_id", trade_id.to_string())
-        .add_attribute("counter_id", counter_id.to_string()))
+        .add_attribute("counter_id", counter_id.to_string())
+    )
 }
 
-pub fn add_cw20_to_counter_trade(
-    deps: DepsMut,
-    env: Env,
-    trader: Addr,
-    trade_id: u64,
-    counter_id: Option<u64>,
-    token: String,
-    sent_amount: Uint128,
-) -> Result<Response, ContractError> {
-    let counter_id =
-        prepare_counter_asset_addition(deps.as_ref(), trader.clone(), trade_id, counter_id)?;
-
-    COUNTER_TRADE_INFO.update(
-        deps.storage,
-        (trade_id.into(), counter_id.into()),
-        add_cw20_coin(token.clone(), sent_amount),
-    )?;
-
-    // Now we need to transfer the token
-    let message = Cw20ExecuteMsg::TransferFrom {
-        owner: trader.to_string(),
-        recipient: env.contract.address.into(),
-        amount: sent_amount,
-    };
-
-    Ok(Response::new()
-        .add_message(into_cosmos_msg(message, token.clone())?)
-        .add_attribute("added token", "counter")
-        .add_attribute("token", token)
-        .add_attribute("amount", sent_amount))
-}
-
-pub fn add_cw721_to_counter_trade(
-    deps: DepsMut,
-    env: Env,
-    trader: Addr,
-    trade_id: u64,
-    counter_id: Option<u64>,
-    token: String,
-    token_id: String,
-) -> Result<Response, ContractError> {
-    let counter_id = prepare_counter_asset_addition(deps.as_ref(), trader, trade_id, counter_id)?;
-
-    COUNTER_TRADE_INFO.update(
-        deps.storage,
-        (trade_id.into(), counter_id.into()),
-        add_cw721_coin(token.clone(), token_id.clone()),
-    )?;
-
-    // Now we need to transfer the nft
-    let message = Cw721ExecuteMsg::TransferNft {
-        recipient: env.contract.address.into(),
-        token_id: token_id.clone(),
-    };
-
-    Ok(Response::new()
-        .add_message(into_cosmos_msg(message, token.clone())?)
-        .add_attribute("added token", "counter")
-        .add_attribute("nft", token)
-        .add_attribute("token_id", token_id))
-}
-
-#[allow(clippy::too_many_arguments)]
-pub fn add_cw1155_to_counter_trade(
-    deps: DepsMut,
-    env: Env,
-    trader: Addr,
-    trade_id: u64,
-    counter_id: Option<u64>,
-    token: String,
-    token_id: String,
-    sent_amount: Uint128,
-) -> Result<Response, ContractError> {
-    let counter_id =
-        prepare_counter_asset_addition(deps.as_ref(), trader.clone(), trade_id, counter_id)?;
-
-    COUNTER_TRADE_INFO.update(
-        deps.storage,
-        (trade_id.into(), counter_id.into()),
-        add_cw1155_coin(token.clone(), token_id.clone(), sent_amount),
-    )?;
-
-    // Now we need to transfer the token
-    let message = Cw1155ExecuteMsg::SendFrom {
-        from: trader.to_string(),
-        to: env.contract.address.into(),
-        token_id: token_id.clone(),
-        value: sent_amount,
-        msg: None,
-    };
-
-    Ok(Response::new()
-        .add_message(into_cosmos_msg(message, token.clone())?)
-        .add_attribute("added Cw1155", "trade")
-        .add_attribute("token", token)
-        .add_attribute("token_id", token_id)
-        .add_attribute("amount", sent_amount))
-}
 
 pub fn confirm_counter_trade(
     deps: DepsMut,
@@ -330,7 +304,6 @@ pub fn withdraw_counter_trade_assets_while_creating(
     trade_id: u64,
     counter_id: u64,
     assets: Vec<(u16, AssetInfo)>,
-    funds: Vec<(u16, Coin)>,
 ) -> Result<Response, ContractError> {
     let mut counter_info = is_counter_trader(deps.storage, &info.sender, trade_id, counter_id)?;
 
@@ -338,9 +311,9 @@ pub fn withdraw_counter_trade_assets_while_creating(
         return Err(ContractError::CounterTradeAlreadyPublished {});
     }
 
-    are_assets_in_trade(&counter_info, &assets, &funds)?;
+    are_assets_in_trade(&counter_info, &assets)?;
 
-    try_withdraw_assets_unsafe(&mut counter_info, &assets, &funds)?;
+    try_withdraw_assets_unsafe(&mut counter_info, &assets)?;
 
     COUNTER_TRADE_INFO.save(
         deps.storage,
@@ -352,7 +325,6 @@ pub fn withdraw_counter_trade_assets_while_creating(
         &env.contract.address,
         &info.sender,
         &assets.iter().map(|x| x.1.clone()).collect(),
-        &funds.iter().map(|x| x.1.clone()).collect(),
     )?;
     Ok(res.add_attribute("remove from", "counter"))
 }

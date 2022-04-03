@@ -1,5 +1,5 @@
 use cosmwasm_std::{
-    Addr, Api, BankMsg, Coin, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult,
+    Addr, Api, BankMsg, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult,
     Storage, Uint128,
 };
 
@@ -60,8 +60,6 @@ pub fn create_trade(
         Some(_) => Err(ContractError::ExistsInTradeInfo {}),
         None => Ok(TradeInfo {
             owner: info.sender.clone(),
-            // We add the funds sent along with this transaction
-            associated_funds: info.funds.clone(),
             additionnal_info: AdditionnalTradeInfo {
                 time: env.block.time,
                 ..Default::default()
@@ -111,112 +109,95 @@ pub fn prepare_trade_asset_addition(
     Ok(trade_id)
 }
 
-pub fn add_funds_to_trade(
+pub fn add_asset_to_trade(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     trade_id: Option<u64>,
+    asset: AssetInfo
 ) -> Result<Response, ContractError> {
-    let trade_id = prepare_trade_asset_addition(deps.as_ref(), info.sender, trade_id)?;
+   let trade_id = prepare_trade_asset_addition(deps.as_ref(), info.sender.clone(), trade_id)?;
 
-    TRADE_INFO.update(deps.storage, trade_id.into(), add_funds(info.funds))?;
-
-    Ok(Response::new()
-        .add_attribute("added funds", "trade")
-        .add_attribute("trade_id", trade_id.to_string()))
-}
-
-pub fn add_cw20_to_trade(
-    deps: DepsMut,
-    env: Env,
-    trader: Addr,
-    trade_id: Option<u64>,
-    token: String,
-    sent_amount: Uint128,
-) -> Result<Response, ContractError> {
-    let trade_id = prepare_trade_asset_addition(deps.as_ref(), trader.clone(), trade_id)?;
-
-    TRADE_INFO.update(
-        deps.storage,
-        trade_id.into(),
-        add_cw20_coin(token.clone(), sent_amount),
-    )?;
+ 
+    match asset.clone(){
+        AssetInfo::Coin(coin) => {
+              TRADE_INFO.update(
+                deps.storage,
+                trade_id.into(),
+                add_funds(coin, info.funds)
+            )
+        },
+        AssetInfo::Cw20Coin(token) => {
+             TRADE_INFO.update(
+                deps.storage,
+                trade_id.into(),
+                add_cw20_coin(token.address.clone(), token.amount.clone()),
+            )
+        },
+        AssetInfo::Cw721Coin(token) => {
+             TRADE_INFO.update(
+                deps.storage,
+                trade_id.into(),
+                add_cw721_coin(token.address.clone(), token.token_id.clone()),
+            )
+        },
+        AssetInfo::Cw1155Coin(token) => {
+             TRADE_INFO.update(
+                deps.storage,
+                trade_id.into(),
+                add_cw1155_coin(token.address.clone(), token.token_id.clone(), token.value.clone()),
+            )
+        },
+    }?;
 
     // Now we need to transfer the token
-    let message = Cw20ExecuteMsg::TransferFrom {
-        owner: trader.to_string(),
-        recipient: env.contract.address.into(),
-        amount: sent_amount,
-    };
+    Ok(match asset{
+        AssetInfo::Coin(coin) => {
+            Response::new()
+                .add_attribute("added funds", "trade")
+                .add_attribute("denom", coin.denom)
+                .add_attribute("amount", coin.amount)
+        },
+        AssetInfo::Cw20Coin(token) => {
+            let message = Cw20ExecuteMsg::TransferFrom {
+                owner: info.sender.to_string(),
+                recipient: env.contract.address.into(),
+                amount: token.amount,
+            };
+            Response::new().add_message(into_cosmos_msg(message, token.address.clone())?)
+            .add_attribute("added token", "trade")
+            .add_attribute("token", token.address)
+            .add_attribute("amount", token.amount)
+        },
+        AssetInfo::Cw721Coin(token) => {
+            let message = Cw721ExecuteMsg::TransferNft {
+                recipient: env.contract.address.into(),
+                token_id: token.token_id.clone(),
+            };
 
-    Ok(Response::new()
-        .add_message(into_cosmos_msg(message, token.clone())?)
-        .add_attribute("added token", "trade")
-        .add_attribute("token", token)
-        .add_attribute("amount", sent_amount))
-}
+            Response::new().add_message(into_cosmos_msg(message, token.address.clone())?)
+            .add_attribute("added token", "trade")
+            .add_attribute("nft", token.address)
+            .add_attribute("token_id", token.token_id)
+        },
+        AssetInfo::Cw1155Coin(token) => {
+            let message = Cw1155ExecuteMsg::SendFrom {
+                from: info.sender.to_string(),
+                to: env.contract.address.into(),
+                token_id: token.token_id.clone(),
+                value: token.value,
+                msg: None,
+            };
 
-pub fn add_cw721_to_trade(
-    deps: DepsMut,
-    env: Env,
-    trader: Addr,
-    trade_id: Option<u64>,
-    token: String,
-    token_id: String,
-) -> Result<Response, ContractError> {
-    let trade_id = prepare_trade_asset_addition(deps.as_ref(), trader, trade_id)?;
-
-    TRADE_INFO.update(
-        deps.storage,
-        trade_id.into(),
-        add_cw721_coin(token.clone(), token_id.clone()),
-    )?;
-
-    // Now we need to transfer the nft
-    let message = Cw721ExecuteMsg::TransferNft {
-        recipient: env.contract.address.into(),
-        token_id: token_id.clone(),
-    };
-
-    Ok(Response::new()
-        .add_message(into_cosmos_msg(message, token.clone())?)
-        .add_attribute("added token", "trade")
-        .add_attribute("nft", token)
-        .add_attribute("token_id", token_id))
-}
-
-pub fn add_cw1155_to_trade(
-    deps: DepsMut,
-    env: Env,
-    trader: Addr,
-    trade_id: Option<u64>,
-    token: String,
-    token_id: String,
-    sent_amount: Uint128,
-) -> Result<Response, ContractError> {
-    let trade_id = prepare_trade_asset_addition(deps.as_ref(), trader.clone(), trade_id)?;
-
-    TRADE_INFO.update(
-        deps.storage,
-        trade_id.into(),
-        add_cw1155_coin(token.clone(), token_id.clone(), sent_amount),
-    )?;
-
-    // Now we need to transfer the token
-    let message = Cw1155ExecuteMsg::SendFrom {
-        from: trader.to_string(),
-        to: env.contract.address.into(),
-        token_id: token_id.clone(),
-        value: sent_amount,
-        msg: None,
-    };
-
-    Ok(Response::new()
-        .add_message(into_cosmos_msg(message, token.clone())?)
-        .add_attribute("added Cw1155", "trade")
-        .add_attribute("token", token)
-        .add_attribute("token_id", token_id)
-        .add_attribute("amount", sent_amount))
+            Response::new().add_message(into_cosmos_msg(message, token.address.clone())?)
+            .add_attribute("added Cw1155", "trade")
+            .add_attribute("token", token.address)
+            .add_attribute("token_id", token.token_id)
+            .add_attribute("amount", token.value)
+        }
+    } 
+        .add_attribute("trade_id", trade_id.to_string())
+    )
 }
 
 pub fn validate_addresses(api: &dyn Api, whitelisted_users: &[String]) -> StdResult<Vec<Addr>> {
@@ -395,7 +376,7 @@ pub fn accept_trade(
     };
     trade_info.state = TradeState::Accepted;
     trade_info.accepted_info = Some(accepted_info);
-    
+
     counter_info.additionnal_info.trader_comment = comment.map(|comment| Comment {
         time: env.block.time,
         comment,
@@ -480,16 +461,15 @@ pub fn withdraw_trade_assets_while_creating(
     info: MessageInfo,
     trade_id: u64,
     assets: Vec<(u16, AssetInfo)>,
-    funds: Vec<(u16, Coin)>,
 ) -> Result<Response, ContractError> {
     let mut trade_info = is_trader(deps.storage, &info.sender, trade_id)?;
     if trade_info.state != TradeState::Created && trade_info.state != TradeState::Cancelled {
         return Err(ContractError::TradeAlreadyPublished {});
     }
 
-    are_assets_in_trade(&trade_info, &assets, &funds)?;
+    are_assets_in_trade(&trade_info, &assets)?;
 
-    try_withdraw_assets_unsafe(&mut trade_info, &assets, &funds)?;
+    try_withdraw_assets_unsafe(&mut trade_info, &assets)?;
 
     TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
 
@@ -497,7 +477,6 @@ pub fn withdraw_trade_assets_while_creating(
         &env.contract.address,
         &info.sender,
         &assets.iter().map(|x| x.1.clone()).collect(),
-        &funds.iter().map(|x| x.1.clone()).collect(),
     )?;
     Ok(res.add_attribute("remove from", "trade"))
 }
@@ -505,7 +484,6 @@ pub fn withdraw_trade_assets_while_creating(
 pub fn are_assets_in_trade(
     trade_info: &TradeInfo,
     assets: &[(u16, AssetInfo)],
-    funds: &[(u16, Coin)],
 ) -> Result<(), ContractError> {
     // We first treat the assets
     for (position, asset) in assets {
@@ -518,6 +496,29 @@ pub fn are_assets_in_trade(
         }
         let asset_info: AssetInfo = trade_info.associated_assets[position].clone();
         match asset_info {
+            AssetInfo::Coin(fund_info) => {
+                // We check the fund is the one we want
+                if let AssetInfo::Coin(fund) = asset {
+                    // We verify the sent information matches the saved fund
+                    if fund_info.denom != fund.denom {
+                        return Err(ContractError::Std(StdError::generic_err(format!(
+                            "Wrong fund denom at position {position}",
+                            position = position
+                        ))));
+                    }
+                    if fund_info.amount < fund.amount {
+                        return Err(ContractError::Std(StdError::generic_err(format!(
+                            "You can't withdraw that much {address}, \
+                                wanted: {wanted}, \
+                                available: {available}",
+                            address = fund_info.denom,
+                            wanted = fund.amount,
+                            available = fund_info.amount
+                        ))));
+                    }
+                }
+            },
+
             AssetInfo::Cw20Coin(token_info) => {
                 // We check the token is the one we want
                 if let AssetInfo::Cw20Coin(token) = asset {
@@ -612,44 +613,25 @@ pub fn are_assets_in_trade(
         }
     }
 
-    // Then we take care of the funds
-    for (position, fund) in funds {
-        let position: usize = (*position).into();
-        if position >= trade_info.associated_funds.len() {
-            return Err(ContractError::Std(StdError::generic_err(
-                "assets position does not exist in array",
-            )));
-        }
-        let fund_info = trade_info.associated_funds[position].clone();
-        if fund_info.denom != fund.denom {
-            return Err(ContractError::Std(StdError::generic_err(format!(
-                "Wrong fund denom at position {position}",
-                position = position
-            ))));
-        }
-        if fund_info.amount < fund.amount {
-            return Err(ContractError::Std(StdError::generic_err(format!(
-                "You can't withdraw that much {address}, \
-                    wanted: {wanted}, \
-                    available: {available}",
-                address = fund_info.denom,
-                wanted = fund.amount,
-                available = fund_info.amount
-            ))));
-        }
-    }
     Ok(())
 }
 
 pub fn try_withdraw_assets_unsafe(
     trade_info: &mut TradeInfo,
     assets: &[(u16, AssetInfo)],
-    funds: &[(u16, Coin)],
 ) -> Result<(), ContractError> {
     for (position, asset) in assets {
         let position: usize = (*position).into();
         let asset_info = trade_info.associated_assets[position].clone();
         match asset_info {
+
+            AssetInfo::Coin(mut fund_info) => { 
+                if let AssetInfo::Coin(fund) = asset {
+                     // If everything is in order, we remove the coin from the trade
+                    fund_info.amount -= fund.amount;
+                    trade_info.associated_assets[position] = AssetInfo::Coin(fund_info);
+                } 
+            },
             AssetInfo::Cw20Coin(mut token_info) => {
                 if let AssetInfo::Cw20Coin(token) = asset {
                     token_info.amount -= token.amount;
@@ -671,28 +653,13 @@ pub fn try_withdraw_assets_unsafe(
         }
     }
 
-    // Then we remove empty funds from the trade
+    // Then we remove empty assets from the trade
     trade_info.associated_assets.retain(|asset| match asset {
+        AssetInfo::Coin(fund) => fund.amount != Uint128::zero(),
         AssetInfo::Cw20Coin(token) => token.amount != Uint128::zero(),
         AssetInfo::Cw721Coin(nft) => !nft.address.is_empty(),
         AssetInfo::Cw1155Coin(cw1155) => cw1155.value != Uint128::zero(),
     });
-
-    // Then we take care of the wanted funds
-    // First, we check funds availability and update their state
-    for (position, fund) in funds {
-        let position: usize = (*position).into();
-        let mut fund_info = trade_info.associated_funds[position].clone();
-
-        // If everything is in order, we remove the coin from the trade
-        fund_info.amount -= fund.amount;
-        trade_info.associated_funds[position] = fund_info;
-    }
-
-    // Then we remove empty funds
-    trade_info
-        .associated_funds
-        .retain(|fund| fund.amount != Uint128::zero());
 
     Ok(())
 }
@@ -702,13 +669,19 @@ pub fn create_withdraw_messages(
     contract_address: &Addr,
     recipient: &Addr,
     assets: &Vec<AssetInfo>,
-    funds: &Vec<Coin>,
 ) -> Result<Response, ContractError> {
     let mut res = Response::new();
 
     // First the assets
     for asset in assets {
         match asset {
+            AssetInfo::Coin(fund) => {
+                let message = BankMsg::Send {
+                    to_address: recipient.to_string(),
+                    amount: vec![fund.clone()],
+                };
+                res = res.add_message(message);
+            }
             AssetInfo::Cw20Coin(token) => {
                 let message = Cw20ExecuteMsg::Transfer {
                     recipient: recipient.to_string(),
@@ -736,13 +709,6 @@ pub fn create_withdraw_messages(
         }
     }
 
-    // Then the funds
-    if !funds.is_empty() {
-        res = res.add_message(BankMsg::Send {
-            to_address: recipient.to_string(),
-            amount: funds.to_vec(),
-        });
-    };
 
     Ok(res)
 }

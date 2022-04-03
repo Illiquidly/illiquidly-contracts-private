@@ -34,6 +34,7 @@ pub enum AssetInfo {
     Cw20Coin(Cw20Coin),
     Cw721Coin(Cw721Coin),
     Cw1155Coin(Cw1155Coin),
+    Coin(Coin)
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug, strum_macros::Display)]
@@ -84,7 +85,6 @@ pub struct Comment {
 pub struct TradeInfo {
     pub owner: Addr,
     pub associated_assets: Vec<AssetInfo>,
-    pub associated_funds: Vec<Coin>,
     pub state: TradeState,
     pub last_counter_id: Option<u64>,
     pub whitelisted_users: HashSet<Addr>,
@@ -98,7 +98,6 @@ impl Default for TradeInfo {
         Self {
             owner: Addr::unchecked(""),
             associated_assets: vec![],
-            associated_funds: vec![],
             state: TradeState::Created,
             last_counter_id: None,
             whitelisted_users: HashSet::new(),
