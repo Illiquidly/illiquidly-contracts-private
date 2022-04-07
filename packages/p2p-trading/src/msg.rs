@@ -58,7 +58,7 @@ pub enum ExecuteMsg {
         counter_id: Option<u64>,
         to_last_trade: Option<bool>,
         to_last_counter: Option<bool>,
-        asset: AssetInfo
+        asset: AssetInfo,
     },
     RemoveAssets {
         trade_id: u64,

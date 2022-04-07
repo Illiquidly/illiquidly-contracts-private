@@ -107,11 +107,15 @@ pub fn trade_filter(
             Some(owner) => trade.trade_info.as_ref().unwrap().owner == owner.clone(),
             None => true,
         } && match &filters.has_whitelist {
-            Some(has_whitelist) => &trade
-                .trade_info
-                .as_ref()
-                .unwrap()
-                .whitelisted_users.is_empty() != has_whitelist,
+            Some(has_whitelist) => {
+                &trade
+                    .trade_info
+                    .as_ref()
+                    .unwrap()
+                    .whitelisted_users
+                    .is_empty()
+                    != has_whitelist
+            }
             None => true,
         } && match &filters.whitelisted_user {
             Some(whitelisted_user) => trade

@@ -1,3 +1,5 @@
+"use strict";
+
 import {
   queryAfterNewest,
   queryBeforeOldest,
@@ -9,8 +11,8 @@ import express from 'express';
 import 'dotenv/config';
 import https from "https";
 import fs from  "fs";
-const toobusy = require('toobusy-js');
-const redis = require('redis');
+import toobusy from 'toobusy-js';
+import { createClient } from 'redis';
 
 type Nullable<T> = T | null
 
@@ -20,9 +22,8 @@ const IDLE_UPDATE_INTERVAL = 20_000;
 const PORT = 8080;
 const QUERY_TIMEOUT = 50_000;
 
-const updateLock: any = {};
-const lastUpdateStartTime: any = {};
-const lastWalletContentUpdate: any = {};
+//const updateLock: any = {};
+//const lastUpdateStartTime: any = {};
 
 enum NFTState {
   Full,
@@ -59,9 +60,27 @@ function fillEmpty(currentData: Nullable<NFTsInteracted>) : NFTsInteracted{
   }
 }
 
+async function updateLock(db: any, key: string): Promise<boolean>{
+  const test = await db.get(key + "_updateLock")
+  return test === "true"
+}
+
+async function setUpdateLock(db: any, key: string, locked: boolean){
+  await db.set(key + "_updateLock", locked);
+}
+
+async function lastUpdateStartTime(db: any, key: string): Promise<number>{
+  let test = await db.get(key + "_updateStartTime")
+  return parseInt(test)
+}
+
+async function setLastUpdateStartTime(db: any, key: string, time: number){
+  await db.set(key + "_updateStartTime", time);
+}
+
 
 function serialise(currentData: NFTsInteracted): SerializableNFTsInteracted{
-  let serialised: any = {...currentData};
+  const serialised: any = {...currentData};
   if(serialised.interacted_nfts){
       serialised.interacted_nfts = Array.from(serialised.interacted_nfts);
   }
@@ -69,7 +88,7 @@ function serialise(currentData: NFTsInteracted): SerializableNFTsInteracted{
 }
 
 function deserialise(serialisedData: SerializableNFTsInteracted): NFTsInteracted{
-  let currentData: any = {...serialisedData};
+  const currentData: any = {...serialisedData};
   if(currentData.interacted_nfts){
       currentData.interacted_nfts = new Set(currentData.interacted_nfts);
   }
@@ -78,13 +97,13 @@ function deserialise(serialisedData: SerializableNFTsInteracted): NFTsInteracted
 
 
 function saveToDb(db: any, key: string,currentData: NFTsInteracted){
-  let serialisedData = serialise(currentData);
+  const serialisedData = serialise(currentData);
   return db.set(key, JSON.stringify(serialisedData));
 }
 
 async function getDb(db: any, key: string) : Promise<NFTsInteracted>{
-  let serialisedData = await db.get(key);
-  let currentData = JSON.parse(serialisedData);
+  const serialisedData = await db.get(key);
+  const currentData = JSON.parse(serialisedData);
   return fillEmpty(currentData);
 
 }
@@ -108,7 +127,7 @@ async function updateOwnedNfts(
   newNfts: Set<string>,
   currentData: NFTsInteracted
 ) {
-  let ownedNfts: any = await parseNFTSet(network, newNfts, address);
+  const ownedNfts: any = await parseNFTSet(network, newNfts, address);
   Object.keys(ownedNfts).forEach((nft, tokens) => {
     currentData.owned_nfts[nft] = ownedNfts[nft];
   });
@@ -125,7 +144,7 @@ async function updateOwnedAndSave(
   hasTimedOut: boolean
 ) {
   if (new_nfts.size) {
-    let nfts: Set<string> = new Set(currentData.interacted_nfts);
+    const nfts: Set<string> = new Set(currentData.interacted_nfts);
 
     // For new nft interactions, we update the owned nfts
     console.log('Querying NFT data from LCD');
@@ -135,6 +154,7 @@ async function updateOwnedAndSave(
     currentData = await updateOwnedNfts(network, address, new_nfts, {
       ...currentData
     });
+
   }
 
   if (
@@ -170,13 +190,13 @@ async function updateAddress(
   if(!network || !address){
     return currentData;
   }
-  let willQueryBefore = currentData.state != NFTState.Full;
+  const willQueryBefore = currentData.state != NFTState.Full;
   // We update currentData to prevent multiple updates
   currentData.state = NFTState.isUpdating;
   currentData.last_update_start_time = Date.now();
   await saveToDb(db, to_key(network, address),currentData);
 
-  let queryCallback = async (newNfts: Set<string>, txSeen: TxInterval) => {
+  const queryCallback = async (newNfts: Set<string>, txSeen: TxInterval) => {
     if(!network || !address || ! currentData){
       return;
     }
@@ -229,11 +249,9 @@ async function updateAddress(
     );
   }
   await saveToDb(db, to_key(network, address),currentData);
-  let returnData = {...currentData};
-  currentData = null;
   network = null;
   address = null;
-  return returnData;
+  return currentData;
 }
 
 function to_key(network: string, address: string) {
@@ -288,7 +306,7 @@ function expressErrorHandler(err: any) {
 async function main() {
 
   // We start the db
-  const db = redis.createClient();
+  const db = createClient();
   await db.connect();
 
 
@@ -296,7 +314,7 @@ async function main() {
   app.get('/nfts', async (req: any, res: any) => {
     await res.status(404).send('You got the wrong syntax, sorry mate');
   });
-  //db.flushAll();
+  db.flushAll();
   // Simple query, just query the current state
   app.get('/nfts/query/:network/:address', async (req: any, res: any) => {
     const address = req.params.address;
@@ -312,12 +330,12 @@ async function main() {
       if (action == 'update' || action == 'force_update') {
         if (
           currentData &&
-          ((updateLock[to_key(network, address)] &&
+          ((await updateLock(db,to_key(network, address)) &&
             Date.now() <
-              lastUpdateStartTime[to_key(network, address)] +
+              await lastUpdateStartTime(db,to_key(network, address)) +
                 UPDATE_INTERVAL) ||
             Date.now() <
-              lastUpdateStartTime[to_key(network, address)] +
+              await lastUpdateStartTime(db,to_key(network, address)) +
                 IDLE_UPDATE_INTERVAL)
         ) {
           console.log('Wait inbetween updates please');
@@ -330,23 +348,23 @@ async function main() {
           console.log('resetData');
           currentData = default_api_structure();
         }
-        let returnData = { ...currentData };
+        const returnData = { ...currentData };
         returnData.state = NFTState.isUpdating;
         await res.status(200).send(serialise(returnData));
 
-        updateLock[to_key(network, address)] = true;
-        lastUpdateStartTime[to_key(network, address)] = Date.now();
+        await setUpdateLock(db, to_key(network, address), true);
+        await setLastUpdateStartTime(db,to_key(network, address), Date.now());
         await Promise.race([
           new Promise((res) =>
             setTimeout(async () => {
-              let currentData = await getDb(db,to_key(network, address));
+              const currentData = await getDb(db,to_key(network, address));
               currentData.state = NFTState.Partial;
               await saveToDb(db, to_key(network, address),currentData);
             }, FORCE_END_UPDATE)
           ),
           updateAddress(db, network, address, { ...currentData }, QUERY_TIMEOUT)
         ]);
-        updateLock[to_key(network, address)] = false;
+        await setUpdateLock(db, to_key(network, address), false);
       } else {
         await res.status(200).send(serialise(currentData));
       }
@@ -356,8 +374,8 @@ async function main() {
   if(process.env.EXECUTION=="PRODUCTION")
   {
     const options = {
-      cert: fs.readFileSync('/home/ubuntu/identity/fullchain.pem'),
-      key: fs.readFileSync('/home/ubuntu/identity/privkey.pem')
+      cert: fs.readFileSync('/home/illiquidly/identity/fullchain.pem'),
+      key: fs.readFileSync('/home/illiquidly/identity/privkey.pem')
     };
     https.createServer(options, app).listen(8443);
   }

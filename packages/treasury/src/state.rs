@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub struct ContractInfo {
     pub name: String,
+    pub owner: Addr,
     pub p2p_contract: Addr,
-    pub treasury: Addr,
+    pub team: Addr,
 }

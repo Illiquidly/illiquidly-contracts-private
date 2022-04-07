@@ -1,6 +1,6 @@
 use cosmwasm_std::{
-    Addr, Api, BankMsg, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult,
-    Storage, Uint128,
+    Addr, Api, BankMsg, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult, Storage,
+    Uint128,
 };
 
 use std::collections::HashSet;
@@ -114,72 +114,65 @@ pub fn add_asset_to_trade(
     env: Env,
     info: MessageInfo,
     trade_id: Option<u64>,
-    asset: AssetInfo
+    asset: AssetInfo,
 ) -> Result<Response, ContractError> {
-   let trade_id = prepare_trade_asset_addition(deps.as_ref(), info.sender.clone(), trade_id)?;
+    let trade_id = prepare_trade_asset_addition(deps.as_ref(), info.sender.clone(), trade_id)?;
 
- 
-    match asset.clone(){
+    match asset.clone() {
         AssetInfo::Coin(coin) => {
-              TRADE_INFO.update(
-                deps.storage,
-                trade_id.into(),
-                add_funds(coin, info.funds)
-            )
-        },
-        AssetInfo::Cw20Coin(token) => {
-             TRADE_INFO.update(
-                deps.storage,
-                trade_id.into(),
-                add_cw20_coin(token.address.clone(), token.amount.clone()),
-            )
-        },
-        AssetInfo::Cw721Coin(token) => {
-             TRADE_INFO.update(
-                deps.storage,
-                trade_id.into(),
-                add_cw721_coin(token.address.clone(), token.token_id.clone()),
-            )
-        },
-        AssetInfo::Cw1155Coin(token) => {
-             TRADE_INFO.update(
-                deps.storage,
-                trade_id.into(),
-                add_cw1155_coin(token.address.clone(), token.token_id.clone(), token.value.clone()),
-            )
-        },
+            TRADE_INFO.update(deps.storage, trade_id.into(), add_funds(coin, info.funds))
+        }
+        AssetInfo::Cw20Coin(token) => TRADE_INFO.update(
+            deps.storage,
+            trade_id.into(),
+            add_cw20_coin(token.address.clone(), token.amount.clone()),
+        ),
+        AssetInfo::Cw721Coin(token) => TRADE_INFO.update(
+            deps.storage,
+            trade_id.into(),
+            add_cw721_coin(token.address.clone(), token.token_id.clone()),
+        ),
+        AssetInfo::Cw1155Coin(token) => TRADE_INFO.update(
+            deps.storage,
+            trade_id.into(),
+            add_cw1155_coin(
+                token.address.clone(),
+                token.token_id.clone(),
+                token.value.clone(),
+            ),
+        ),
     }?;
 
     // Now we need to transfer the token
-    Ok(match asset{
-        AssetInfo::Coin(coin) => {
-            Response::new()
-                .add_attribute("added funds", "trade")
-                .add_attribute("denom", coin.denom)
-                .add_attribute("amount", coin.amount)
-        },
+    Ok(match asset {
+        AssetInfo::Coin(coin) => Response::new()
+            .add_attribute("added funds", "trade")
+            .add_attribute("denom", coin.denom)
+            .add_attribute("amount", coin.amount),
         AssetInfo::Cw20Coin(token) => {
             let message = Cw20ExecuteMsg::TransferFrom {
                 owner: info.sender.to_string(),
                 recipient: env.contract.address.into(),
                 amount: token.amount,
             };
-            Response::new().add_message(into_cosmos_msg(message, token.address.clone())?)
-            .add_attribute("added token", "trade")
-            .add_attribute("token", token.address)
-            .add_attribute("amount", token.amount)
-        },
+            Response::new()
+                .add_message(into_cosmos_msg(message, token.address.clone())?)
+                .add_attribute("added token", "trade")
+                .add_attribute("token", token.address)
+                .add_attribute("amount", token.amount)
+        }
         AssetInfo::Cw721Coin(token) => {
             let message = Cw721ExecuteMsg::TransferNft {
                 recipient: env.contract.address.into(),
                 token_id: token.token_id.clone(),
             };
 
-            Response::new().add_message(into_cosmos_msg(message, token.address.clone())?)
-            .add_attribute("added token", "trade")
-            .add_attribute("nft", token.address)
-            .add_attribute("token_id", token.token_id)
-        },
+            Response::new()
+                .add_message(into_cosmos_msg(message, token.address.clone())?)
+                .add_attribute("added token", "trade")
+                .add_attribute("nft", token.address)
+                .add_attribute("token_id", token.token_id)
+        }
         AssetInfo::Cw1155Coin(token) => {
             let message = Cw1155ExecuteMsg::SendFrom {
                 from: info.sender.to_string(),
@@ -189,15 +182,15 @@ pub fn add_asset_to_trade(
                 msg: None,
             };
 
-            Response::new().add_message(into_cosmos_msg(message, token.address.clone())?)
-            .add_attribute("added Cw1155", "trade")
-            .add_attribute("token", token.address)
-            .add_attribute("token_id", token.token_id)
-            .add_attribute("amount", token.value)
+            Response::new()
+                .add_message(into_cosmos_msg(message, token.address.clone())?)
+                .add_attribute("added Cw1155", "trade")
+                .add_attribute("token", token.address)
+                .add_attribute("token_id", token.token_id)
+                .add_attribute("amount", token.value)
         }
-    } 
-        .add_attribute("trade_id", trade_id.to_string())
-    )
+    }
+    .add_attribute("trade_id", trade_id.to_string()))
 }
 
 pub fn validate_addresses(api: &dyn Api, whitelisted_users: &[String]) -> StdResult<Vec<Addr>> {
@@ -517,7 +510,7 @@ pub fn are_assets_in_trade(
                         ))));
                     }
                 }
-            },
+            }
 
             AssetInfo::Cw20Coin(token_info) => {
                 // We check the token is the one we want
@@ -624,14 +617,13 @@ pub fn try_withdraw_assets_unsafe(
         let position: usize = (*position).into();
         let asset_info = trade_info.associated_assets[position].clone();
         match asset_info {
-
-            AssetInfo::Coin(mut fund_info) => { 
+            AssetInfo::Coin(mut fund_info) => {
                 if let AssetInfo::Coin(fund) = asset {
-                     // If everything is in order, we remove the coin from the trade
+                    // If everything is in order, we remove the coin from the trade
                     fund_info.amount -= fund.amount;
                     trade_info.associated_assets[position] = AssetInfo::Coin(fund_info);
-                } 
-            },
+                }
+            }
             AssetInfo::Cw20Coin(mut token_info) => {
                 if let AssetInfo::Cw20Coin(token) = asset {
                     token_info.amount -= token.amount;
@@ -708,7 +700,6 @@ pub fn create_withdraw_messages(
             }
         }
     }
-
 
     Ok(res)
 }

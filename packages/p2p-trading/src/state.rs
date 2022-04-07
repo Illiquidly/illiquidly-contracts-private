@@ -34,7 +34,7 @@ pub enum AssetInfo {
     Cw20Coin(Cw20Coin),
     Cw721Coin(Cw721Coin),
     Cw1155Coin(Cw1155Coin),
-    Coin(Coin)
+    Coin(Coin),
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug, strum_macros::Display)]

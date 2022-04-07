@@ -17,6 +17,12 @@ async function main(){
 	let response = await nft.query.tokens({owner: handler.getAddress()});
 	console.log(response);
 
+	response = await nft.query.all_tokens({
+		start_after: "terra1dcegyrekltswvyy0xy69ydgxn9x8x32zdtapd8"
+	});
+	console.log(response);
+	/*
+
 	response = await loan.query.collateral_info({
 		borrower: handler.getAddress(),
 		loan_id: 0
@@ -25,6 +31,7 @@ async function main(){
 
 	response = await loan.query.contract_info();
 	console.log(response)
+	*/
 
 }
 
