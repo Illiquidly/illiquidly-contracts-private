@@ -41,11 +41,13 @@ function addFromWasmEvents(tx: any, nftsInteracted: any) {
     for (let log of tx.logs) {
       let parsedLog = new TxLog(log.msg_index,log.log, log.events);
       let from_contract = parsedLog.eventsByType.from_contract
+      //console.log(from_contract)
       if(from_contract){
         if(from_contract.action){
           if(from_contract.action.includes("transfer_nft") || from_contract.action.includes("mint")){
             from_contract.contract_address.forEach(nftsInteracted.add, nftsInteracted);
-          }
+		console.log(nftsInteracted)
+	  }
         }
       }
     }
@@ -263,7 +265,12 @@ async function parseTokensFromOneNft(
   } while (tokens && tokens.length > 0);
 
   if (Object.keys(allTokens).length === 0) {
-    return undefined;
+    return {
+	[nft]:{
+	    contract: nft,
+	    tokens: {}
+    	}
+    };
   } else {
     return {
       [nft]: {
@@ -293,10 +300,11 @@ export async function parseNFTSet(
   nfts: Set<string> | string[],
   address: string
 ) {
+
   const lcdClient = new LCDClient(chains[network]);
 
   let promiseArray = Array.from(nfts).map(async (nft) => {
-    return limitNFT(() => parseTokensFromOneNft(lcdClient, address, nft));
+	  return limitNFT(() => parseTokensFromOneNft(lcdClient, address, nft));
   });
 
   return await Promise.all(promiseArray).then((response: any) => {
