@@ -1,13 +1,13 @@
 use cosmwasm_std::{Api, Pair};
 #[cfg(not(feature = "library"))]
-use cosmwasm_std::{Deps, Order, StdResult};
+use cosmwasm_std::{Deps, Order, StdResult, Storage};
 
 use cw_storage_plus::{Bound, PrimaryKey, U64Key};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::convert::TryInto;
 
-use crate::state::{CONTRACT_INFO, COUNTER_TRADE_INFO, TRADE_INFO};
+use crate::state::{get_actual_counter_state, CONTRACT_INFO, COUNTER_TRADE_INFO, TRADE_INFO};
 use p2p_trading_export::msg::QueryFilters;
 use p2p_trading_export::state::{AssetInfo, ContractInfo, CounterTradeInfo, TradeInfo};
 
@@ -62,34 +62,37 @@ fn joined_to_key(ck: Vec<u8>) -> (u64, u64) {
 // parse counter trades to human readable format
 fn parse_all_counter_trades(
     _: &dyn Api,
+    storage: &dyn Storage,
     item: StdResult<Pair<TradeInfo>>,
 ) -> StdResult<TradeResponse> {
-    item.map(|(ck, trade)| {
+    item.map(|(ck, mut counter)| {
         // First two bytes define size [0,8] since we know it's u64 skip it.
         let (trade_id, counter_id) = joined_to_key(ck);
-        TradeResponse {
+        get_actual_counter_state(storage, trade_id, &mut counter)?;
+        Ok(TradeResponse {
             trade_id,
             counter_id: Some(counter_id),
-            trade_info: Some(trade),
-        }
-    })
+            trade_info: Some(counter),
+        })
+    })?
 }
 
 // parse counter trades to human readable format
 fn parse_counter_trades(
     _: &dyn Api,
+    storage: &dyn Storage,
     item: StdResult<Pair<TradeInfo>>,
     trade_id: u64,
 ) -> StdResult<TradeResponse> {
-    item.map(|(counter_id, trade)| {
+    item.map(|(counter_id, mut counter)| {
         let counter_id = counter_id.try_into().unwrap();
-
-        TradeResponse {
+        get_actual_counter_state(storage, trade_id, &mut counter)?;
+        Ok(TradeResponse {
             trade_id,
             counter_id: Some(u64::from_be_bytes(counter_id)),
-            trade_info: Some(trade),
-        }
-    })
+            trade_info: Some(counter),
+        })
+    })?
 }
 
 pub fn trade_filter(
@@ -107,11 +110,15 @@ pub fn trade_filter(
             Some(owner) => trade.trade_info.as_ref().unwrap().owner == owner.clone(),
             None => true,
         } && match &filters.has_whitelist {
-            Some(has_whitelist) => &trade
-                .trade_info
-                .as_ref()
-                .unwrap()
-                .whitelisted_users.is_empty() != has_whitelist,
+            Some(has_whitelist) => {
+                &trade
+                    .trade_info
+                    .as_ref()
+                    .unwrap()
+                    .whitelisted_users
+                    .is_empty()
+                    != has_whitelist
+            }
             None => true,
         } && match &filters.whitelisted_user {
             Some(whitelisted_user) => trade
@@ -229,7 +236,7 @@ pub fn query_all_trades_by_counterer(
     let mut trades: Vec<TradeResponse> = COUNTER_TRADE_INFO
         .range(deps.storage, None, start.clone(), Order::Descending)
         .take(BASE_LIMIT)
-        .map(|kv_item| parse_all_counter_trades(deps.api, kv_item))
+        .map(|kv_item| parse_all_counter_trades(deps.api, deps.storage, kv_item))
         .filter(|response| trade_filter(deps.api, response, &counter_filters))
         .filter_map(|response| response.ok())
         // Now we get back the trade_id and query the trade_info
@@ -250,7 +257,7 @@ pub fn query_all_trades_by_counterer(
         let trade_info: Option<TradeResponse> = COUNTER_TRADE_INFO
             .range(deps.storage, None, start, Order::Descending)
             .take(BASE_LIMIT)
-            .map(|kv_item| parse_all_counter_trades(deps.api, kv_item))
+            .map(|kv_item| parse_all_counter_trades(deps.api, deps.storage, kv_item))
             .filter_map(|response| response.ok())
             .map(|response| response.trade_id)
             .unique()
@@ -292,7 +299,7 @@ pub fn query_all_counter_trades(
     let mut counter_trades: Vec<TradeResponse> = COUNTER_TRADE_INFO
         .range(deps.storage, None, start.clone(), Order::Descending)
         .take(BASE_LIMIT)
-        .map(|kv_item| parse_all_counter_trades(deps.api, kv_item))
+        .map(|kv_item| parse_all_counter_trades(deps.api, deps.storage, kv_item))
         .filter(|response| trade_filter(deps.api, response, &filters))
         .take(limit)
         .collect::<StdResult<Vec<TradeResponse>>>()?;
@@ -333,7 +340,7 @@ pub fn query_counter_trades(
         .prefix(trade_id.into())
         .range(deps.storage, None, start.clone(), Order::Descending)
         .take(BASE_LIMIT)
-        .map(|kv_item| parse_counter_trades(deps.api, kv_item, trade_id))
+        .map(|kv_item| parse_counter_trades(deps.api, deps.storage, kv_item, trade_id))
         .filter(|response| trade_filter(deps.api, response, &filters))
         .take(limit)
         .collect::<StdResult<Vec<TradeResponse>>>()?;

@@ -16,13 +16,11 @@
     "withdraw": "node dist/withdraw_all.js",
     "pun": "node dist/punctual_test.js",
     "init": "node dist/send_funds.js",
-
     "upload-loan": "node dist/loans/upload_loan.js",
     "loan-flow-test": "node dist/loans/loan_flow.js",
     "loan-query": "node dist/loans/loan_query.js",
-    "upload-nft": "node dist/nft/upload_new_nft.js"
-
-
+    "upload-nft": "node dist/nft/upload_new_nft.js",
+    "prettier-format": "prettier --config .prettierrc 'src/**/*.ts' --write"
   },
   "keywords": [
     "terra"
@@ -33,6 +31,8 @@
     "@terra-money/terra.js": "^3.0.5"
   },
   "devDependencies": {
+    "@types/node": "^17.0.23",
+    "prettier": "^2.5.1",
     "typescript": "^4.5.5"
   }
 }

@@ -13,27 +13,32 @@ pub const TRADE_INFO: Map<U64Key, TradeInfo> = Map::new("trade_info");
 
 pub const COUNTER_TRADE_INFO: Map<(U64Key, U64Key), TradeInfo> = Map::new("counter_trade_info");
 
-pub fn add_funds(fund: Coin, info_funds: Vec<Coin>) -> impl FnOnce(Option<TradeInfo>) -> StdResult<TradeInfo> {
+pub fn add_funds(
+    fund: Coin,
+    info_funds: Vec<Coin>,
+) -> impl FnOnce(Option<TradeInfo>) -> StdResult<TradeInfo> {
     move |d: Option<TradeInfo>| -> StdResult<TradeInfo> {
         match d {
             Some(mut trade) => {
                 // We check the sent funds are with the right format
-                if info_funds.len() != 1 || fund != info_funds[0]{
-                    return Err(StdError::generic_err("Funds sent do not match message AssetInfo"));
-                } 
+                if info_funds.len() != 1 || fund != info_funds[0] {
+                    return Err(StdError::generic_err(
+                        "Funds sent do not match message AssetInfo",
+                    ));
+                }
                 let existing_denom = trade.associated_assets.iter_mut().find(|c| match c {
                     AssetInfo::Coin(x) => x.denom == fund.denom,
                     _ => false,
                 });
 
                 if let Some(existing_fund) = existing_denom {
-                     let current_amount = match existing_fund {
+                    let current_amount = match existing_fund {
                         AssetInfo::Coin(x) => x.amount,
                         _ => Uint128::zero(),
                     };
                     *existing_fund = AssetInfo::Coin(Coin {
                         denom: fund.denom,
-                        amount: current_amount + fund.amount
+                        amount: current_amount + fund.amount,
                     });
                 } else {
                     trade.associated_assets.push(AssetInfo::Coin(fund));
@@ -197,14 +202,37 @@ pub fn is_counter_trader(
     }
 }
 
+pub fn get_actual_counter_state(
+    storage: &dyn Storage,
+    trade_id: u64,
+    counter_info: &mut TradeInfo,
+) -> StdResult<()> {
+    let trade_info = TRADE_INFO.load(storage, trade_id.into())?;
+
+    match trade_info.state {
+        TradeState::Refused => counter_info.state = TradeState::Cancelled,
+        TradeState::Cancelled => counter_info.state = TradeState::Cancelled,
+        TradeState::Accepted => match counter_info.state {
+            TradeState::Accepted => {}
+            _ => counter_info.state = TradeState::Cancelled,
+        },
+        _ => {}
+    }
+    Ok(())
+}
+
 pub fn load_counter_trade(
     storage: &dyn Storage,
     trade_id: u64,
     counter_id: u64,
 ) -> Result<TradeInfo, ContractError> {
-    COUNTER_TRADE_INFO
+    let mut counter = COUNTER_TRADE_INFO
         .load(storage, (trade_id.into(), counter_id.into()))
-        .map_err(|_| ContractError::NotFoundInCounterTradeInfo {})
+        .map_err(|_| ContractError::NotFoundInCounterTradeInfo {})?;
+
+    get_actual_counter_state(storage, trade_id, &mut counter)?;
+
+    Ok(counter)
 }
 
 pub fn load_trade(storage: &dyn Storage, trade_id: u64) -> Result<TradeInfo, ContractError> {

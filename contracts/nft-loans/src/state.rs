@@ -69,7 +69,7 @@ pub fn is_loan_defaulted(env: Env, collateral: &CollateralInfo) -> Result<(), Co
     match &collateral.state {
         LoanState::Started => {
             if collateral.start_block.unwrap() + offer.terms.duration_in_blocks < env.block.height
-                && !offer.terms.default_terms.is_some()
+                && offer.terms.default_terms.is_none()
             {
                 Ok(())
             } else {
@@ -86,7 +86,7 @@ pub fn is_loan_defaulted(env: Env, collateral: &CollateralInfo) -> Result<(), Co
 
 pub fn get_loan(collateral: &CollateralInfo, offer_id: usize) -> Result<OfferInfo, ContractError> {
     if offer_id < collateral.offers.len() {
-        return Ok(collateral.offers[offer_id].clone());
+        Ok(collateral.offers[offer_id].clone()) 
     } else {
         Err(ContractError::OfferNotFound {})
     }
@@ -95,7 +95,7 @@ pub fn get_loan(collateral: &CollateralInfo, offer_id: usize) -> Result<OfferInf
 pub fn get_active_loan(collateral: &CollateralInfo) -> Result<OfferInfo, ContractError> {
     let offer_id = collateral
         .active_loan
-        .ok_or_else(|| ContractError::OfferNotFound {})?;
+        .ok_or( ContractError::OfferNotFound {})?;
     get_loan(collateral, offer_id as usize)
 }
 

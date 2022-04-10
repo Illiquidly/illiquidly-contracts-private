@@ -1,6 +1,4 @@
-use cosmwasm_std::{
-    Addr, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult, 
-};
+use cosmwasm_std::{Addr, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult};
 
 use cw1155::Cw1155ExecuteMsg;
 use cw20::Cw20ExecuteMsg;
@@ -120,75 +118,68 @@ pub fn add_asset_to_counter_trade(
     info: MessageInfo,
     trade_id: u64,
     counter_id: Option<u64>,
-    asset: AssetInfo
+    asset: AssetInfo,
 ) -> Result<Response, ContractError> {
     let counter_id =
         prepare_counter_asset_addition(deps.as_ref(), info.sender.clone(), trade_id, counter_id)?;
 
-    match asset.clone(){
-        AssetInfo::Coin(coin) => {
-             COUNTER_TRADE_INFO.update(
-                deps.storage,
-                (trade_id.into(), counter_id.into()),
-                add_funds(coin, info.funds)
-            )
-        },
-        AssetInfo::Cw20Coin(token) => {
-             COUNTER_TRADE_INFO.update(
-                deps.storage,
-                (trade_id.into(), counter_id.into()),
-                add_cw20_coin(token.address.clone(), token.amount.clone()),
-            )
-        },
-        AssetInfo::Cw721Coin(token) => {
-             COUNTER_TRADE_INFO.update(
-                deps.storage,
-                (trade_id.into(), counter_id.into()),
-                add_cw721_coin(token.address.clone(), token.token_id.clone()),
-            )
-        },
-        AssetInfo::Cw1155Coin(token) => {
-             COUNTER_TRADE_INFO.update(
-                deps.storage,
-                (trade_id.into(), counter_id.into()),
-                add_cw1155_coin(token.address.clone(), token.token_id.clone(), token.value.clone()),
-            )
-        },
+    match asset.clone() {
+        AssetInfo::Coin(coin) => COUNTER_TRADE_INFO.update(
+            deps.storage,
+            (trade_id.into(), counter_id.into()),
+            add_funds(coin, info.funds),
+        ),
+        AssetInfo::Cw20Coin(token) => COUNTER_TRADE_INFO.update(
+            deps.storage,
+            (trade_id.into(), counter_id.into()),
+            add_cw20_coin(token.address.clone(), token.amount),
+        ),
+        AssetInfo::Cw721Coin(token) => COUNTER_TRADE_INFO.update(
+            deps.storage,
+            (trade_id.into(), counter_id.into()),
+            add_cw721_coin(token.address.clone(), token.token_id),
+        ),
+        AssetInfo::Cw1155Coin(token) => COUNTER_TRADE_INFO.update(
+            deps.storage,
+            (trade_id.into(), counter_id.into()),
+            add_cw1155_coin(
+                token.address.clone(),
+                token.token_id.clone(),
+                token.value,
+            ),
+        ),
     }?;
 
-
-   
-
     // Now we need to transfer the token
-    Ok(match asset{
-        AssetInfo::Coin(coin) => {
-            Response::new()
-                .add_attribute("added funds", "counter")
-                .add_attribute("denom", coin.denom)
-                .add_attribute("amount", coin.amount)
-        },
+    Ok(match asset {
+        AssetInfo::Coin(coin) => Response::new()
+            .add_attribute("added funds", "counter")
+            .add_attribute("denom", coin.denom)
+            .add_attribute("amount", coin.amount),
         AssetInfo::Cw20Coin(token) => {
             let message = Cw20ExecuteMsg::TransferFrom {
                 owner: info.sender.to_string(),
                 recipient: env.contract.address.into(),
                 amount: token.amount,
             };
-            Response::new().add_message(into_cosmos_msg(message, token.address.clone())?)
-            .add_attribute("added token", "counter")
-            .add_attribute("token", token.address)
-            .add_attribute("amount", token.amount)
-        },
+            Response::new()
+                .add_message(into_cosmos_msg(message, token.address.clone())?)
+                .add_attribute("added token", "counter")
+                .add_attribute("token", token.address)
+                .add_attribute("amount", token.amount)
+        }
         AssetInfo::Cw721Coin(token) => {
             let message = Cw721ExecuteMsg::TransferNft {
                 recipient: env.contract.address.into(),
                 token_id: token.token_id.clone(),
             };
 
-            Response::new().add_message(into_cosmos_msg(message, token.address.clone())?)
-            .add_attribute("added token", "counter")
-            .add_attribute("nft", token.address)
-            .add_attribute("token_id", token.token_id)
-        },
+            Response::new()
+                .add_message(into_cosmos_msg(message, token.address.clone())?)
+                .add_attribute("added token", "counter")
+                .add_attribute("nft", token.address)
+                .add_attribute("token_id", token.token_id)
+        }
         AssetInfo::Cw1155Coin(token) => {
             let message = Cw1155ExecuteMsg::SendFrom {
                 from: info.sender.to_string(),
@@ -198,18 +189,17 @@ pub fn add_asset_to_counter_trade(
                 msg: None,
             };
 
-            Response::new().add_message(into_cosmos_msg(message, token.address.clone())?)
-            .add_attribute("added Cw1155", "counter")
-            .add_attribute("token", token.address)
-            .add_attribute("token_id", token.token_id)
-            .add_attribute("amount", token.value)
+            Response::new()
+                .add_message(into_cosmos_msg(message, token.address.clone())?)
+                .add_attribute("added Cw1155", "counter")
+                .add_attribute("token", token.address)
+                .add_attribute("token_id", token.token_id)
+                .add_attribute("amount", token.value)
         }
-    } 
-        .add_attribute("trade_id", trade_id.to_string())
-        .add_attribute("counter_id", counter_id.to_string())
-    )
+    }
+    .add_attribute("trade_id", trade_id.to_string())
+    .add_attribute("counter_id", counter_id.to_string()))
 }
-
 
 pub fn confirm_counter_trade(
     deps: DepsMut,
@@ -218,14 +208,14 @@ pub fn confirm_counter_trade(
     trade_id: u64,
     counter_id: Option<u64>,
 ) -> Result<Response, ContractError> {
-    let mut trade_info = load_trade(deps.storage, trade_id)?;
+    let trade_info = load_trade(deps.storage, trade_id)?;
 
     let counter_id = match counter_id {
         Some(counter_id) => Ok(counter_id),
         None => get_last_counter_id_created(deps.as_ref(), info.sender.to_string(), trade_id),
     }?;
 
-    is_counter_trader(deps.storage, &info.sender, trade_id, counter_id)?;
+    let mut counter = is_counter_trader(deps.storage, &info.sender, trade_id, counter_id)?;
 
     if trade_info.state != TradeState::Countered {
         return Err(ContractError::CantChangeTradeState {
@@ -233,32 +223,20 @@ pub fn confirm_counter_trade(
             to: TradeState::Countered,
         });
     }
-    trade_info.state = TradeState::Countered;
 
     // We update the trade_info to show there are some suggested counters
     TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
 
     // We update the counter_trade_info to indicate it is published and ready to be accepted
-    COUNTER_TRADE_INFO.update(
-        deps.storage,
-        (trade_id.into(), counter_id.into()),
-        |d: Option<TradeInfo>| -> Result<TradeInfo, ContractError> {
-            match d {
-                Some(mut one) => {
-                    if one.state != TradeState::Created {
-                        return Err(ContractError::CantChangeCounterTradeState {
-                            from: one.state,
-                            to: TradeState::Published,
-                        });
-                    }
-                    one.state = TradeState::Published;
-                    Ok(one)
-                }
-                //TARPAULIN : Unreachable
-                None => Err(ContractError::NotFoundInCounterTradeInfo {}),
-            }
-        },
-    )?;
+    if counter.state != TradeState::Created {
+        return Err(ContractError::CantChangeCounterTradeState {
+            from: counter.state,
+            to: TradeState::Published,
+        });
+    }
+    counter.state = TradeState::Published;
+
+    COUNTER_TRADE_INFO.save(deps.storage, (trade_id.into(), counter_id.into()), &counter)?;
 
     Ok(Response::new()
         .add_attribute("confirmed", "counter")

@@ -8,9 +8,9 @@ use cosmwasm_std::{
 use crate::error::ContractError;
 
 use crate::state::{
-    can_repay_loan, get_active_loan, is_collateral_withdrawable, is_lender, is_loan_acceptable,
-    is_loan_counterable, is_loan_modifiable, is_owner, get_loan, is_active_lender, BORROWER_INFO, COLLATERAL_INFO,
-    CONTRACT_INFO,
+    can_repay_loan, get_active_loan, get_loan, is_active_lender, is_collateral_withdrawable,
+    is_lender, is_loan_acceptable, is_loan_counterable, is_loan_modifiable, is_owner,
+    BORROWER_INFO, COLLATERAL_INFO, CONTRACT_INFO,
 };
 
 use cw1155::Cw1155ExecuteMsg;
@@ -200,11 +200,11 @@ pub fn deposit_collateral(
             Cw1155ExecuteMsg::SendFrom {
                 from: borrower.to_string(),
                 to: env.contract.address.into(),
-                token_id: token_id.clone(),
+                token_id,
                 value,
                 msg: None,
             },
-            address.clone(),
+            address,
         )?;
     } else {
         // In case of a CW721
@@ -215,9 +215,9 @@ pub fn deposit_collateral(
         transfer_message = into_cosmos_msg(
             Cw721ExecuteMsg::TransferNft {
                 recipient: env.contract.address.into(),
-                token_id: token_id.clone(),
+                token_id,
             },
-            address.clone(),
+            address,
         )?;
     }
 
@@ -299,7 +299,7 @@ pub fn make_offer(
 
     // First we make sure the transaction contains funds that match the principle
     if info.funds.len() != 1 {
-        return Err(ContractError::MultipleCoins{});
+        return Err(ContractError::MultipleCoins {});
     } else if terms.principle != info.funds[0].clone() {
         return Err(ContractError::FundsDontMatchTerms {});
     }
@@ -339,7 +339,7 @@ pub fn cancel_offer(
 
     if offer.state != OfferState::Published {
         return Err(ContractError::CantChangeOfferState {
-            from: offer.state.clone(),
+            from: offer.state,
             to: OfferState::Cancelled,
         });
     }
@@ -368,18 +368,15 @@ pub fn withdraw_refused_offer(
 
     // We need to verify the offer exists
     let offer = is_lender(info.sender, &collateral, offer_id as usize)?;
-    if offer.state != OfferState::Published
-            || collateral.state == LoanState::Published
-    {
+    if offer.state != OfferState::Published || collateral.state == LoanState::Published {
         return Err(ContractError::NotWithdrawable {});
-    } 
-    let message =  _withdraw_offer_unsafe(deps, borrower, loan_id, offer_id as usize)?;
+    }
+    let message = _withdraw_offer_unsafe(deps, borrower, loan_id, offer_id as usize)?;
 
     Ok(Response::new()
         .add_message(message)
         .add_attribute("withdraw", "funds")
-        .add_attribute("offer", offer_id.to_string())
-    )
+        .add_attribute("offer", offer_id.to_string()))
 }
 
 // This withdraws the funds to the lender, without owner checks
@@ -398,7 +395,7 @@ pub fn _withdraw_offer_unsafe(
         to_address: offer.lender.clone().to_string(),
         amount: vec![offer
             .deposited_funds
-            .ok_or_else(|| ContractError::NoFundsToWithdraw {})?],
+            .ok_or(ContractError::NoFundsToWithdraw {})?],
     });
 
     // We mark the deposited funds as withdrawn
@@ -406,7 +403,7 @@ pub fn _withdraw_offer_unsafe(
     // We save the changes
     COLLATERAL_INFO.save(deps.storage, (&borrower, loan_id.into()), &collateral)?;
 
-    return res;
+    res
 }
 
 pub fn refuse_offer(
@@ -428,8 +425,7 @@ pub fn refuse_offer(
 
     Ok(Response::new()
         .add_attribute("refused", "offer")
-        .add_attribute("offer_id", offer_id.to_string())
-    )  
+        .add_attribute("offer_id", offer_id.to_string()))
 }
 
 pub fn accept_loan(
@@ -449,7 +445,7 @@ pub fn accept_loan(
         .ok_or(ContractError::NoTermsSpecified {})?;
     // We receive the funds sent by the lender
     if info.funds.len() != 1 {
-        return Err(ContractError::MultipleCoins{});
+        return Err(ContractError::MultipleCoins {});
     } else if terms.principle != info.funds[0].clone() {
         return Err(ContractError::FundsDontMatchTerms {});
     }
@@ -492,8 +488,7 @@ pub fn accept_offer(
 
     let mut offer = get_loan(&collateral, offer_id as usize)?;
 
-    if offer.state == OfferState::Published
-    {
+    if offer.state == OfferState::Published {
         // We can start the loan right away !
         offer.state = OfferState::Accepted;
         collateral.state = LoanState::Started;
@@ -536,10 +531,10 @@ pub fn _withdraw_borrowed_funds(
 
     // We need to prepare the funds transfer to the borrower
     Ok(vec![BankMsg::Send {
-        to_address: borrower.clone().to_string(),
+        to_address: borrower.to_string(),
         amount: vec![offer
             .deposited_funds
-            .ok_or_else(|| ContractError::NoFundsToWithdraw {})?],
+            .ok_or(ContractError::NoFundsToWithdraw {})?],
     }])
 }
 
@@ -553,32 +548,34 @@ pub fn repay_borrowed_funds(
     let mut collateral = COLLATERAL_INFO.load(deps.storage, (&borrower, loan_id.into()))?;
     can_repay_loan(env.clone(), &collateral)?;
 
-    let offer = get_active_loan(&mut collateral)?;
+    let offer = get_active_loan(&collateral)?;
 
     // We compute the necessary additionnal interest if the borrower pays late
-    let late_interest;
-    if offer.terms.default_terms.is_some()
+    let late_interest = if offer.terms.default_terms.is_some()
         && collateral.start_block.unwrap() + offer.terms.duration_in_blocks < env.block.height
     {
-        late_interest = offer.terms.interest*Uint128::new(
-            (env.block.height - collateral.start_block.unwrap() + offer.terms.duration_in_blocks)
-                .into(),
-        ) * offer.terms.default_terms.unwrap().late_payback_rate
-            / Uint128::new(10_000_000u128);
+        offer.terms.interest
+            * Uint128::new(
+                (env.block.height - collateral.start_block.unwrap()
+                    + offer.terms.duration_in_blocks)
+                    .into(),
+            )
+            * offer.terms.default_terms.unwrap().late_payback_rate
+            / Uint128::new(10_000_000u128)
     } else {
-        late_interest = Uint128::new(0);
-    }
+        Uint128::new(0)
+    };
 
     let interests = offer.terms.interest + late_interest;
 
     // We verify the sent funds correspond to the principle + interests
     if info.funds.len() != 1 {
-        return Err(ContractError::MultipleCoins{});
+        return Err(ContractError::MultipleCoins {});
     } else if offer.terms.principle.denom != info.funds[0].denom.clone() {
         return Err(ContractError::Std(StdError::generic_err(
             "You didn't send the right kind of funds",
         )));
-    } else if offer.terms.principle.amount + interests > info.funds[0].amount.clone() {
+    } else if offer.terms.principle.amount + interests > info.funds[0].amount{
         return Err(ContractError::Std(StdError::generic_err(
             format!(
                 "Fund sent do not match the loan terms (principle + interests). Needed : {needed}, Received : {received}", 
@@ -593,8 +590,7 @@ pub fn repay_borrowed_funds(
     let contract = CONTRACT_INFO.load(deps.storage)?;
 
     let lender_payback = offer.terms.principle.amount
-        + interests * (Uint128::new(100_000u128) - contract.fee_rate)
-            / Uint128::new(100_000u128);
+        + interests * (Uint128::new(100_000u128) - contract.fee_rate) / Uint128::new(100_000u128);
 
     let treasury_payback = info.funds[0].amount - lender_payback;
 
@@ -629,7 +625,7 @@ pub fn withdraw_defaulted_loan(
 ) -> Result<Response, ContractError> {
     let borrower = deps.api.addr_validate(&borrower)?;
     let mut collateral = COLLATERAL_INFO.load(deps.storage, (&borrower, loan_id.into()))?;
-    let offer = is_active_lender(info.sender, &mut collateral)?;
+    let offer = is_active_lender(info.sender, &collateral)?;
 
     // We need to test if we can default the loan.
     // This is different from the is_loan_defaulted function
@@ -657,7 +653,7 @@ pub fn withdraw_defaulted_loan(
 }
 
 pub fn _withdraw_asset(asset: AssetInfo, sender: Addr, recipient: Addr) -> StdResult<CosmosMsg> {
-    match asset.clone() {
+    match asset {
         AssetInfo::Cw1155Coin(cw1155) => {
             let address = cw1155.address;
             let token_id = cw1155.token_id;
@@ -665,11 +661,11 @@ pub fn _withdraw_asset(asset: AssetInfo, sender: Addr, recipient: Addr) -> StdRe
                 Cw1155ExecuteMsg::SendFrom {
                     from: sender.to_string(),
                     to: recipient.to_string(),
-                    token_id: token_id.clone(),
+                    token_id,
                     value: cw1155.value,
                     msg: None,
                 },
-                address.clone(),
+                address,
             )
         }
 
@@ -679,9 +675,9 @@ pub fn _withdraw_asset(asset: AssetInfo, sender: Addr, recipient: Addr) -> StdRe
             into_cosmos_msg(
                 Cw721ExecuteMsg::TransferNft {
                     recipient: recipient.to_string(),
-                    token_id: token_id.clone(),
+                    token_id,
                 },
-                address.clone(),
+                address,
             )
         }
         _ => Err(StdError::generic_err("Unreachable error")),
@@ -711,14 +707,14 @@ pub fn query_collateral_info(
     let borrower = deps.api.addr_validate(&borrower)?;
     COLLATERAL_INFO
         .load(deps.storage, (&borrower, loan_id.into()))
-        .or(Err(StdError::generic_err("LoanNotFound")))
+        .map_err(|_| StdError::generic_err("LoanNotFound"))
 }
 
 pub fn query_borrower_info(deps: Deps, borrower: String) -> StdResult<BorrowerInfo> {
     let borrower = deps.api.addr_validate(&borrower)?;
     BORROWER_INFO
         .load(deps.storage, &borrower)
-        .or(Err(StdError::generic_err("UnknownBorrower")))
+        .map_err(|_| StdError::generic_err("UnknownBorrower"))
 }
 
 #[cfg(test)]
@@ -727,7 +723,7 @@ pub mod tests {
     use cosmwasm_std::{
         coin, coins,
         testing::{mock_dependencies, mock_env, mock_info},
-        Api, Coin, SubMsg
+        Api, Coin, SubMsg,
     };
     use cw_storage_plus::U64Key;
     use nft_loans_export::state::DefaultTerms;
@@ -761,23 +757,44 @@ pub mod tests {
         assert_eq!(0, res_init.messages.len());
 
         let contract = CONTRACT_INFO.load(&deps.storage).unwrap();
-        assert_eq!(contract, ContractInfo{
-            name: "p2p-trading".to_string(),
-            owner: deps.api.addr_validate("this_address").unwrap(),
-            treasury: "T".to_string(),
-            fee_rate: Uint128::new(5_000u128),
-        });
+        assert_eq!(
+            contract,
+            ContractInfo {
+                name: "p2p-trading".to_string(),
+                owner: deps.api.addr_validate("this_address").unwrap(),
+                treasury: "T".to_string(),
+                fee_rate: Uint128::new(5_000u128),
+            }
+        );
 
         let info = mock_info("this_address", &[]);
-        execute(deps.as_mut(), env.clone(), info.clone(), ExecuteMsg::SetTreasury{
-            treasury: "S".to_string(),
-        }).unwrap();
-        assert_eq!(CONTRACT_INFO.load(&deps.storage).unwrap().treasury, "S".to_string());
+        execute(
+            deps.as_mut(),
+            env.clone(),
+            info.clone(),
+            ExecuteMsg::SetTreasury {
+                treasury: "S".to_string(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            CONTRACT_INFO.load(&deps.storage).unwrap().treasury,
+            "S".to_string()
+        );
 
-        execute(deps.as_mut(), env.clone(), info.clone(), ExecuteMsg::SetFeeRate{
-            fee_rate: Uint128::new(500u128),
-        }).unwrap();
-        assert_eq!(CONTRACT_INFO.load(&deps.storage).unwrap().fee_rate, Uint128::new(500u128));
+        execute(
+            deps.as_mut(),
+            env.clone(),
+            info.clone(),
+            ExecuteMsg::SetFeeRate {
+                fee_rate: Uint128::new(500u128),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            CONTRACT_INFO.load(&deps.storage).unwrap().fee_rate,
+            Uint128::new(500u128)
+        );
     }
 
     fn add_collateral_helper(
@@ -874,10 +891,7 @@ pub mod tests {
             deps,
             env,
             info,
-            ExecuteMsg::RefuseOffer {
-                loan_id,
-                offer_id,
-            },
+            ExecuteMsg::RefuseOffer { loan_id, offer_id },
         )
     }
 
@@ -1141,18 +1155,16 @@ pub mod tests {
         // The funds have to match the terms
         let err = accept_loan_helper(deps.as_mut(), "anyone", "creator", 0, coins(123, "luna"))
             .unwrap_err();
-        assert_eq!(
-            err,
-            ContractError::FundsDontMatchTerms {}
-        );
-        let err = accept_loan_helper(deps.as_mut(), "anyone", "creator", 0, vec![coin(123, "luna"), coin(457, "uusd")])
-            .unwrap_err();
-        assert_eq!(
-            err,
-            ContractError::MultipleCoins {}
-        );
-
-
+        assert_eq!(err, ContractError::FundsDontMatchTerms {});
+        let err = accept_loan_helper(
+            deps.as_mut(),
+            "anyone",
+            "creator",
+            0,
+            vec![coin(123, "luna"), coin(457, "uusd")],
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::MultipleCoins {});
 
         accept_loan_helper(deps.as_mut(), "anyone", "creator", 0, coins(456, "luna")).unwrap();
         accept_loan_helper(
@@ -1221,11 +1233,7 @@ pub mod tests {
             coins(6765, "luna"),
         )
         .unwrap_err();
-        assert_eq!(
-            err,
-            ContractError::FundsDontMatchTerms {}
-        );
-
+        assert_eq!(err, ContractError::FundsDontMatchTerms {});
 
         let err = make_offer_helper(
             deps.as_mut(),
@@ -1233,14 +1241,10 @@ pub mod tests {
             "creator",
             0,
             terms.clone(),
-            vec![coin(456, "luna"),coin(456, "luna")],
+            vec![coin(456, "luna"), coin(456, "luna")],
         )
         .unwrap_err();
-        assert_eq!(
-            err,
-            ContractError::MultipleCoins{}
-        );
-
+        assert_eq!(err, ContractError::MultipleCoins {});
 
         make_offer_helper(
             deps.as_mut(),
@@ -1337,12 +1341,16 @@ pub mod tests {
         refuse_offer_helper(deps.as_mut(), "bad_person", 0, 0).unwrap_err();
         refuse_offer_helper(deps.as_mut(), "creator", 0, 0).unwrap();
 
-        let offer = COLLATERAL_INFO.load(&deps.storage, (&deps.api.addr_validate("creator").unwrap(), U64Key::new(0))).unwrap().offers[0].clone();
+        let offer = COLLATERAL_INFO
+            .load(
+                &deps.storage,
+                (&deps.api.addr_validate("creator").unwrap(), U64Key::new(0)),
+            )
+            .unwrap()
+            .offers[0]
+            .clone();
 
-        assert_eq!(
-            offer.state,
-            OfferState::Refused
-        );
+        assert_eq!(offer.state, OfferState::Refused);
     }
 
     #[test]
@@ -1416,11 +1424,12 @@ pub mod tests {
 
         withdraw_refused_offer_helper(deps.as_mut(), "anyone", "creator", 0, 0).unwrap_err();
         withdraw_refused_offer_helper(deps.as_mut(), "anyone", "creator", 0, 1).unwrap_err();
-        let err = withdraw_refused_offer_helper(deps.as_mut(), "anyone", "creator", 0, 2).unwrap_err();
-        assert_eq!(err, ContractError::OfferNotFound{});
+        let err =
+            withdraw_refused_offer_helper(deps.as_mut(), "anyone", "creator", 0, 2).unwrap_err();
+        assert_eq!(err, ContractError::OfferNotFound {});
 
-       let err = accept_offer_helper(deps.as_mut(), "creator", 0, 87).unwrap_err();
-        assert_eq!(err, ContractError::OfferNotFound{});
+        let err = accept_offer_helper(deps.as_mut(), "creator", 0, 87).unwrap_err();
+        assert_eq!(err, ContractError::OfferNotFound {});
         accept_offer_helper(deps.as_mut(), "creator", 0, 0).unwrap();
 
         withdraw_refused_offer_helper(deps.as_mut(), "anyone", "creator", 0, 0).unwrap_err();
@@ -1580,7 +1589,7 @@ pub mod tests {
             principle: coin(456, "luna"),
             interest: Uint128::new(50),
             duration_in_blocks: 0,
-            default_terms: Some(DefaultTerms{
+            default_terms: Some(DefaultTerms {
                 late_payback_rate: Uint128::new(10_000_000u128),
             }),
         };
