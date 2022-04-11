@@ -305,9 +305,9 @@ pub fn withdraw_accepted_funds(
     let res;
 
     // We need to indentify who the transaction sender is (trader or counter-trader)
-    if trade_info.owner == trader {
+    if trade_info.owner == trader && !counter_info.assets_withdrawn{
         // In case the trader wants to withdraw the exchanged funds
-        res = check_and_create_withdraw_messages(env, &trader, &counter_info)?;
+        res = check_and_create_withdraw_messages(env.clone(), &trader, &counter_info)?;
 
         trade_type = "counter";
         counter_info.assets_withdrawn = true;
@@ -316,13 +316,15 @@ pub fn withdraw_accepted_funds(
             (trade_id.into(), counter_id.into()),
             &counter_info,
         )?;
-    } else if counter_info.owner == trader {
+    }else if counter_info.owner == trader {
         // In case the counter_trader wants to withdraw the exchanged funds
         res = check_and_create_withdraw_messages(env, &trader, &trade_info)?;
 
         trade_type = "trade";
         trade_info.assets_withdrawn = true;
         TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
+    } else if trade_info.owner == trader && counter_info.assets_withdrawn{
+        return Err(ContractError::TradeAlreadyWithdrawn {});
     } else {
         return Err(ContractError::NotWithdrawableByYou {});
     }

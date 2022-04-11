@@ -9,6 +9,7 @@ function getContractLog(response: any) {
 async function main() {
   // Getting a handler for the current address
   let handler = new Address(env['mnemonics'][0]);
+  let counter = new Address(env['mnemonics'][1]);
   console.log(handler.getAddress());
   let cw20_tokens = env['cw20'];
   let cw20_token_names = Object.keys(cw20_tokens);
@@ -18,6 +19,7 @@ async function main() {
 
   let iliq = handler.getContract(cw20_tokens[cw20_token_names[0]]);
   let p2p = handler.getContract(env.contracts.p2p);
+  let p2p_counter = counter.getContract(env.contracts.p2p);
 
   let response: any;
 
@@ -86,7 +88,6 @@ async function main() {
     );
   }
   response = await p2p.execute.executeSome(txArray);
-  console.log(response);
 
   await p2p.execute.confirm_counter_trade({
     trade_id: trade_id,
@@ -103,6 +104,49 @@ async function main() {
     counter_id: 151
   });
 
+  // Now the counter does the same !
+	await iliq.execute.increase_allowance({
+    spender: p2p.address,
+    amount: amount
+  });
+  // Then we add the funds
+  response = await p2p.execute.add_asset({
+    trade_id: trade_id + 60,
+    asset: {
+      cw20_coin: {
+        address: cw20_tokens[cw20_token_names[0]],
+        amount: amount
+      }
+    }
+  });
+  await p2p.execute.confirm_trade({
+    trade_id: trade_id + 60
+  });
+  txArray = [];
+  for (let i = 0; i < 1000; i++) {
+    txArray.push(
+      new MsgExecuteContract(
+        counter.getAddress(), // sender
+        p2p.address, // contract account address
+        {
+          suggest_counter_trade: {
+            trade_id: trade_id + 60
+          }
+        } // handle msg
+      )
+    );
+  }
+  response = await p2p_counter.execute.executeSome(txArray);
+
+  await p2p_counter.execute.confirm_counter_trade({
+    trade_id: trade_id + 60,
+    counter_id: 150
+  });
+
+  await p2p_counter.execute.confirm_counter_trade({
+    trade_id: trade_id + 60,
+    counter_id: 151
+  }); 
 
 
 }

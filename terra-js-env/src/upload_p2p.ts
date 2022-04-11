@@ -27,7 +27,8 @@ async function main() {
   // Initialize fee contract
   let feeInitMsg = {
     name: 'FirstFeeContract',
-    p2p_contract: p2p.address
+    p2p_contract: p2p.address,
+    treasury: handler.getAddress()
   };
 
   let fee = await handler.instantiateContract(+fee_codeId[0], feeInitMsg);

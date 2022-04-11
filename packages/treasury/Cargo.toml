@@ -1,16 +1,16 @@
 [package]
-name = "useless-fee-contract"
-version = "0.9.0"
+name = "treasury-export"
+version = "0.1.0"
 authors = ["Nicolas KOWALSKI <kowalski.kowalskin@gmail.com>"]
 edition = "2018"
-description = "Basic implementation of a CosmWasm-20 compliant token"
+description = "Messages for the p2p trading contract"
 license = "Apache-2.0"
 repository = "https://github.com/CosmWasm/cw-plus"
 homepage = "https://cosmwasm.com"
 documentation = "https://docs.cosmwasm.com"
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+bench = false
 
 [features]
 backtraces = ["cosmwasm-std/backtraces"]
@@ -26,9 +26,10 @@ cosmwasm-std = { version = "0.16.0" }
 schemars = "0.8.1"
 serde = { version = "1.0.103", default-features = false, features = ["derive"] }
 thiserror = { version = "1.0.23" }
-p2p-trading-export = { path = "../../packages/p2p-trading", version = "0.1.0" }
-fee-contract-export = { path = "../../packages/fee_contract", version = "0.1.0" }
-
+strum = "0.24"
+strum_macros = "0.24"
+p2p-trading-export = { path = "../p2p-trading", version = "0.1.0" }
 
 [dev-dependencies]
 cosmwasm-schema = { version = "0.16.0" }
+

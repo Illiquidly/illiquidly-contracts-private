@@ -1,4 +1,4 @@
-use cosmwasm_std::{to_binary, Binary, CosmosMsg, StdError, StdResult, Uint128, WasmMsg};
+use cosmwasm_std::{to_binary, Binary, Coin, CosmosMsg, StdError, StdResult, WasmMsg};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -30,8 +30,9 @@ pub fn into_cosmos_msg<M: Serialize, T: Into<String>>(
 #[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
 pub struct InstantiateMsg {
     pub name: String,
+    pub owner: String,
     pub p2p_contract: String,
-    pub treasury: String,
+    pub team: String,
 }
 
 impl InstantiateMsg {
@@ -49,16 +50,21 @@ impl InstantiateMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
-    PayFeeAndWithdraw { trade_id: u64 },
+    ReceiveFunds { trade_id: u64 },
+    WithdrawFunds { funds: Vec<Coin> },
+    ChangeOwner { owner: String },
+    ChangeP2pContract { p2p: String },
+    ChangeTeamAddress { team: String },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
-    Fee { trade_id: u64 },
-}
-
-#[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
-pub struct FeeResponse {
-    pub fee: Uint128,
+    Amount {
+        address: String,
+    },
+    Addresses {
+        start_after: Option<String>,
+        limit: Option<u32>,
+    },
 }

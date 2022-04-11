@@ -18,8 +18,8 @@ async function main() {
   //let iliq_codeId: string[] = await handler.uploadContract("../artifacts/iliq_token.wasm");
   //let multisender_codeId: string[] = await handler.uploadContract("../artifacts/multisender.wasm");
 
-  let iliq = handler.getContract(cw20_tokens[cw20_token_names[0]]);
-  let iliq_counter = counter.getContract(cw20_tokens[cw20_token_names[0]]);
+  let iliq = handler.getContract(cw20_tokens[cw20_token_names[iliq_token_id]]);
+  let iliq_counter = counter.getContract(cw20_tokens[cw20_token_names[iliq_token_id]]);
   let p2p = handler.getContract(env.contracts.p2p);
   let p2p_counter = counter.getContract(env.contracts.p2p);
   let fee = handler.getContract(env.contracts.fee);

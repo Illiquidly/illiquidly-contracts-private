@@ -271,7 +271,7 @@ pub fn query_all_trades_by_counterer(
             .last();
 
         if let Some(trade_info) = trade_info {
-            if trade_info.trade_id != 0 && trade_info.counter_id.unwrap() != 0 {
+            if trade_info.trade_id != 0 || trade_info.counter_id.unwrap() != 0 {
                 trades = vec![TradeResponse {
                     trade_id: trade_info.trade_id,
                     counter_id: trade_info.counter_id,
@@ -312,7 +312,7 @@ pub fn query_all_counter_trades(
 
         if let Some(id) = id {
             let (trade_id, counter_id) = joined_to_key(id);
-            if trade_id != 0 && counter_id != 0 {
+            if trade_id != 0 || counter_id != 0 {
                 counter_trades = vec![TradeResponse {
                     trade_id,
                     counter_id: Some(counter_id),
@@ -354,7 +354,7 @@ pub fn query_counter_trades(
 
         if let Some(counter_id) = counter_id {
             let counter_id = u64::from_be_bytes(counter_id.try_into().unwrap());
-            if trade_id != 0 && counter_id != 0 {
+            if trade_id != 0 || counter_id != 0 {
                 counter_trades = vec![TradeResponse {
                     trade_id,
                     counter_id: Some(counter_id),

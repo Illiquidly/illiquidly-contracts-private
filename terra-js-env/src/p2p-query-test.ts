@@ -37,7 +37,7 @@ async function main() {
         states: ['Countered']
       }
     });
-    //console.log(response);
+    console.log(response);
     if (response && response.trades && response.trades.length > 0) {
       start_after = response.trades[response.trades.length - 1].trade_id;
     } else {
@@ -45,6 +45,7 @@ async function main() {
     }
   }
 
+  console.log("All counters now : ");
   c = true;
   start_after = undefined;
   while (c) {
@@ -57,7 +58,7 @@ async function main() {
       start_after: start_after
     };
     response = await p2p.query.get_counter_trades(msg);
-    //console.log(response);
+    console.log(response);
     if (
       response &&
       response.counter_trades &&
@@ -70,9 +71,17 @@ async function main() {
     }
   }
 
+  console.log("All countererded now : ");
   c = true;
   start_after = undefined;
   while (c) {
+    console.log({
+      start_after: start_after,
+      limit: 10,
+      filters: {
+        states: ['Countered'],
+        counterer: handler.getAddress()
+      }})
     response = await p2p.query.get_all_trades({
       start_after: start_after,
       limit: 10,
@@ -81,7 +90,7 @@ async function main() {
         counterer: handler.getAddress()
       }
     });
-    //console.log(response);
+    console.log(response);
     if (response && response.trades && response.trades.length > 0) {
       start_after = response.trades[response.trades.length - 1].trade_id;
     } else {
@@ -89,6 +98,7 @@ async function main() {
     }
   }
 
+  console.log("All counterers, like all of them now : ");
   c = true;
   let start_after_any: any = undefined;
   while (c) {
