@@ -13,6 +13,8 @@ import fs from 'fs';
 import toobusy from 'toobusy-js';
 import Redis from 'ioredis';
 import Redlock from 'redlock';
+import axios from 'axios';
+
 
 type Nullable<T> = T | null;
 
@@ -359,7 +361,20 @@ async function main() {
   app.get('/nfts', async (_req: any, res: any) => {
     await res.status(404).send('You got the wrong syntax, sorry mate');
   });
-  db.flushdb();
+  //db.flushdb();
+
+  // Query a list of known NFTS
+  app.get('/nfts/query/:network', async (req: any, res: any) =>{
+    const network = req.params.network;
+    if(validate(network, res)){
+      let official_list: any = await axios
+        .get(`https://assets.terra.money/cw721/contracts.json`);
+      console.log(official_list.data);
+      await res.status(200).send(official_list.data);
+    }
+  })
+
+
   // Simple query, just query the current state
   app.get('/nfts/query/:network/:address', async (req: any, res: any) => {
     const address = req.params.address;
