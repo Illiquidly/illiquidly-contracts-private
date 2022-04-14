@@ -22,6 +22,14 @@ async function main() {
   let fee = handler.getContract(env.contracts.fee);
   let fee_counter = counter.getContract(env.contracts.fee);
 
+  let gal = "terra1w876nfvxr9xz9my7x85jcwtxuqae4ptjpjwj7v";
+  let punk = "terra1pk646xtdgwym74k46cajttdu6uvypa5jw5wa3j"
+  let nft_contract = handler.getContract(punk);
+
+  let bl = await nft_contract.execute.bluoi();
+  console.log("quid",bl);
+
+
   let response: any;
   response = await p2p.query.contract_info();
   console.log(response);

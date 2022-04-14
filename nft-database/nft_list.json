@@ -1,0 +1,14 @@
+{
+    "mainnet": {
+        
+    },
+    "testnet": {
+        "address": {
+            "contract": "address",
+            "name": "Levana cards",
+            "symbol": "LEV",
+            "icon": "https://plain-leaf-4762.on.fleek.co/logo.png",
+            "homepage": "https://factions.levana.finance/"
+        }
+    }
+}

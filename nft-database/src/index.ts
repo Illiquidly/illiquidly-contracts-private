@@ -128,7 +128,11 @@ export async function updateInteractedNfts(
     } else {
       // We query the NFTs from the transaction result and messages
       let [newNfts, lastTxId, newestTxId] = getNftsFromTxList(tx_data);
-      offset = lastTxId;
+      if(lastTxId != 0){
+        offset = lastTxId;
+      }else{
+        query_next = false;
+      }
       if (newestTxIdSeen == null || newestTxId > newestTxIdSeen) {
         newestTxIdSeen = newestTxId;
       }

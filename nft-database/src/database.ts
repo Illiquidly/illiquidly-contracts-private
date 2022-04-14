@@ -18,7 +18,7 @@ import axios from 'axios';
 
 type Nullable<T> = T | null;
 
-const UPDATE_INTERVAL = 80_000;
+const UPDATE_INTERVAL = 60_000;
 const IDLE_UPDATE_INTERVAL = 20_000;
 const PORT = 8080;
 const QUERY_TIMEOUT = 50_000;
@@ -101,8 +101,8 @@ async function releaseUpdateLock(lock: any) {
 }
 
 async function lastUpdateStartTime(db: any, key: string): Promise<number> {
-  let test = await db.get(key + '_updateStartTime');
-  return parseInt(test);
+  let updateTime = await db.get(key + '_updateStartTime');
+  return parseInt(updateTime);
 }
 
 async function setLastUpdateStartTime(db: any, key: string, time: number) {
@@ -285,20 +285,12 @@ async function updateAddress(
     );
   }
 
-  // Interval Test
-  let test = null;
-  if(!currentData.txs.external.newest){
-    test = 3271169;
-  }else if(currentData.txs.external.newest == 3271156){
-    test = 10035416;
-  }
-
   // Then we query new transactions
 
   await updateInteractedNfts(
     network,
     address,
-    test,
+    null,
     currentData.txs.external.newest,
     queryCallback,
     hasTimedOut
@@ -314,6 +306,13 @@ async function updateAddress(
       hasTimedOut
     );
   }
+
+  if(hasTimedOut.timeout){
+    currentData.state = NFTState.Partial
+  }else{
+    currentData.state = NFTState.Full;
+  }
+
   return currentData;
 }
 
@@ -369,8 +368,9 @@ async function main() {
     if(validate(network, res)){
       let official_list: any = await axios
         .get(`https://assets.terra.money/cw721/contracts.json`);
-      console.log(official_list.data);
-      await res.status(200).send(official_list.data);
+      let local_list: any = require('../nft_list.json');
+      let nft_list = {...official_list.data[network], ...local_list};
+      await res.status(200).send(nft_list);
     }
   })
 
@@ -427,16 +427,9 @@ async function main() {
               console.log("has timeout");
             }, QUERY_TIMEOUT);
 
-        await updateAddress(db, network, address, { ...currentData }, hasTimedOut);
-        currentData = await getDb(db, to_key(network, address));
-        if(hasTimedOut.timeout){
-          currentData.state = NFTState.Partial
-        }else{
-          currentData.state = NFTState.Full;
-            console.log("full");
-          clearTimeout(timeout);
-        }
-        saveToDb(db, to_key(network, address), currentData);
+        currentData = await updateAddress(db, network, address, { ...currentData }, hasTimedOut);
+        clearTimeout(timeout);
+        await saveToDb(db, to_key(network, address), currentData);
         await releaseUpdateLock(lock);
         console.log("Released lock");
       } else {
