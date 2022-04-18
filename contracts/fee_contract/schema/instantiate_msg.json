@@ -4,13 +4,17 @@
   "type": "object",
   "required": [
     "name",
-    "p2p_contract"
+    "p2p_contract",
+    "treasury"
   ],
   "properties": {
     "name": {
       "type": "string"
     },
     "p2p_contract": {
+      "type": "string"
+    },
+    "treasury": {
       "type": "string"
     }
   }

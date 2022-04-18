@@ -71,7 +71,7 @@ pub fn pay_fee_and_withdraw(
         return Err(ContractError::FeeNotPaid {});
     }
     let funds = info.funds[0].clone();
-    let fee_amount = Uint128::from(fee_amount_raw(deps.as_ref(), trade_id)?);
+    let fee_amount = Uint128::from(fee_amount_raw(deps.as_ref(), trade_id, None)?);
 
     if funds.denom == "uusd" {
         if funds.amount < fee_amount {
@@ -117,15 +117,15 @@ pub fn pay_fee_and_withdraw(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::Fee { trade_id } => to_binary(&query_fee_for(deps, trade_id)?),
+        QueryMsg::Fee { trade_id, counter_id } => to_binary(&query_fee_for(deps, trade_id,counter_id)?),
     }
 }
 
-pub fn fee_amount_raw(deps: Deps, trade_id: u64) -> StdResult<u128> {
+pub fn fee_amount_raw(deps: Deps, trade_id: u64, counter_id: Option<u64>) -> StdResult<u128> {
     let contract_info = CONTRACT_INFO.load(deps.storage)?;
 
     let (trade_info, counter_info) =
-        load_accepted_trade(deps, contract_info.p2p_contract, trade_id)?;
+        load_accepted_trade(deps, contract_info.p2p_contract, trade_id, counter_id)?;
 
 
     // If you trade one_to_one, there is a fixed 0.5UST fee per peer.
@@ -150,8 +150,8 @@ pub fn fee_amount_raw(deps: Deps, trade_id: u64) -> StdResult<u128> {
     Ok(fee)
 }
 
-pub fn query_fee_for(deps: Deps, trade_id: u64) -> StdResult<FeeResponse> {
-    let fee = fee_amount_raw(deps, trade_id)?;
+pub fn query_fee_for(deps: Deps, trade_id: u64, counter_id: Option<u64>) -> StdResult<FeeResponse> {
+    let fee = fee_amount_raw(deps, trade_id, counter_id)?;
 
     Ok(FeeResponse {
         fee: Uint128::from(fee),

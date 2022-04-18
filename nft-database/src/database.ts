@@ -194,8 +194,6 @@ async function updateOwnedAndSave(
       ...currentData
     });
   }
-  console.log(new_txs)
-  console.log(currentData.txs.external,currentData.txs.internal)
 
   // If there is an interval, we init the interval data
   if (
@@ -206,8 +204,6 @@ async function updateOwnedAndSave(
     currentData.txs.internal.newest = new_txs.oldest;
     currentData.txs.internal.oldest = currentData.txs.external.newest;  
   }
-  console.log(new_txs)
-  console.log(currentData.txs.external,currentData.txs.internal)
 
   // We fill the internal hole first
   if(
@@ -369,7 +365,7 @@ async function main() {
       let official_list: any = await axios
         .get(`https://assets.terra.money/cw721/contracts.json`);
       let local_list: any = require('../nft_list.json');
-      let nft_list = {...official_list.data[network], ...local_list};
+      let nft_list = {...official_list.data[network], ...local_list[network]};
       await res.status(200).send(nft_list);
     }
   })

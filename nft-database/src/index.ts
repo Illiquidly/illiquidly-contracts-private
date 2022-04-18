@@ -12,7 +12,7 @@ export interface TxInterval {
 
 export const chains: any = {
   testnet: {
-    URL: 'https://bombay.stakesystems.io',
+    URL: "https://bombay-lcd.terra.dev/",
     chainID: 'bombay-12'
   },
   mainnet: {
