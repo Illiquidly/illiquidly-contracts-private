@@ -9,7 +9,7 @@ function getContractLog(response: any) {
 async function main() {
   // Getting a handler for the current address
   let handler = new Address(env['mnemonics'][0]);
-  let counter = new Address(env['mnemonics'][2]);
+  let counter = new Address(env['mnemonics'][1]);
   console.log(counter.getAddress(), handler.getAddress());
   let cw20_tokens = env['cw20'];
   let cw20_token_names = Object.keys(cw20_tokens);
@@ -70,7 +70,6 @@ async function main() {
   response = await p2p_counter.execute.suggest_counter_trade({
     trade_id: trade_id
   });
-  console.log(response);
   let counter_id = parseInt(getContractLog(response).counter_id[0]);
   console.log('Created counter trade', getContractLog(response));
 
@@ -93,6 +92,22 @@ async function main() {
   });
   console.log('Added token', getContractLog(response));
 
+  /*
+  // Then we add the terra native funds
+  response = await p2p_counter.execute.add_asset({
+      trade_id: trade_id,
+      counter_id: counter_id,
+      asset: {
+        coin: {
+          denom: "uluna",
+          amount: "1000"
+        }
+      }
+    },
+    {"uluna": "1000"}
+  );
+  console.log('Added terra native fund', getContractLog(response));
+  */
   // We confirm our counter trade !
   response = await p2p_counter.execute.confirm_counter_trade({
     trade_id: trade_id,
@@ -107,15 +122,53 @@ async function main() {
   });
   console.log('Accepted Trade', getContractLog(response));
 
+  // We query the fee to pay
+  response = await fee.query.fee({
+    trade_id: trade_id
+  });
+  let fee_to_pay = response.fee;
+  console.log(response, response.fee);
+
+  // We query the fee to pay
+  response = await fee.query.simulate_fee({
+    trade_id: trade_id,
+    counter_assets: [
+      {
+        cw20_coin: {
+          address: cw20_tokens[cw20_token_names[0]],
+          amount: amount
+        },
+      },
+      {
+        cw20_coin: {
+          address: cw20_tokens[cw20_token_names[0]],
+          amount: amount
+        },
+      },
+      {
+        cw20_coin: {
+          address: cw20_tokens[cw20_token_names[0]],
+          amount: amount
+        },
+      }
+    ]
+  });
+  console.log(response, response.fee);
+
+  response = await fee.query.fee_rates();
+  console.log(response);
+
   // We withdraw the funds
   response = await fee.execute.pay_fee_and_withdraw({
     trade_id: trade_id
-  });
+  },
+  {"uusd": fee_to_pay});
 
   // We withdraw the funds
   response = await fee_counter.execute.pay_fee_and_withdraw({
     trade_id: trade_id
-  });
+  },
+  {"uusd": "477500"});
 
   response = await iliq.query.balance({ address: handler.getAddress() });
   console.log('trader', response);

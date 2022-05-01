@@ -142,11 +142,7 @@ pub fn add_asset_to_counter_trade(
         AssetInfo::Cw1155Coin(token) => COUNTER_TRADE_INFO.update(
             deps.storage,
             (trade_id.into(), counter_id.into()),
-            add_cw1155_coin(
-                token.address.clone(),
-                token.token_id.clone(),
-                token.value,
-            ),
+            add_cw1155_coin(token.address.clone(), token.token_id.clone(), token.value),
         ),
     }?;
 

@@ -575,7 +575,7 @@ pub fn repay_borrowed_funds(
         return Err(ContractError::Std(StdError::generic_err(
             "You didn't send the right kind of funds",
         )));
-    } else if offer.terms.principle.amount + interests > info.funds[0].amount{
+    } else if offer.terms.principle.amount + interests > info.funds[0].amount {
         return Err(ContractError::Std(StdError::generic_err(
             format!(
                 "Fund sent do not match the loan terms (principle + interests). Needed : {needed}, Received : {received}", 
