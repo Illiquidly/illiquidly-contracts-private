@@ -17,4 +17,10 @@ pub enum ContractError {
 
     #[error("Trade not accepted")]
     TradeNotAccepted {},
+
+    #[error("Fee Teers not ordered, you can't change them")]
+    TeersNotOrdered {},
+
+    #[error("Error when encoding response message to binary string")]
+    BinaryEncodingError {},
 }

@@ -49,9 +49,11 @@ pub fn review_counter_trade(
     )?;
 
     Ok(Response::new()
-        .add_attribute("review", "counter")
-        .add_attribute("trade", trade_id.to_string())
-        .add_attribute("counter", counter_id.to_string()))
+        .add_attribute("action", "review_counter_trade")
+        .add_attribute("trade_id", trade_id.to_string())
+        .add_attribute("counter_id", counter_id.to_string())
+        .add_attribute("trader", trade_info.owner)
+        .add_attribute("counter_trader", counter_info.owner))
 }
 
 pub fn set_comment(
@@ -80,6 +82,13 @@ pub fn set_comment(
         trade_info.additionnal_info.owner_comment = Some(comment);
         TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
     }
+    let partial_res = Response::new()
+        .add_attribute("action", "set_comment")
+        .add_attribute("trade", trade_id.to_string());
 
-    Ok(Response::new().add_attribute("set", "comment"))
+    if let Some(counter_id) = counter_id {
+        Ok(partial_res.add_attribute("counter", counter_id.to_string()))
+    } else {
+        Ok(partial_res)
+    }
 }

@@ -1,5 +1,5 @@
 [package]
-name = "treasury-export"
+name = "fee-distributor-export"
 version = "0.1.0"
 authors = ["Nicolas KOWALSKI <kowalski.kowalskin@gmail.com>"]
 edition = "2018"
@@ -28,6 +28,7 @@ serde = { version = "1.0.103", default-features = false, features = ["derive"] }
 thiserror = { version = "1.0.23" }
 strum = "0.24"
 strum_macros = "0.24"
+utils = { path = "../utils", version = "0.1.0" }
 p2p-trading-export = { path = "../p2p-trading", version = "0.1.0" }
 
 [dev-dependencies]

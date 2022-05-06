@@ -1,0 +1,4 @@
+terrad tx wasm execute <contract-address> <handle-msg> <coins> ("1000000uluna")
+terrad tx wasm instantiate <code-id> <init-msg> <coins>
+terrad tx wasm migrate <contract-address> <new-code-id> <migrate-msg>
+terrad tx wasm store <path-to-wasm-file>

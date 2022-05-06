@@ -1,32 +1,38 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_binary, Addr, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult,
+    to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult,
 };
+
+use cw2::set_contract_version;
 
 use crate::error::ContractError;
 
 use crate::state::{
-    is_counter_trader, is_fee_contract, is_owner, is_trader, load_counter_trade, load_trade,
-    CONTRACT_INFO, COUNTER_TRADE_INFO, TRADE_INFO,
+    is_fee_contract, is_owner, load_counter_trade, load_trade, CONTRACT_INFO, COUNTER_TRADE_INFO,
+    TRADE_INFO,
 };
-use p2p_trading_export::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
-use p2p_trading_export::state::{AssetInfo, ContractInfo, TradeInfo, TradeState};
+use p2p_trading_export::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
+use p2p_trading_export::state::{AssetInfo, ContractInfo, TradeState};
 
 use crate::counter_trade::{
     add_asset_to_counter_trade, cancel_counter_trade, confirm_counter_trade, suggest_counter_trade,
-    withdraw_counter_trade_assets_while_creating,
+    withdraw_all_from_counter, withdraw_counter_trade_assets_while_creating,
 };
 use crate::trade::{
     accept_trade, add_asset_to_trade, add_nfts_wanted, add_whitelisted_users, cancel_trade,
-    confirm_trade, create_trade, create_withdraw_messages, refuse_counter_trade,
-    remove_nfts_wanted, remove_whitelisted_users, withdraw_trade_assets_while_creating,
+    check_and_create_withdraw_messages, confirm_trade, create_trade, refuse_counter_trade,
+    remove_nfts_wanted, remove_whitelisted_users, withdraw_all_from_trade,
+    withdraw_trade_assets_while_creating,
 };
 
 use crate::messages::{review_counter_trade, set_comment};
 use crate::query::{
     query_all_counter_trades, query_all_trades, query_contract_info, query_counter_trades,
 };
+
+const CONTRACT_NAME: &str = "illiquidly.io:p2p-trading";
+const CONTRACT_VERSION: &str = "0.1.0";
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -36,6 +42,8 @@ pub fn instantiate(
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
     // Verify the contract name
+
+    set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
     msg.validate()?;
     // store token info
@@ -48,7 +56,10 @@ pub fn instantiate(
         last_trade_id: None,
     };
     CONTRACT_INFO.save(deps.storage, &data)?;
-    Ok(Response::default().add_attribute("p2p-contract", "init"))
+    Ok(Response::default()
+        .add_attribute("action", "init")
+        .add_attribute("contract", "p2p-trading")
+        .add_attribute("owner", data.owner))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -176,229 +187,14 @@ pub fn execute(
         // Contract Variable
         ExecuteMsg::SetNewFeeContract { fee_contract } => {
             set_new_fee_contract(deps, env, info, fee_contract)
-        } /*
-          // Generic (will have to remove at the end of development)
-          _ => Err(ContractError::Std(StdError::generic_err(
-          "Ow whaou, please wait just a bit, it's not implemented yet !",
-          ))),
-          */
+        }
     }
 }
 
-pub fn set_new_owner(
-    deps: DepsMut,
-    _env: Env,
-    info: MessageInfo,
-    new_owner: String,
-) -> Result<Response, ContractError> {
-    let mut contract_info = is_owner(deps.storage, info.sender)?;
-
-    let new_owner = deps.api.addr_validate(&new_owner)?;
-    contract_info.owner = new_owner.clone();
-    CONTRACT_INFO.save(deps.storage, &contract_info)?;
-
-    Ok(Response::new()
-        .add_attribute("changed", "owner")
-        .add_attribute("new_owner", new_owner))
-}
-
-pub fn set_new_fee_contract(
-    deps: DepsMut,
-    _env: Env,
-    info: MessageInfo,
-    fee_contract: String,
-) -> Result<Response, ContractError> {
-    let mut contract_info = is_owner(deps.storage, info.sender)?;
-    let fee_contract = deps.api.addr_validate(&fee_contract)?;
-    contract_info.fee_contract = Some(fee_contract.clone());
-    CONTRACT_INFO.save(deps.storage, &contract_info)?;
-
-    Ok(Response::new()
-        .add_attribute("changed", "fee_contract")
-        .add_attribute("new_fee_contract", fee_contract))
-}
-
-pub fn check_and_create_withdraw_messages(
-    env: Env,
-    recipient: &Addr,
-    trade_info: &TradeInfo,
-) -> Result<Response, ContractError> {
-    if trade_info.assets_withdrawn {
-        return Err(ContractError::TradeAlreadyWithdrawn {});
-    }
-    create_withdraw_messages(
-        &env.contract.address,
-        recipient,
-        &trade_info.associated_assets,
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-pub fn add_asset(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    trade_id: Option<u64>,
-    counter_id: Option<u64>,
-    to_last_trade: Option<bool>,
-    to_last_counter: Option<bool>,
-    asset: AssetInfo,
-) -> Result<Response, ContractError> {
-    if to_last_trade.unwrap_or_default() {
-        add_asset_to_trade(deps, env, info, None, asset)
-    } else if to_last_counter.unwrap_or_default() {
-        add_asset_to_counter_trade(
-            deps,
-            env,
-            info,
-            trade_id
-                .ok_or_else(|| ContractError::Std(StdError::generic_err("Trade id missing")))?,
-            None,
-            asset,
-        )
-    } else if counter_id.is_some() {
-        add_asset_to_counter_trade(deps, env, info, trade_id.unwrap(), counter_id, asset)
-    } else {
-        add_asset_to_trade(deps, env, info, trade_id, asset)
-    }
-}
-pub fn withdraw_assets_while_creating(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    trade_id: u64,
-    counter_id: Option<u64>,
-    assets: Vec<(u16, AssetInfo)>,
-) -> Result<Response, ContractError> {
-    match counter_id {
-        Some(counter_id) => withdraw_counter_trade_assets_while_creating(
-            deps, env, info, trade_id, counter_id, assets,
-        ),
-        None => withdraw_trade_assets_while_creating(deps, env, info, trade_id, assets),
-    }
-}
-pub fn withdraw_accepted_funds(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    trader: String,
-    trade_id: u64,
-) -> Result<Response, ContractError> {
-    // The fee contract is the only one responsible for withdrawing assets
-    is_fee_contract(deps.storage, info.sender)?;
-
-    // We load the trade and verify it has been accepted
-    let mut trade_info = load_trade(deps.storage, trade_id)?;
-    if trade_info.state != TradeState::Accepted {
-        return Err(ContractError::TradeNotAccepted {});
-    }
-
-    let counter_id = trade_info
-        .accepted_info
-        .clone()
-        .ok_or(ContractError::ContractBug {})?
-        .counter_id;
-    let mut counter_info = load_counter_trade(deps.storage, trade_id, counter_id)?;
-
-    let trader = deps.api.addr_validate(&trader)?;
-    let trade_type: &str;
-    let res;
-
-    // We need to indentify who the transaction sender is (trader or counter-trader)
-    if trade_info.owner == trader && !counter_info.assets_withdrawn {
-        // In case the trader wants to withdraw the exchanged funds
-        res = check_and_create_withdraw_messages(env.clone(), &trader, &counter_info)?;
-
-        trade_type = "counter";
-        counter_info.assets_withdrawn = true;
-        COUNTER_TRADE_INFO.save(
-            deps.storage,
-            (trade_id.into(), counter_id.into()),
-            &counter_info,
-        )?;
-    } else if counter_info.owner == trader {
-        // In case the counter_trader wants to withdraw the exchanged funds
-        res = check_and_create_withdraw_messages(env, &trader, &trade_info)?;
-
-        trade_type = "trade";
-        trade_info.assets_withdrawn = true;
-        TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
-    } else if trade_info.owner == trader && counter_info.assets_withdrawn {
-        return Err(ContractError::TradeAlreadyWithdrawn {});
-    } else {
-        return Err(ContractError::NotWithdrawableByYou {});
-    }
-
-    Ok(res
-        .add_attribute("withdraw funds", trade_type)
-        .add_attribute("trade", trade_id.to_string())
-        .add_attribute("counter", counter_id.to_string()))
-}
-
-pub fn withdraw_all_from_trade(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    trade_id: u64,
-) -> Result<Response, ContractError> {
-    // We load the trade and verify it has the right trader
-    let mut trade_info = is_trader(deps.storage, &info.sender, trade_id)?;
-
-    // If the trade was just created, we cancel it on the spot
-    if trade_info.state == TradeState::Created {
-        trade_info.state = TradeState::Cancelled;
-    }
-
-    if trade_info.state != TradeState::Cancelled {
-        return Err(ContractError::TradeNotCancelled {});
-    }
-    let res = check_and_create_withdraw_messages(env, &info.sender, &trade_info)?;
-    trade_info.assets_withdrawn = true;
-    TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
-
-    Ok(res
-        .add_attribute("withdraw funds", "trade")
-        .add_attribute("trade", trade_id.to_string()))
-}
-
-pub fn withdraw_all_from_counter(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    trade_id: u64,
-    counter_id: u64,
-) -> Result<Response, ContractError> {
-    //We load the trade and verify it has been accepted
-    let mut counter_info = is_counter_trader(deps.storage, &info.sender, trade_id, counter_id)?;
-
-    // If the associated trade is accepted and the counter was not selected
-    // Or if the counter was refused
-    // Or if the associated trade was cancelled
-    // Or if this counter was cancelled
-    if !((counter_info.state == TradeState::Refused)
-        || (counter_info.state == TradeState::Cancelled)
-        || (counter_info.state == TradeState::Created))
-    {
-        return Err(ContractError::CounterTradeNotAborted {});
-    }
-
-    // If the counter is still in the created state, we start by cancelling it
-    if counter_info.state == TradeState::Created {
-        counter_info.state = TradeState::Cancelled;
-    }
-
-    let res = check_and_create_withdraw_messages(env, &info.sender, &counter_info)?;
-    counter_info.assets_withdrawn = true;
-    COUNTER_TRADE_INFO.save(
-        deps.storage,
-        (trade_id.into(), counter_id.into()),
-        &counter_info,
-    )?;
-
-    Ok(res
-        .add_attribute("withdraw funds", "counter")
-        .add_attribute("trade", trade_id.to_string())
-        .add_attribute("counter", counter_id.to_string()))
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn migrate(_deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, ContractError> {
+    // No state migrations performed, just returned a Response
+    Ok(Response::default())
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -446,17 +242,174 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     }
 }
 
+/// Replace the current contract owner with the provided owner address
+/// * `owner` must be a valid Terra address
+/// The owner has limited power on this contract :
+/// 1. Change the contract owner
+/// 2. Change the fee contract
+pub fn set_new_owner(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    new_owner: String,
+) -> Result<Response, ContractError> {
+    let mut contract_info = is_owner(deps.storage, info.sender)?;
+
+    let new_owner = deps.api.addr_validate(&new_owner)?;
+    contract_info.owner = new_owner.clone();
+    CONTRACT_INFO.save(deps.storage, &contract_info)?;
+
+    Ok(Response::new()
+        .add_attribute("action", "modify_parameter")
+        .add_attribute("parameter", "owner")
+        .add_attribute("value", new_owner))
+}
+
+/// Replace the current fee_contract with the provided fee_contract address
+/// * `fee_contract` must be a valid Terra address
+pub fn set_new_fee_contract(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    fee_contract: String,
+) -> Result<Response, ContractError> {
+    let mut contract_info = is_owner(deps.storage, info.sender)?;
+
+    let fee_contract = deps.api.addr_validate(&fee_contract)?;
+    contract_info.fee_contract = Some(fee_contract.clone());
+    CONTRACT_INFO.save(deps.storage, &contract_info)?;
+
+    Ok(Response::new()
+        .add_attribute("action", "modify_parameter")
+        .add_attribute("parameter", "fee_contract")
+        .add_attribute("value", fee_contract))
+}
+
+/// General handler to add an asset to a trade or a counter trade
+#[allow(clippy::too_many_arguments)]
+pub fn add_asset(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    trade_id: Option<u64>,
+    counter_id: Option<u64>,
+    to_last_trade: Option<bool>,
+    to_last_counter: Option<bool>,
+    asset: AssetInfo,
+) -> Result<Response, ContractError> {
+    // We implement 4 different cases here.
+    if to_last_trade.unwrap_or_default() {
+        // 1. We want to add the asset to the last trade created by the user
+        add_asset_to_trade(deps, env, info, None, asset)
+    } else if to_last_counter.unwrap_or_default() {
+        // 2. We want to add the asset to the last counter_trade created by the user
+        add_asset_to_counter_trade(
+            deps,
+            env,
+            info,
+            trade_id.ok_or(ContractError::TradeIdMissing {})?,
+            None,
+            asset,
+        )
+    } else if counter_id.is_some() {
+        // 3. We want to add the asset to a designated counter_trade (trade_id + counter_id)
+        add_asset_to_counter_trade(deps, env, info, trade_id.unwrap(), counter_id, asset)
+    } else {
+        // 4. We want to add the asset to a designated trade_id
+        add_asset_to_trade(deps, env, info, trade_id, asset)
+    }
+}
+
+/// Remove some assets from a trade when creating it.
+pub fn withdraw_assets_while_creating(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    trade_id: u64,
+    counter_id: Option<u64>,
+    assets: Vec<(u16, AssetInfo)>, // We chose to number the withdrawn assets to prevent looping over all deposited assets
+) -> Result<Response, ContractError> {
+    match counter_id {
+        Some(counter_id) => withdraw_counter_trade_assets_while_creating(
+            deps, env, info, trade_id, counter_id, assets,
+        ),
+        None => withdraw_trade_assets_while_creating(deps, env, info, trade_id, assets),
+    }
+}
+
+/// Withdraw assets from an accepted trade.
+/// The trader will withdraw assets from the counter_trade
+/// The counter_trader will withdraw assets from the trade
+pub fn withdraw_accepted_funds(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    trader: String,
+    trade_id: u64,
+) -> Result<Response, ContractError> {
+    // The fee contract is the only one responsible for withdrawing assets
+    is_fee_contract(deps.storage, info.sender)?;
+
+    // We load the trade and verify it has been accepted
+    let mut trade_info = load_trade(deps.storage, trade_id)?;
+    if trade_info.state != TradeState::Accepted {
+        return Err(ContractError::TradeNotAccepted {});
+    }
+
+    // We load the corresponding counter_trade
+    let counter_id = trade_info
+        .accepted_info
+        .clone()
+        .ok_or(ContractError::ContractBug {})?
+        .counter_id;
+    let mut counter_info = load_counter_trade(deps.storage, trade_id, counter_id)?;
+
+    let trader = deps.api.addr_validate(&trader)?;
+    let (res, trade_type);
+
+    // We indentify who the transaction sender is (trader or counter-trader)
+    if trade_info.owner == trader {
+        // In case the trader wants to withdraw the exchanged funds (from the counter_info object)
+        res = check_and_create_withdraw_messages(env, &trader, &counter_info)?;
+
+        trade_type = "counter";
+        counter_info.assets_withdrawn = true;
+        COUNTER_TRADE_INFO.save(
+            deps.storage,
+            (trade_id.into(), counter_id.into()),
+            &counter_info,
+        )?;
+    } else if counter_info.owner == trader {
+        // In case the counter_trader wants to withdraw the exchanged funds (from the trade_info object)
+        res = check_and_create_withdraw_messages(env, &trader, &trade_info)?;
+
+        trade_type = "trade";
+        trade_info.assets_withdrawn = true;
+        TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
+    } else {
+        return Err(ContractError::NotWithdrawableByYou {});
+    }
+
+    Ok(res
+        .add_attribute("action", "withdraw_funds")
+        .add_attribute("type", trade_type)
+        .add_attribute("trade", trade_id.to_string())
+        .add_attribute("counter", counter_id.to_string())
+        .add_attribute("trader", trade_info.owner)
+        .add_attribute("counter_trader", counter_info.owner))
+}
+
 #[cfg(test)]
 pub mod tests {
     use super::*;
     use crate::state::load_trade;
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{coins, Attribute, BankMsg, Coin, Uint128};
+    use cosmwasm_std::{coins, Addr, Attribute, BankMsg, Coin, Uint128};
     use cw1155::Cw1155ExecuteMsg;
     use cw20::Cw20ExecuteMsg;
     use cw721::Cw721ExecuteMsg;
     use p2p_trading_export::msg::into_cosmos_msg;
-    use p2p_trading_export::state::{AssetInfo, Cw1155Coin, Cw20Coin, Cw721Coin};
+    use p2p_trading_export::state::{AssetInfo, Cw1155Coin, Cw20Coin, Cw721Coin, TradeInfo};
 
     fn init_helper(deps: DepsMut) {
         let instantiate_msg = InstantiateMsg {
@@ -516,7 +469,7 @@ pub mod tests {
         execute(
             deps.as_mut(),
             env.clone(),
-            info.clone(),
+            info,
             ExecuteMsg::SetNewOwner {
                 owner: "new_owner".to_string(),
             },
@@ -538,7 +491,7 @@ pub mod tests {
         let info = mock_info(creator, &[]);
         let env = mock_env();
 
-        let res = execute(
+        execute(
             deps,
             env,
             info,
@@ -547,15 +500,14 @@ pub mod tests {
                 comment: Some("Q".to_string()),
             },
         )
-        .unwrap();
-        return res;
+        .unwrap()
     }
 
     fn create_private_trade_helper(deps: DepsMut, users: Vec<String>) -> Response {
         let info = mock_info("creator", &[]);
         let env = mock_env();
 
-        let res = execute(
+        execute(
             deps,
             env,
             info,
@@ -564,8 +516,7 @@ pub mod tests {
                 comment: None,
             },
         )
-        .unwrap();
-        return res;
+        .unwrap()
     }
 
     fn add_whitelisted_users(
@@ -576,16 +527,15 @@ pub mod tests {
         let info = mock_info("creator", &[]);
         let env = mock_env();
 
-        let res = execute(
+        execute(
             deps,
             env,
             info,
             ExecuteMsg::AddWhitelistedUsers {
-                trade_id: trade_id,
+                trade_id,
                 whitelisted_users: users,
             },
-        );
-        return res;
+        )
     }
 
     fn remove_whitelisted_users(
@@ -596,7 +546,7 @@ pub mod tests {
         let info = mock_info("creator", &[]);
         let env = mock_env();
 
-        let res = execute(
+        execute(
             deps,
             env,
             info,
@@ -604,8 +554,7 @@ pub mod tests {
                 trade_id,
                 whitelisted_users: users,
             },
-        );
-        return res;
+        )
     }
 
     fn add_nfts_wanted_helper(
@@ -653,7 +602,7 @@ pub mod tests {
         trader: &str,
         trade_id: u64,
         asset: AssetInfo,
-        coins_to_send: &Vec<Coin>,
+        coins_to_send: &[Coin],
     ) -> Result<Response, ContractError> {
         let info = mock_info(trader, coins_to_send);
         let env = mock_env();
@@ -667,7 +616,7 @@ pub mod tests {
                 to_last_counter: None,
                 trade_id: Some(trade_id),
                 counter_id: None,
-                asset: asset,
+                asset,
             },
         )
     }
@@ -789,8 +738,9 @@ pub mod tests {
             assert_eq!(
                 res.attributes,
                 vec![
-                    Attribute::new("trade", "created"),
+                    Attribute::new("action", "create_trade"),
                     Attribute::new("trade_id", "0"),
+                    Attribute::new("trader", "creator"),
                 ]
             );
 
@@ -800,8 +750,9 @@ pub mod tests {
             assert_eq!(
                 res.attributes,
                 vec![
-                    Attribute::new("trade", "created"),
+                    Attribute::new("action", "create_trade"),
                     Attribute::new("trade_id", "1"),
+                    Attribute::new("trader", "creator"),
                 ]
             );
 
@@ -870,7 +821,14 @@ pub mod tests {
             .unwrap();
             assert_eq!(
                 res.attributes,
-                vec![Attribute::new("added", "nfts_wanted"),]
+                vec![
+                    Attribute::new("action", "modify_parameter"),
+                    Attribute::new("name", "nfts_wanted"),
+                    Attribute::new("operation_type", "add"),
+                    Attribute::new("value", "nft1,nft2"),
+                    Attribute::new("trade_id", "0"),
+                    Attribute::new("trader", "creator")
+                ]
             );
 
             let trade = load_trade(&deps.storage, 0).unwrap();
@@ -901,8 +859,9 @@ pub mod tests {
             assert_eq!(
                 res.attributes,
                 vec![
-                    Attribute::new("trade", "created"),
+                    Attribute::new("action", "create_trade"),
                     Attribute::new("trade_id", "0"),
+                    Attribute::new("trader", "creator"),
                 ]
             );
 
@@ -912,8 +871,9 @@ pub mod tests {
             assert_eq!(
                 res.attributes,
                 vec![
-                    Attribute::new("trade", "created"),
+                    Attribute::new("action", "create_trade"),
                     Attribute::new("trade_id", "1"),
+                    Attribute::new("trader", "creator2"),
                 ]
             );
 
@@ -1145,10 +1105,12 @@ pub mod tests {
             assert_eq!(
                 res.attributes,
                 vec![
-                    Attribute::new("added funds", "trade"),
+                    Attribute::new("action", "add_asset"),
+                    Attribute::new("asset_type", "fund"),
                     Attribute::new("denom", "token"),
                     Attribute::new("amount", "2"),
                     Attribute::new("trade_id", "0"),
+                    Attribute::new("trader", "creator"),
                 ]
             );
 
@@ -1201,17 +1163,19 @@ pub mod tests {
                     address: "token".to_string(),
                     amount: Uint128::new(100u128),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap();
 
             assert_eq!(
                 res.attributes,
                 vec![
-                    Attribute::new("added token", "trade"),
+                    Attribute::new("action", "add_asset"),
+                    Attribute::new("asset_type", "token"),
                     Attribute::new("token", "token"),
                     Attribute::new("amount", "100"),
                     Attribute::new("trade_id", "0"),
+                    Attribute::new("trader", "creator"),
                 ]
             );
             add_asset_to_trade_helper(
@@ -1222,7 +1186,7 @@ pub mod tests {
                     address: "token".to_string(),
                     amount: Uint128::new(100u128),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap();
 
@@ -1234,7 +1198,7 @@ pub mod tests {
                     address: "other_token".to_string(),
                     amount: Uint128::new(100u128),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap();
 
@@ -1322,7 +1286,7 @@ pub mod tests {
                     address: "other_token".to_string(),
                     amount: Uint128::new(100u128),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap_err();
 
@@ -1344,17 +1308,19 @@ pub mod tests {
                     address: "nft".to_string(),
                     token_id: "58".to_string(),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap();
 
             assert_eq!(
                 res.attributes,
                 vec![
-                    Attribute::new("added token", "trade"),
+                    Attribute::new("action", "add_asset"),
+                    Attribute::new("asset_type", "NFT"),
                     Attribute::new("nft", "nft"),
                     Attribute::new("token_id", "58"),
                     Attribute::new("trade_id", "0"),
+                    Attribute::new("trader", "creator"),
                 ]
             );
 
@@ -1376,7 +1342,7 @@ pub mod tests {
                     address: "other_token".to_string(),
                     token_id: "58".to_string(),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap_err();
 
@@ -1399,18 +1365,20 @@ pub mod tests {
                     token_id: "58".to_string(),
                     value: Uint128::new(50u128),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap();
 
             assert_eq!(
                 res.attributes,
                 vec![
-                    Attribute::new("added Cw1155", "trade"),
+                    Attribute::new("action", "add_asset"),
+                    Attribute::new("asset_type", "cw1155"),
                     Attribute::new("token", "1155"),
                     Attribute::new("token_id", "58"),
                     Attribute::new("amount", "50"),
                     Attribute::new("trade_id", "0"),
+                    Attribute::new("trader", "creator"),
                 ]
             );
 
@@ -1434,7 +1402,7 @@ pub mod tests {
                     token_id: "58".to_string(),
                     value: Uint128::new(50u128),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap_err();
 
@@ -1456,7 +1424,7 @@ pub mod tests {
                     token_id: "58".to_string(),
                     value: Uint128::new(50u128),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap();
             add_asset_to_trade_helper(
@@ -1467,7 +1435,7 @@ pub mod tests {
                     address: "other_token".to_string(),
                     token_id: "58".to_string(),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap();
 
@@ -1549,7 +1517,7 @@ pub mod tests {
                     address: "nft".to_string(),
                     token_id: "58".to_string(),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap();
 
@@ -1561,7 +1529,7 @@ pub mod tests {
                     address: "nft-2".to_string(),
                     token_id: "58".to_string(),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap();
 
@@ -1574,7 +1542,7 @@ pub mod tests {
                     token_id: "58".to_string(),
                     value: Uint128::new(100u128),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap();
 
@@ -1586,7 +1554,7 @@ pub mod tests {
                     address: "token".to_string(),
                     amount: Uint128::new(100u128),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap();
 
@@ -1631,11 +1599,6 @@ pub mod tests {
                 ],
             )
             .unwrap();
-
-            assert_eq!(
-                res.attributes,
-                vec![Attribute::new("remove from", "trade"),]
-            );
 
             assert_eq!(
                 res.messages,
@@ -1770,12 +1733,7 @@ pub mod tests {
             )
             .unwrap_err();
 
-            assert_eq!(
-                err,
-                ContractError::Std(StdError::generic_err(
-                    "assets position does not exist in array"
-                ))
-            );
+            assert_eq!(err, ContractError::AssetNotFound { position: 1 });
 
             // This triggers an error, no matching funds were found
             let err = remove_assets_helper(
@@ -1793,10 +1751,7 @@ pub mod tests {
             )
             .unwrap_err();
 
-            assert_eq!(
-                err,
-                ContractError::Std(StdError::generic_err("Wrong nft address at position 0"))
-            );
+            assert_eq!(err, ContractError::AssetNotFound { position: 0 });
 
             // This triggers an error, no matching funds were found
             let err = remove_assets_helper(
@@ -1814,12 +1769,7 @@ pub mod tests {
             )
             .unwrap_err();
 
-            assert_eq!(
-                err,
-                ContractError::Std(StdError::generic_err(
-                    "Wrong nft id at position 0, wanted: 42, found: 58"
-                ))
-            );
+            assert_eq!(err, ContractError::AssetNotFound { position: 0 });
         }
 
         #[test]
@@ -1837,7 +1787,7 @@ pub mod tests {
                     address: "nft".to_string(),
                     token_id: "58".to_string(),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap();
 
@@ -1849,7 +1799,7 @@ pub mod tests {
                     address: "nft-2".to_string(),
                     token_id: "58".to_string(),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap();
 
@@ -1861,7 +1811,7 @@ pub mod tests {
                     address: "token".to_string(),
                     amount: Uint128::new(100u128),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap();
 
@@ -1891,9 +1841,11 @@ pub mod tests {
 
             assert_eq!(
                 err,
-                ContractError::Std(StdError::generic_err(
-                    "You can't withdraw that much token, wanted: 101, available: 100"
-                ))
+                ContractError::TooMuchWithdrawn {
+                    address: "token".to_string(),
+                    wanted: 101,
+                    available: 100
+                }
             );
 
             let err = remove_assets_helper(
@@ -1911,10 +1863,7 @@ pub mod tests {
             )
             .unwrap_err();
 
-            assert_eq!(
-                err,
-                ContractError::Std(StdError::generic_err("Wrong token type at position 0"))
-            );
+            assert_eq!(err, ContractError::AssetNotFound { position: 0 });
 
             let err = remove_assets_helper(
                 deps.as_mut(),
@@ -1931,10 +1880,7 @@ pub mod tests {
             )
             .unwrap_err();
 
-            assert_eq!(
-                err,
-                ContractError::Std(StdError::generic_err("Wrong token address at position 2"))
-            );
+            assert_eq!(err, ContractError::AssetNotFound { position: 2 });
 
             confirm_trade_helper(deps.as_mut(), "creator", 0).unwrap();
 
@@ -1975,8 +1921,9 @@ pub mod tests {
             assert_eq!(
                 res.attributes,
                 vec![
-                    Attribute::new("confirmed", "trade"),
-                    Attribute::new("trade", "0"),
+                    Attribute::new("action", "confirm_trade"),
+                    Attribute::new("trade_id", "0"),
+                    Attribute::new("trader", "creator"),
                 ]
             );
 
@@ -2087,9 +2034,11 @@ pub mod tests {
             assert_eq!(
                 res.attributes,
                 vec![
-                    Attribute::new("accepted", "trade"),
-                    Attribute::new("trade", "0"),
-                    Attribute::new("counter", "0"),
+                    Attribute::new("action", "accept_counter_trade"),
+                    Attribute::new("trade_id", "0"),
+                    Attribute::new("counter_id", "0"),
+                    Attribute::new("trader", "creator"),
+                    Attribute::new("counter_trader", "counterer"),
                 ]
             );
 
@@ -2231,9 +2180,11 @@ pub mod tests {
             assert_eq!(
                 res.attributes,
                 vec![
-                    Attribute::new("accepted", "trade"),
-                    Attribute::new("trade", "0"),
-                    Attribute::new("counter", "0"),
+                    Attribute::new("action", "accept_counter_trade"),
+                    Attribute::new("trade_id", "0"),
+                    Attribute::new("counter_id", "0"),
+                    Attribute::new("trader", "creator"),
+                    Attribute::new("counter_trader", "counterer"),
                 ]
             );
 
@@ -2244,7 +2195,7 @@ pub mod tests {
             assert_eq!(counter_trade_info.state, TradeState::Accepted {});
 
             let counter_trade_info = load_counter_trade(&deps.storage, 0, 1).unwrap();
-            assert_eq!(counter_trade_info.state, TradeState::Cancelled {});
+            assert_eq!(counter_trade_info.state, TradeState::Refused {});
 
             // Check that the only Accepted and Published counters are the accepted counter
             let res = query_all_counter_trades(
@@ -2294,7 +2245,7 @@ pub mod tests {
                 None,
                 None,
                 Some(QueryFilters {
-                    states: Some(vec![TradeState::Cancelled.to_string()]),
+                    states: Some(vec![TradeState::Refused.to_string()]),
                     ..Default::default()
                 }),
             )
@@ -2309,7 +2260,7 @@ pub mod tests {
                             trade_id: 0,
                             trade_info: Some(TradeInfo {
                                 owner: deps.api.addr_validate("counterer").unwrap(),
-                                state: TradeState::Cancelled,
+                                state: TradeState::Refused,
                                 additionnal_info: AdditionnalTradeInfo {
                                     owner_comment: Some(Comment {
                                         comment: "Q".to_string(),
@@ -2328,7 +2279,7 @@ pub mod tests {
                             trade_id: 0,
                             trade_info: Some(TradeInfo {
                                 owner: deps.api.addr_validate("counterer").unwrap(),
-                                state: TradeState::Cancelled,
+                                state: TradeState::Refused,
                                 additionnal_info: AdditionnalTradeInfo {
                                     owner_comment: Some(Comment {
                                         comment: "Q".to_string(),
@@ -2413,8 +2364,9 @@ pub mod tests {
             assert_eq!(
                 res.attributes,
                 vec![
-                    Attribute::new("cancelled", "trade"),
-                    Attribute::new("trade", "0"),
+                    Attribute::new("action", "cancel_trade"),
+                    Attribute::new("trade_id", "0"),
+                    Attribute::new("trader", "creator"),
                 ]
             );
 
@@ -2599,7 +2551,7 @@ pub mod tests {
                     address: "nft".to_string(),
                     token_id: "58".to_string(),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap();
 
@@ -2612,7 +2564,7 @@ pub mod tests {
                     token_id: "58".to_string(),
                     value: Uint128::new(100u128),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap();
 
@@ -2624,7 +2576,7 @@ pub mod tests {
                     address: "token".to_string(),
                     amount: Uint128::new(100u128),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap();
 
@@ -2649,7 +2601,7 @@ pub mod tests {
                     address: "other_counter-nft".to_string(),
                     token_id: "58".to_string(),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap();
 
@@ -2662,7 +2614,7 @@ pub mod tests {
                     address: "other_counter-token".to_string(),
                     amount: Uint128::new(100u128),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap();
 
@@ -2687,7 +2639,7 @@ pub mod tests {
                     address: "counter-nft".to_string(),
                     token_id: "58".to_string(),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap();
 
@@ -2700,7 +2652,7 @@ pub mod tests {
                     address: "counter-token".to_string(),
                     amount: Uint128::new(100u128),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap();
 
@@ -2730,14 +2682,6 @@ pub mod tests {
             assert_eq!(err, ContractError::Unauthorized {});
 
             let res = withdraw_helper(deps.as_mut(), "creator", "fee_contract", 0).unwrap();
-            assert_eq!(
-                res.attributes,
-                vec![
-                    Attribute::new("withdraw funds", "counter"),
-                    Attribute::new("trade", "0"),
-                    Attribute::new("counter", "1"),
-                ]
-            );
             assert_eq!(
                 res.messages,
                 vec![
@@ -2772,14 +2716,6 @@ pub mod tests {
             assert_eq!(err, ContractError::TradeAlreadyWithdrawn {});
 
             let res = withdraw_helper(deps.as_mut(), "counterer", "fee_contract", 0).unwrap();
-            assert_eq!(
-                res.attributes,
-                vec![
-                    Attribute::new("withdraw funds", "trade"),
-                    Attribute::new("trade", "0"),
-                    Attribute::new("counter", "1"),
-                ]
-            );
             assert_eq!(
                 res.messages,
                 vec![
@@ -2877,7 +2813,7 @@ pub mod tests {
                     address: "nft".to_string(),
                     token_id: "58".to_string(),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap();
 
@@ -2889,7 +2825,7 @@ pub mod tests {
                     address: "token".to_string(),
                     amount: Uint128::new(100u128),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap();
 
@@ -2914,7 +2850,7 @@ pub mod tests {
                     address: "other_counter-token".to_string(),
                     amount: Uint128::new(100u128),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap();
 
@@ -2988,7 +2924,7 @@ pub mod tests {
                     address: "nft".to_string(),
                     token_id: "58".to_string(),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap();
 
@@ -3000,7 +2936,7 @@ pub mod tests {
                     address: "token".to_string(),
                     amount: Uint128::new(100u128),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap();
 
@@ -3059,10 +2995,11 @@ pub mod tests {
             .unwrap();
             let info = TRADE_INFO.load(&deps.storage, 1_u64.into()).unwrap();
 
-            let mut whitelisted_users = vec![];
-            whitelisted_users.push("whitelist".to_string());
-            whitelisted_users.push("whitelist-1".to_string());
-            whitelisted_users.push("whitelist-2".to_string());
+            let whitelisted_users = vec![
+                "whitelist".to_string(),
+                "whitelist-1".to_string(),
+                "whitelist-2".to_string(),
+            ];
             let hash_set =
                 HashSet::from_iter(validate_addresses(&deps.api, &whitelisted_users).unwrap());
             assert_eq!(info.whitelisted_users, hash_set);
@@ -3082,7 +3019,7 @@ pub mod tests {
             env,
             info,
             ExecuteMsg::SuggestCounterTrade {
-                trade_id: trade_id,
+                trade_id,
                 comment: Some("Q".to_string()),
             },
         )
@@ -3094,7 +3031,7 @@ pub mod tests {
         trade_id: u64,
         counter_id: u64,
         asset: AssetInfo,
-        coins_to_send: &Vec<Coin>,
+        coins_to_send: &[Coin],
     ) -> Result<Response, ContractError> {
         let info = mock_info(counterer, coins_to_send);
         let env = mock_env();
@@ -3108,7 +3045,7 @@ pub mod tests {
                 to_last_counter: None,
                 trade_id: Some(trade_id),
                 counter_id: Some(counter_id),
-                asset: asset,
+                asset,
             },
         )
     }
@@ -3127,7 +3064,7 @@ pub mod tests {
             env,
             info,
             ExecuteMsg::ConfirmCounterTrade {
-                trade_id: trade_id,
+                trade_id,
                 counter_id: Some(counter_id),
             },
         )
@@ -3147,8 +3084,8 @@ pub mod tests {
             env,
             info,
             ExecuteMsg::ReviewCounterTrade {
-                trade_id: trade_id,
-                counter_id: counter_id,
+                trade_id,
+                counter_id,
                 comment: Some("Shit NFT my girl".to_string()),
             },
         )
@@ -3220,8 +3157,8 @@ pub mod tests {
             env,
             info,
             ExecuteMsg::RefuseCounterTrade {
-                trade_id: trade_id,
-                counter_id: counter_id,
+                trade_id,
+                counter_id,
             },
         )
     }
@@ -3255,9 +3192,11 @@ pub mod tests {
             assert_eq!(
                 res.attributes,
                 vec![
-                    Attribute::new("counter", "created"),
+                    Attribute::new("action", "create_counter_trade"),
                     Attribute::new("trade_id", "0"),
                     Attribute::new("counter_id", "0"),
+                    Attribute::new("trader", "creator"),
+                    Attribute::new("counter_trader", "counterer"),
                 ]
             );
             // We need to make sure it is not couterable in case the counter is accepted
@@ -3284,11 +3223,14 @@ pub mod tests {
             assert_eq!(
                 res.attributes,
                 vec![
-                    Attribute::new("added funds", "counter"),
+                    Attribute::new("action", "add_asset"),
+                    Attribute::new("asset_type", "fund"),
                     Attribute::new("denom", "token"),
                     Attribute::new("amount", "2"),
                     Attribute::new("trade_id", "0"),
                     Attribute::new("counter_id", "0"),
+                    Attribute::new("trader", "creator"),
+                    Attribute::new("counter_trader", "counterer"),
                 ]
             );
 
@@ -3318,18 +3260,21 @@ pub mod tests {
                     address: "token".to_string(),
                     amount: Uint128::new(100u128),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap();
 
             assert_eq!(
                 res.attributes,
                 vec![
-                    Attribute::new("added token", "counter"),
+                    Attribute::new("action", "add_asset"),
+                    Attribute::new("asset_type", "token"),
                     Attribute::new("token", "token"),
                     Attribute::new("amount", "100"),
                     Attribute::new("trade_id", "0"),
                     Attribute::new("counter_id", "0"),
+                    Attribute::new("trader", "creator"),
+                    Attribute::new("counter_trader", "counterer"),
                 ]
             );
 
@@ -3342,7 +3287,7 @@ pub mod tests {
                     address: "token".to_string(),
                     amount: Uint128::new(100u128),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap_err();
 
@@ -3373,7 +3318,7 @@ pub mod tests {
                     address: "token".to_string(),
                     amount: Uint128::new(100u128),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap_err();
 
@@ -3398,18 +3343,21 @@ pub mod tests {
                     address: "nft".to_string(),
                     token_id: "58".to_string(),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap();
 
             assert_eq!(
                 res.attributes,
                 vec![
-                    Attribute::new("added token", "counter"),
+                    Attribute::new("action", "add_asset"),
+                    Attribute::new("asset_type", "NFT"),
                     Attribute::new("nft", "nft"),
                     Attribute::new("token_id", "58"),
                     Attribute::new("trade_id", "0"),
                     Attribute::new("counter_id", "0"),
+                    Attribute::new("trader", "creator"),
+                    Attribute::new("counter_trader", "counterer"),
                 ]
             );
 
@@ -3438,7 +3386,7 @@ pub mod tests {
                     address: "token".to_string(),
                     token_id: "58".to_string(),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap_err();
 
@@ -3540,7 +3488,7 @@ pub mod tests {
                     address: "nft".to_string(),
                     token_id: "58".to_string(),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap();
 
@@ -3553,7 +3501,7 @@ pub mod tests {
                     address: "nft-2".to_string(),
                     token_id: "58".to_string(),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap();
 
@@ -3566,7 +3514,7 @@ pub mod tests {
                     address: "token".to_string(),
                     amount: Uint128::new(100u128),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap();
 
@@ -3605,10 +3553,7 @@ pub mod tests {
             )
             .unwrap();
 
-            assert_eq!(
-                res.attributes,
-                vec![Attribute::new("remove from", "counter"),]
-            );
+            assert_eq!(res.attributes.len(), 14);
             assert_eq!(
                 res.messages,
                 vec![
@@ -3716,12 +3661,7 @@ pub mod tests {
             )
             .unwrap_err();
 
-            assert_eq!(
-                err,
-                ContractError::Std(StdError::generic_err(
-                    "assets position does not exist in array"
-                ))
-            );
+            assert_eq!(err, ContractError::AssetNotFound { position: 1 });
 
             // This triggers an error, no matching funds were found
             let err = remove_assets_helper(
@@ -3739,10 +3679,7 @@ pub mod tests {
             )
             .unwrap_err();
 
-            assert_eq!(
-                err,
-                ContractError::Std(StdError::generic_err("Wrong nft address at position 0"))
-            );
+            assert_eq!(err, ContractError::AssetNotFound { position: 0 });
 
             // This triggers an error, no matching funds were found
             let err = remove_assets_helper(
@@ -3760,12 +3697,7 @@ pub mod tests {
             )
             .unwrap_err();
 
-            assert_eq!(
-                err,
-                ContractError::Std(StdError::generic_err(
-                    "Wrong nft id at position 0, wanted: 42, found: 58"
-                ))
-            );
+            assert_eq!(err, ContractError::AssetNotFound { position: 0 });
         }
 
         #[test]
@@ -3786,7 +3718,7 @@ pub mod tests {
                     address: "nft".to_string(),
                     token_id: "58".to_string(),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap();
 
@@ -3799,7 +3731,7 @@ pub mod tests {
                     address: "nft-2".to_string(),
                     token_id: "58".to_string(),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap();
 
@@ -3812,7 +3744,7 @@ pub mod tests {
                     address: "token".to_string(),
                     amount: Uint128::new(100u128),
                 }),
-                &vec![],
+                &[],
             )
             .unwrap();
 
@@ -3843,9 +3775,11 @@ pub mod tests {
 
             assert_eq!(
                 err,
-                ContractError::Std(StdError::generic_err(
-                    "You can't withdraw that much token, wanted: 101, available: 100"
-                ))
+                ContractError::TooMuchWithdrawn {
+                    address: "token".to_string(),
+                    wanted: 101,
+                    available: 100
+                }
             );
 
             let err = remove_assets_helper(
@@ -3863,10 +3797,7 @@ pub mod tests {
             )
             .unwrap_err();
 
-            assert_eq!(
-                err,
-                ContractError::Std(StdError::generic_err("Wrong token type at position 0"))
-            );
+            assert_eq!(err, ContractError::AssetNotFound { position: 0 });
 
             let err = remove_assets_helper(
                 deps.as_mut(),
@@ -3883,10 +3814,7 @@ pub mod tests {
             )
             .unwrap_err();
 
-            assert_eq!(
-                err,
-                ContractError::Std(StdError::generic_err("Wrong token address at position 2"))
-            );
+            assert_eq!(err, ContractError::AssetNotFound { position: 2 });
 
             confirm_counter_trade_helper(deps.as_mut(), "counterer", 0, 0).unwrap();
 
@@ -3919,7 +3847,7 @@ pub mod tests {
 
             //Wrong trade id
             let err = confirm_counter_trade_helper(deps.as_mut(), "creator", 1, 0).unwrap_err();
-            assert_eq!(err, ContractError::NotFoundInTradeInfo {});
+            assert_eq!(err, ContractError::NotFoundInCounterTradeInfo {});
 
             //Wrong counter id
             let err = confirm_counter_trade_helper(deps.as_mut(), "creator", 0, 1).unwrap_err();
@@ -3934,9 +3862,11 @@ pub mod tests {
             assert_eq!(
                 res.attributes,
                 vec![
-                    Attribute::new("confirmed", "counter"),
+                    Attribute::new("action", "confirm_counter_trade"),
                     Attribute::new("trade", "0"),
                     Attribute::new("counter", "0"),
+                    Attribute::new("trader", "creator"),
+                    Attribute::new("counter_trader", "counterer"),
                 ]
             );
 
@@ -3988,9 +3918,11 @@ pub mod tests {
             assert_eq!(
                 res.attributes,
                 vec![
-                    Attribute::new("review", "counter"),
-                    Attribute::new("trade", "0"),
-                    Attribute::new("counter", "0"),
+                    Attribute::new("action", "review_counter_trade"),
+                    Attribute::new("trade_id", "0"),
+                    Attribute::new("counter_id", "0"),
+                    Attribute::new("trader", "creator"),
+                    Attribute::new("counter_trader", "counterer"),
                 ]
             );
 
@@ -4047,9 +3979,11 @@ pub mod tests {
             assert_eq!(
                 res.attributes,
                 vec![
-                    Attribute::new("review", "counter"),
-                    Attribute::new("trade", "0"),
-                    Attribute::new("counter", "0"),
+                    Attribute::new("action", "review_counter_trade"),
+                    Attribute::new("trade_id", "0"),
+                    Attribute::new("counter_id", "0"),
+                    Attribute::new("trader", "creator"),
+                    Attribute::new("counter_trader", "counterer"),
                 ]
             );
 
@@ -4069,9 +4003,11 @@ pub mod tests {
             assert_eq!(
                 res.attributes,
                 vec![
-                    Attribute::new("refuse", "counter"),
-                    Attribute::new("trade", "0"),
-                    Attribute::new("counter", "0"),
+                    Attribute::new("action", "refuse_counter_trade"),
+                    Attribute::new("trade_id", "0"),
+                    Attribute::new("counter_id", "0"),
+                    Attribute::new("trader", "creator"),
+                    Attribute::new("counter_trader", "counterer"),
                 ]
             );
         }
@@ -4110,9 +4046,11 @@ pub mod tests {
             assert_eq!(
                 res.attributes,
                 vec![
-                    Attribute::new("refuse", "counter"),
-                    Attribute::new("trade", "0"),
-                    Attribute::new("counter", "0"),
+                    Attribute::new("action", "refuse_counter_trade"),
+                    Attribute::new("trade_id", "0"),
+                    Attribute::new("counter_id", "0"),
+                    Attribute::new("trader", "creator"),
+                    Attribute::new("counter_trader", "counterer"),
                 ]
             );
         }
@@ -4168,9 +4106,9 @@ pub mod tests {
             let err = confirm_counter_trade_helper(deps.as_mut(), "counterer", 0, 0).unwrap_err();
             assert_eq!(
                 err,
-                ContractError::CantChangeTradeState {
+                ContractError::CantChangeCounterTradeState {
                     from: TradeState::Accepted,
-                    to: TradeState::Countered
+                    to: TradeState::Published
                 }
             );
         }

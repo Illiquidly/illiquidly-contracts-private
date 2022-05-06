@@ -6,6 +6,9 @@ use utils::msg::is_valid_name;
 use crate::state::LoanTerms;
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
+pub struct MigrateMsg {}
+
+#[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
 pub struct InstantiateMsg {
     pub name: String,
     pub owner: Option<String>,

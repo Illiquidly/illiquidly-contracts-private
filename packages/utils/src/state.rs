@@ -1,4 +1,4 @@
-use cosmwasm_std::Uint128;
+use cosmwasm_std::{Addr, Api, StdResult, Uint128};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -30,4 +30,8 @@ pub enum AssetInfo {
     Cw20Coin(Cw20Coin),
     Cw721Coin(Cw721Coin),
     Cw1155Coin(Cw1155Coin),
+}
+
+pub fn maybe_addr(api: &dyn Api, human: Option<String>) -> StdResult<Option<Addr>> {
+    human.map(|x| api.addr_validate(&x)).transpose()
 }

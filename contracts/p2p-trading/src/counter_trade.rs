@@ -1,10 +1,6 @@
-use cosmwasm_std::{Addr, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult};
+use cosmwasm_std::{Addr, Deps, DepsMut, Env, MessageInfo, Response};
 
-use cw1155::Cw1155ExecuteMsg;
-use cw20::Cw20ExecuteMsg;
-use cw721::Cw721ExecuteMsg;
-
-use p2p_trading_export::msg::{into_cosmos_msg, QueryFilters};
+use p2p_trading_export::msg::QueryFilters;
 use p2p_trading_export::state::{AdditionnalTradeInfo, AssetInfo, TradeInfo, TradeState};
 
 use crate::error::ContractError;
@@ -14,9 +10,19 @@ use crate::state::{
     add_cw1155_coin, add_cw20_coin, add_cw721_coin, add_funds, can_suggest_counter_trade,
     is_counter_trader, load_trade, COUNTER_TRADE_INFO, TRADE_INFO,
 };
-use crate::trade::{are_assets_in_trade, create_withdraw_messages, try_withdraw_assets_unsafe};
+use crate::trade::{
+    _are_assets_in_trade, _create_receive_asset_messages, _create_withdraw_messages_unsafe,
+    _try_withdraw_assets_unsafe, check_and_create_withdraw_messages,
+};
 
-pub fn get_last_counter_id_created(deps: Deps, by: String, trade_id: u64) -> StdResult<u64> {
+/// Query the last counter_trade created by the owner for the `trade_id`
+/// This should only be used in the same transaction as the counter_trade creation.
+/// Otherwise, specify the counter_id directly in the transaction and this is not needed
+pub fn get_last_counter_id_created(
+    deps: Deps,
+    by: String,
+    trade_id: u64,
+) -> Result<u64, ContractError> {
     let counter_trade = &query_counter_trades(
         deps,
         trade_id,
@@ -28,14 +34,10 @@ pub fn get_last_counter_id_created(deps: Deps, by: String, trade_id: u64) -> Std
         }),
     )?
     .counter_trades[0];
-    if counter_trade.trade_id != trade_id {
-        Err(StdError::generic_err(
-            "Wrong trade id for the last counter trade",
-        ))
-    } else {
-        Ok(counter_trade.counter_id.unwrap())
-    }
+    Ok(counter_trade.counter_id.unwrap())
 }
+
+/// Create a new counter_trade and assign it a unique id for the specified `trade_id`
 pub fn suggest_counter_trade(
     deps: DepsMut,
     env: Env,
@@ -52,23 +54,21 @@ pub fn suggest_counter_trade(
     trade_info.last_counter_id = trade_info
         .last_counter_id
         .map_or(Some(0), |id| Some(id + 1));
-
     if trade_info.state == TradeState::Published {
         trade_info.state = TradeState::Countered;
     }
-
     TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
 
-    let counter_id = trade_info.last_counter_id.unwrap(); // This is safe, as per the statement above.
+    let counter_id = trade_info.last_counter_id.unwrap(); // This is safe, as we just created a ast_counter_id` if it didn't exist.
 
-    // If the trade id already exists, the contract is faulty
-    // Or an external error happened, or whatever...
-    // In that case, we emit an error
-    // The priority is : We do not want to overwrite existing data
     COUNTER_TRADE_INFO.update(
         deps.storage,
         (trade_id.into(), counter_id.into()),
         |counter| match counter {
+            // If the trade id already exists, the contract is faulty
+            // Or an external error happened, or whatever...
+            // In that case, we emit an error
+            // The priority is : We do not want to overwrite existing data
             Some(_) => Err(ContractError::ExistsInCounterTradeInfo {}),
             None => Ok(TradeInfo {
                 owner: info.sender.clone(),
@@ -80,27 +80,40 @@ pub fn suggest_counter_trade(
             }),
         },
     )?;
-
     if let Some(comment) = comment {
-        set_comment(deps, env, info, trade_id, Some(counter_id), comment)?;
+        set_comment(deps, env, info.clone(), trade_id, Some(counter_id), comment)?;
     }
 
     Ok(Response::new()
-        .add_attribute("counter", "created")
+        .add_attribute("action", "create_counter_trade")
         .add_attribute("trade_id", trade_id.to_string())
-        .add_attribute("counter_id", counter_id.to_string()))
+        .add_attribute("counter_id", counter_id.to_string())
+        .add_attribute("trader", trade_info.owner)
+        .add_attribute("counter_trader", info.sender))
 }
 
-pub fn prepare_counter_asset_addition(
+pub fn counter_id_or_last(
     deps: Deps,
     trader: Addr,
     trade_id: u64,
     counter_id: Option<u64>,
 ) -> Result<u64, ContractError> {
-    let counter_id = match counter_id {
+    match counter_id {
         Some(counter_id) => Ok(counter_id),
         None => get_last_counter_id_created(deps, trader.to_string(), trade_id),
-    }?;
+    }
+}
+
+/// We prepare the info before asset addition
+/// 1. If the trade_id is not specified, we get the last trade_id created by the sender
+/// 2. We verify the trade can be modified
+pub fn prepare_counter_modification(
+    deps: Deps,
+    trader: Addr,
+    trade_id: u64,
+    counter_id: Option<u64>,
+) -> Result<u64, ContractError> {
+    let counter_id = counter_id_or_last(deps, trader.clone(), trade_id, counter_id)?;
 
     let counter_info = is_counter_trader(deps.storage, &trader, trade_id, counter_id)?;
 
@@ -121,13 +134,13 @@ pub fn add_asset_to_counter_trade(
     asset: AssetInfo,
 ) -> Result<Response, ContractError> {
     let counter_id =
-        prepare_counter_asset_addition(deps.as_ref(), info.sender.clone(), trade_id, counter_id)?;
+        prepare_counter_modification(deps.as_ref(), info.sender.clone(), trade_id, counter_id)?;
 
     match asset.clone() {
         AssetInfo::Coin(coin) => COUNTER_TRADE_INFO.update(
             deps.storage,
             (trade_id.into(), counter_id.into()),
-            add_funds(coin, info.funds),
+            add_funds(coin, info.funds.clone()),
         ),
         AssetInfo::Cw20Coin(token) => COUNTER_TRADE_INFO.update(
             deps.storage,
@@ -146,57 +159,55 @@ pub fn add_asset_to_counter_trade(
         ),
     }?;
 
+    // We load the trade_info for events
+    let trade_info = load_trade(deps.storage, trade_id)?;
+
     // Now we need to transfer the token
-    Ok(match asset {
-        AssetInfo::Coin(coin) => Response::new()
-            .add_attribute("added funds", "counter")
-            .add_attribute("denom", coin.denom)
-            .add_attribute("amount", coin.amount),
-        AssetInfo::Cw20Coin(token) => {
-            let message = Cw20ExecuteMsg::TransferFrom {
-                owner: info.sender.to_string(),
-                recipient: env.contract.address.into(),
-                amount: token.amount,
-            };
-            Response::new()
-                .add_message(into_cosmos_msg(message, token.address.clone())?)
-                .add_attribute("added token", "counter")
-                .add_attribute("token", token.address)
-                .add_attribute("amount", token.amount)
-        }
-        AssetInfo::Cw721Coin(token) => {
-            let message = Cw721ExecuteMsg::TransferNft {
-                recipient: env.contract.address.into(),
-                token_id: token.token_id.clone(),
-            };
-
-            Response::new()
-                .add_message(into_cosmos_msg(message, token.address.clone())?)
-                .add_attribute("added token", "counter")
-                .add_attribute("nft", token.address)
-                .add_attribute("token_id", token.token_id)
-        }
-        AssetInfo::Cw1155Coin(token) => {
-            let message = Cw1155ExecuteMsg::SendFrom {
-                from: info.sender.to_string(),
-                to: env.contract.address.into(),
-                token_id: token.token_id.clone(),
-                value: token.value,
-                msg: None,
-            };
-
-            Response::new()
-                .add_message(into_cosmos_msg(message, token.address.clone())?)
-                .add_attribute("added Cw1155", "counter")
-                .add_attribute("token", token.address)
-                .add_attribute("token_id", token.token_id)
-                .add_attribute("amount", token.value)
-        }
-    }
-    .add_attribute("trade_id", trade_id.to_string())
-    .add_attribute("counter_id", counter_id.to_string()))
+    Ok(_create_receive_asset_messages(env, info.clone(), asset)?
+        .add_attribute("trade_id", trade_id.to_string())
+        .add_attribute("counter_id", counter_id.to_string())
+        .add_attribute("trader", trade_info.owner)
+        .add_attribute("counter_trader", info.sender))
 }
 
+/// Allows to withdraw assets while creating a counter_trade, Refer to the `trade.rs`file for more information (similar mecanism)
+pub fn withdraw_counter_trade_assets_while_creating(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    trade_id: u64,
+    counter_id: u64,
+    assets: Vec<(u16, AssetInfo)>,
+) -> Result<Response, ContractError> {
+    let mut counter_info = is_counter_trader(deps.storage, &info.sender, trade_id, counter_id)?;
+    if counter_info.state != TradeState::Created {
+        return Err(ContractError::CounterTradeAlreadyPublished {});
+    }
+    _are_assets_in_trade(&counter_info, &assets)?;
+
+    _try_withdraw_assets_unsafe(&mut counter_info, &assets)?;
+    COUNTER_TRADE_INFO.save(
+        deps.storage,
+        (trade_id.into(), counter_id.into()),
+        &counter_info,
+    )?;
+
+    let res = _create_withdraw_messages_unsafe(
+        &env.contract.address,
+        &info.sender,
+        &assets.iter().map(|x| x.1.clone()).collect(),
+    )?;
+    // We load the trade_info for events
+    let trade_info = load_trade(deps.storage, trade_id)?;
+    Ok(res
+        .add_attribute("action", "remove_from_counter_trade")
+        .add_attribute("trade", trade_id.to_string())
+        .add_attribute("counter", counter_id.to_string())
+        .add_attribute("trader", trade_info.owner)
+        .add_attribute("counter_trader", info.sender))
+}
+
+/// Confirm (and publish) a counter_trade when creation is finished
 pub fn confirm_counter_trade(
     deps: DepsMut,
     _env: Env,
@@ -204,42 +215,38 @@ pub fn confirm_counter_trade(
     trade_id: u64,
     counter_id: Option<u64>,
 ) -> Result<Response, ContractError> {
-    let trade_info = load_trade(deps.storage, trade_id)?;
+    // We check the counter exists and belongs to the sender
+    let counter_id = counter_id_or_last(deps.as_ref(), info.sender.clone(), trade_id, counter_id)?;
+    let mut counter_info = is_counter_trader(deps.storage, &info.sender, trade_id, counter_id)?;
 
-    let counter_id = match counter_id {
-        Some(counter_id) => Ok(counter_id),
-        None => get_last_counter_id_created(deps.as_ref(), info.sender.to_string(), trade_id),
-    }?;
-
-    let mut counter = is_counter_trader(deps.storage, &info.sender, trade_id, counter_id)?;
-
-    if trade_info.state != TradeState::Countered {
-        return Err(ContractError::CantChangeTradeState {
-            from: trade_info.state,
-            to: TradeState::Countered,
-        });
-    }
-
-    // We update the trade_info to show there are some suggested counters
-    TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
-
-    // We update the counter_trade_info to indicate it is published and ready to be accepted
-    if counter.state != TradeState::Created {
+    // We check the counter can be confirmed
+    if counter_info.state != TradeState::Created {
         return Err(ContractError::CantChangeCounterTradeState {
-            from: counter.state,
+            from: counter_info.state,
             to: TradeState::Published,
         });
     }
-    counter.state = TradeState::Published;
+    // We confirm the counter_trade
+    counter_info.state = TradeState::Published;
+    COUNTER_TRADE_INFO.save(
+        deps.storage,
+        (trade_id.into(), counter_id.into()),
+        &counter_info,
+    )?;
 
-    COUNTER_TRADE_INFO.save(deps.storage, (trade_id.into(), counter_id.into()), &counter)?;
+    // We load the trade_info for events
+    let trade_info = load_trade(deps.storage, trade_id)?;
 
     Ok(Response::new()
-        .add_attribute("confirmed", "counter")
+        .add_attribute("action", "confirm_counter_trade")
         .add_attribute("trade", trade_id.to_string())
-        .add_attribute("counter", counter_id.to_string()))
+        .add_attribute("counter", counter_id.to_string())
+        .add_attribute("trader", trade_info.owner)
+        .add_attribute("counter_trader", info.sender))
 }
 
+/// Cancel a counter_trade
+/// The counter_trade isn't modifiable, but the funds are withdrawnable after this call.
 pub fn cancel_counter_trade(
     deps: DepsMut,
     _env: Env,
@@ -250,6 +257,7 @@ pub fn cancel_counter_trade(
     // Only the initial trader can cancel the trade
     let mut counter_info = is_counter_trader(deps.storage, &info.sender, trade_id, counter_id)?;
 
+    // We can't cancel an accepted counter_trade
     if counter_info.state == TradeState::Accepted {
         return Err(ContractError::CantChangeCounterTradeState {
             from: counter_info.state,
@@ -265,40 +273,55 @@ pub fn cancel_counter_trade(
         &counter_info,
     )?;
 
+    // We load the trade_info for events
+    let trade_info = load_trade(deps.storage, trade_id)?;
+
     Ok(Response::new()
-        .add_attribute("cancelled", "counter")
+        .add_attribute("action", "cancel_counter_trade")
         .add_attribute("trade", trade_id.to_string())
-        .add_attribute("counter", counter_id.to_string()))
+        .add_attribute("counter", counter_id.to_string())
+        .add_attribute("trader", trade_info.owner)
+        .add_attribute("counter_trader", info.sender))
 }
 
-pub fn withdraw_counter_trade_assets_while_creating(
+/// Withdraw all assets from a created (not published yet), refused or cancelled counter_trade
+/// If the counter_trade is only in the created state, it is automatically cancelled before withdrawing assets
+pub fn withdraw_all_from_counter(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
     trade_id: u64,
     counter_id: u64,
-    assets: Vec<(u16, AssetInfo)>,
 ) -> Result<Response, ContractError> {
     let mut counter_info = is_counter_trader(deps.storage, &info.sender, trade_id, counter_id)?;
 
-    if counter_info.state != TradeState::Created && counter_info.state != TradeState::Cancelled {
-        return Err(ContractError::CounterTradeAlreadyPublished {});
+    // If the counter is still in the created state, we cancel it
+    if counter_info.state == TradeState::Created {
+        counter_info.state = TradeState::Cancelled;
     }
 
-    are_assets_in_trade(&counter_info, &assets)?;
+    // This fuction call is possible only if the counter was refused or if this counter was cancelled
+    if !(counter_info.state == TradeState::Refused || counter_info.state == TradeState::Cancelled) {
+        return Err(ContractError::CounterTradeNotAborted {});
+    }
 
-    try_withdraw_assets_unsafe(&mut counter_info, &assets)?;
-
+    // We create withdraw messages to send the funds back to the counter trader
+    let res = check_and_create_withdraw_messages(env, &info.sender, &counter_info)?;
+    counter_info.assets_withdrawn = true;
     COUNTER_TRADE_INFO.save(
         deps.storage,
         (trade_id.into(), counter_id.into()),
         &counter_info,
     )?;
 
-    let res = create_withdraw_messages(
-        &env.contract.address,
-        &info.sender,
-        &assets.iter().map(|x| x.1.clone()).collect(),
-    )?;
-    Ok(res.add_attribute("remove from", "counter"))
+    // We load the trade_info for events
+    let trade_info = load_trade(deps.storage, trade_id)?;
+
+    Ok(res
+        .add_attribute("action", "withdraw_all_funds")
+        .add_attribute("type", "counter_trade")
+        .add_attribute("trade", trade_id.to_string())
+        .add_attribute("counter", counter_id.to_string())
+        .add_attribute("trader", trade_info.owner)
+        .add_attribute("counter_trader", counter_info.owner))
 }

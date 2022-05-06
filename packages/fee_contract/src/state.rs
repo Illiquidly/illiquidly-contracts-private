@@ -8,7 +8,7 @@ pub struct ContractInfo {
     pub name: String,
     pub owner: Addr,
     pub p2p_contract: Addr,
-    pub treasury: Addr,
+    pub fee_distributor: Addr,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -21,5 +21,5 @@ pub struct FeeInfo {
     pub second_teer_limit: Uint128,
     pub second_teer_rate: Uint128,
     pub third_teer_rate: Uint128,
-    pub acceptable_fee_deviation: Uint128 // In thousands
+    pub acceptable_fee_deviation: Uint128, // In thousands
 }

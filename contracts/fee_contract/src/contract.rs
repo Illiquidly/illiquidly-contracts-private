@@ -1,30 +1,28 @@
 #[cfg(not(feature = "library"))]
-use std::convert::TryInto;
-
 use cosmwasm_std::{
-    entry_point, to_binary, BankMsg, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdError,
-    StdResult, Uint128,
+    entry_point, to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult,
+    Uint128,
 };
 use terra_cosmwasm::{SwapResponse, TerraQuerier};
 
-use fee_contract_export::msg::{
-    into_cosmos_msg, ExecuteMsg, FeeResponse, InstantiateMsg, QueryMsg,
-};
+use fee_contract_export::error::ContractError;
+use fee_contract_export::msg::{ExecuteMsg, FeeResponse, InstantiateMsg, MigrateMsg, QueryMsg};
 use fee_contract_export::state::{ContractInfo, FeeInfo};
 
-use utils::query::{load_accepted_trade, load_trade};
+use utils::query::{load_trade, load_trade_and_accepted_counter_trade};
 
-use crate::error::ContractError;
 use crate::state::{is_admin, CONTRACT_INFO, FEE_RATES};
+use fee_distributor_export::msg::ExecuteMsg as FeeDistributorMsg;
 use p2p_trading_export::msg::ExecuteMsg as P2PExecuteMsg;
 use p2p_trading_export::state::AssetInfo;
+use utils::msg::into_cosmos_msg;
 
 const ASSET_FEE_RATE: u128 = 40u128; // In thousands
 const FEE_MAX: u128 = 10_000_000u128;
 const FIRST_TEER_RATE: u128 = 500_000u128;
 const FIRST_TEER_LIMIT: u128 = 4u128;
 const SECOND_TEER_RATE: u128 = 200_000u128;
-const SECOND_TEER_LIMIT: u128 = 15u128;
+const SECOND_TEER_LIMIT: u128 = 14u128;
 const THIRD_TEER_RATE: u128 = 50_000u128;
 const ACCEPTABLE_FEE_DEVIATION: u128 = 50u128; // In thousands
 
@@ -36,7 +34,6 @@ pub fn instantiate(
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
     // Verify the contract name
-
     msg.validate()?;
     // store token info
     let data = ContractInfo {
@@ -46,9 +43,10 @@ pub fn instantiate(
             .map(|x| deps.api.addr_validate(&x))
             .unwrap_or(Ok(info.sender))?,
         p2p_contract: deps.api.addr_validate(&msg.p2p_contract)?,
-        treasury: deps.api.addr_validate(&msg.treasury)?,
+        fee_distributor: deps.api.addr_validate(&msg.fee_distributor)?,
     };
     CONTRACT_INFO.save(deps.storage, &data)?;
+    // Initialisation with fixed rates
     FEE_RATES.save(
         deps.storage,
         &FeeInfo {
@@ -96,77 +94,146 @@ pub fn execute(
             second_teer_limit,
             second_teer_rate,
             third_teer_rate,
-            acceptable_fee_deviation
+            acceptable_fee_deviation,
         ),
     }
 }
 
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn migrate(_deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, ContractError> {
+    // No state migrations performed, just returned a Response
+    Ok(Response::default())
+}
+
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
+    match msg {
+        QueryMsg::ContractInfo {} => {
+            to_binary(&contract_info(deps)?).map_err(|_| ContractError::BinaryEncodingError {})
+        }
+        QueryMsg::FeeRates {} => {
+            to_binary(&fee_rates(deps)?).map_err(|_| ContractError::BinaryEncodingError {})
+        }
+        QueryMsg::Fee {
+            trade_id,
+            counter_id,
+        } => to_binary(&query_fee_for(deps, trade_id, counter_id)?)
+            .map_err(|_| ContractError::BinaryEncodingError {}),
+        QueryMsg::SimulateFee {
+            trade_id,
+            counter_assets,
+        } => to_binary(&simulate_fee(deps, trade_id, counter_assets)?)
+            .map_err(|_| ContractError::BinaryEncodingError {}),
+    }
+}
+
+/// This function is used to withdraw funds from an accepted trade.
+/// It uses information from the trades and counter trades to determine how much needs to be paid
+/// If the fee is sufficient, it sends the fee to the fee_depositor contract (responsible for fee distribution)
 pub fn pay_fee_and_withdraw(
     deps: DepsMut,
     _env: Env,
     info: MessageInfo,
     trade_id: u64,
 ) -> Result<Response, ContractError> {
-    // We first pay the fee, either using pre_approved tokens, or funds
-    // Here the fee can be paid in luna or ust
-
+    // The fee can be paid in any Terra native currency.
+    // It needs to be paid in a single currency
     if info.funds.len() != 1 {
         return Err(ContractError::FeeNotPaid {});
     }
+
     let funds = info.funds[0].clone();
     let contract_info = CONTRACT_INFO.load(deps.storage)?;
-
-    let (trade_info, counter_info) =
-        load_accepted_trade(deps.as_ref(), contract_info.p2p_contract, trade_id, None)?;
-
-    let fee_amount = Uint128::from(fee_amount_raw(
+    let (trade_info, counter_info) = load_trade_and_accepted_counter_trade(
         deps.as_ref(),
-        trade_info.associated_assets,
-        counter_info.associated_assets,
-    )?);
-
+        contract_info.p2p_contract.clone(),
+        trade_id,
+        None,
+    )?;
+    // Querying the required fee amount in "uusd"
+    let fee_amount = fee_amount_raw(
+        deps.as_ref(),
+        &trade_info.associated_assets,
+        &counter_info.associated_assets,
+    )?;
+    // We accept a small fee deviation, in case the exchange rates fluctuate a bit between the query and the paiement.
     let acceptable_fee_deviation = FEE_RATES.load(deps.storage)?.acceptable_fee_deviation;
+
     if funds.denom == "uusd" {
-        if funds.amount + funds.amount*acceptable_fee_deviation/Uint128::from(1_000u128) < fee_amount {
+        if funds.amount + funds.amount * acceptable_fee_deviation / Uint128::from(1_000u128)
+            < fee_amount
+        {
             return Err(ContractError::FeeNotPaidCorrectly {
                 required: fee_amount.u128(),
                 provided: funds.amount.u128(),
             });
         }
-    } else if funds.denom == "uluna" {
+    } else {
         let querier = TerraQuerier::new(&deps.querier);
         let swap_rate: SwapResponse = querier.query_swap(funds, "uusd")?;
         let swap_amount = swap_rate.receive.amount;
-        if swap_amount + swap_amount*acceptable_fee_deviation/Uint128::from(1_000u128) < fee_amount {
+        if swap_amount + swap_amount * acceptable_fee_deviation / Uint128::from(1_000u128)
+            < fee_amount
+        {
             return Err(ContractError::FeeNotPaidCorrectly {
                 required: fee_amount.u128(),
                 provided: swap_amount.u128(),
             });
         }
-    } else {
-        return Err(ContractError::FeeNotPaid {});
     }
 
+    // Then we distribute the funds to the fee_distributor contract
+    let contract_addresses: Vec<String> = trade_info
+        .associated_assets
+        .iter()
+        .chain(counter_info.associated_assets.iter())
+        .filter_map(|x| match x {
+            AssetInfo::Cw721Coin(cw721) => Some(cw721.address.clone()),
+            AssetInfo::Cw1155Coin(cw1155) => Some(cw1155.address.clone()),
+            _ => None,
+        })
+        .collect();
+    let distribute_message = into_cosmos_msg(
+        FeeDistributorMsg::DepositFees {
+            addresses: contract_addresses,
+        },
+        contract_info.fee_distributor,
+        Some(info.funds),
+    )?;
+
     // Then we call withdraw on the p2p contract
-    let contract_info = CONTRACT_INFO.load(deps.storage)?;
     let withdraw_message = P2PExecuteMsg::WithdrawPendingAssets {
         trader: info.sender.into(),
         trade_id,
     };
-    let message = into_cosmos_msg(withdraw_message, contract_info.p2p_contract)?;
-
-    let contract_info = CONTRACT_INFO.load(deps.storage)?;
-    let treasury_message = BankMsg::Send {
-        to_address: contract_info.treasury.to_string(),
-        amount: info.funds,
-    };
+    let message = into_cosmos_msg(withdraw_message, contract_info.p2p_contract, None)?;
 
     Ok(Response::new()
-        .add_attribute("payed", "fee")
+        .add_attribute("action", "payed_trade_fee")
         .add_message(message)
-        .add_message(treasury_message))
+        .add_message(distribute_message))
 }
 
+pub fn modify_contract_owner(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    owner: String,
+) -> Result<Response, ContractError> {
+    is_admin(deps.as_ref(), info.sender)?;
+
+    let owner_addr = deps.api.addr_validate(&owner)?;
+    CONTRACT_INFO.update::<_, StdError>(deps.storage, |mut x| {
+        x.owner = owner_addr;
+        Ok(x)
+    })?;
+
+    Ok(Response::new()
+        .add_attribute("action", "parameter_update")
+        .add_attribute("parameter", "owner"))
+}
+
+#[allow(clippy::too_many_arguments)]
 pub fn update_fee_rates(
     deps: DepsMut,
     _env: Env,
@@ -191,113 +258,119 @@ pub fn update_fee_rates(
             second_teer_limit: second_teer_limit.unwrap_or(x.second_teer_limit),
             second_teer_rate: second_teer_rate.unwrap_or(x.second_teer_rate),
             third_teer_rate: third_teer_rate.unwrap_or(x.third_teer_rate),
-            acceptable_fee_deviation: acceptable_fee_deviation.unwrap_or(x.acceptable_fee_deviation),
+            acceptable_fee_deviation: acceptable_fee_deviation
+                .unwrap_or(x.acceptable_fee_deviation),
         })
     })?;
+
+    // We verify the rates are ordered
+    let new_fee_rates = FEE_RATES.load(deps.storage)?;
+    if new_fee_rates.second_teer_limit <= new_fee_rates.first_teer_limit{
+        return Err(ContractError::TeersNotOrdered{})
+    } 
 
     Ok(Response::new().add_attribute("updated", "fee_rates"))
 }
 
-#[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
-    match msg {
-        QueryMsg::ContractInfo{} => to_binary(&contract_info(deps)?),
-        QueryMsg::FeeRates{} => to_binary(&fee_rates(deps)?),
-        QueryMsg::Fee {
-            trade_id,
-            counter_id,
-        } => to_binary(&query_fee_for(deps, trade_id, counter_id)?),
-        QueryMsg::SimulateFee {
-            trade_id,
-            counter_assets,
-        } => to_binary(&simulate_fee(deps, trade_id, counter_assets)?),
-    }
-}
-
+/// Compute the fee amount for trade and counter_trade assets
+/// This function contains 2 parts
+/// 1. Compute a fee relative to the number of tokens exchanged in the transaction (cw20, cw721 and cw1155)
+/// 2. Compute a percentage fee amount for all terra native funds
 pub fn fee_amount_raw(
     deps: Deps,
-    trade_assets: Vec<AssetInfo>,
-    counter_assets: Vec<AssetInfo>,
-) -> StdResult<u128> {
+    trade_assets: &[AssetInfo],
+    counter_assets: &[AssetInfo],
+) -> Result<Uint128, ContractError> {
     let fee_info = FEE_RATES.load(deps.storage)?;
-    // If you trade one_to_one, there is a fixed 0.5UST fee per peer.
-    // Else, there is a 0.2 UST fee per asset per peer, up to 2USD fee
-    // Then the fee is 0.1 UST capped to 5 USD
+
+    // Accumulate results to compute
+    // 1. The percentage fee for terra native tokens
+    // 2. The number of exchanged tokens in the transaction
     let querier = TerraQuerier::new(&deps.querier);
-    let (asset_number, fund_fee) = trade_assets.iter().chain(counter_assets.iter()).try_fold(
-        (0u128, 0u128),
-        |(asset_number, fund_fee), x| -> StdResult<(u128,u128)> 
-        {
+    let (fund_fee, asset_number) = trade_assets.iter().chain(counter_assets.iter()).try_fold(
+        (Uint128::zero(), Uint128::zero()),
+        |(fund_fee, asset_number), x| -> StdResult<(Uint128, Uint128)> {
             match x {
                 AssetInfo::Coin(coin) => {
-                    let usd_value_result = querier.query_swap(coin.clone(), "uusd")?;
-                    let ust_equivalent = usd_value_result.receive.amount.u128();
-                    let fee = ust_equivalent * fee_info.asset_fee_rate.u128() / 1_000;
-                    Ok((asset_number, fund_fee + fee))
+                    let usd_value = if coin.denom != "uusd" {
+                        querier.query_swap(coin.clone(), "uusd")?.receive.amount
+                    } else {
+                        coin.amount
+                    };
+                    let fee = usd_value * fee_info.asset_fee_rate / Uint128::from(1_000u128);
+                    Ok((fund_fee + fee, asset_number))
                 }
-                _ => Ok((asset_number + 1, fund_fee)),
+                _ => Ok((fund_fee, asset_number + Uint128::from(1u128))),
             }
-        }
+        },
     )?;
 
-    let fee = if asset_number <= fee_info.first_teer_limit.u128() {
-        asset_number * fee_info.first_teer_rate.u128()
-    } else if asset_number <= fee_info.first_teer_limit.u128() {
-        fee_info.first_teer_limit.u128() * fee_info.first_teer_rate.u128()
-            + (asset_number - fee_info.first_teer_limit.u128()) * fee_info.second_teer_rate.u128()
-    } else {
-        fee_info.first_teer_limit.u128() * fee_info.first_teer_rate.u128()
-            + (fee_info.second_teer_limit.u128() - fee_info.first_teer_limit.u128())
-                * fee_info.second_teer_rate.u128()
-            + (asset_number - fee_info.second_teer_limit.u128()) * fee_info.third_teer_rate.u128()
-    }.min(fee_info.fee_max.u128());
+    // We compute the fee dependant on the number of exchanged tokens (in teers, just like taxes)
+    let fee = fee_info.first_teer_rate * asset_number.min(fee_info.first_teer_limit)
+        + fee_info.second_teer_rate
+            * (asset_number
+                .min(fee_info.second_teer_limit)
+                .max(fee_info.first_teer_limit)
+                - fee_info.first_teer_limit)
+        + fee_info.third_teer_rate
+            * (asset_number.max(fee_info.second_teer_limit) - fee_info.second_teer_limit)
+                .min(fee_info.fee_max);
 
-    Ok((fee + fund_fee)/2u128)
+    Ok((fee + fund_fee) / Uint128::from(2u128))
 }
 
-pub fn contract_info(deps: Deps) -> StdResult<ContractInfo>{
+pub fn contract_info(deps: Deps) -> StdResult<ContractInfo> {
     CONTRACT_INFO.load(deps.storage)
 }
 
-pub fn fee_rates(deps: Deps) -> StdResult<FeeInfo>{
+pub fn fee_rates(deps: Deps) -> StdResult<FeeInfo> {
     FEE_RATES.load(deps.storage)
 }
 
-pub fn query_fee_for(deps: Deps, trade_id: u64, counter_id: Option<u64>) -> StdResult<FeeResponse> {
+/// Allows to simulate the fee that will need to be paid when withdrawing assets
+/// If `counter_id` is not specified, the accepted counter_trade will be considered for computing the fee
+/// If it is specified, the counter_id provided will be considered
+pub fn query_fee_for(
+    deps: Deps,
+    trade_id: u64,
+    counter_id: Option<u64>,
+) -> Result<FeeResponse, ContractError> {
     let contract_info = CONTRACT_INFO.load(deps.storage)?;
 
-    let (trade_info, counter_info) =
-        load_accepted_trade(deps, contract_info.p2p_contract, trade_id, counter_id)?;
+    let (trade_info, counter_info) = load_trade_and_accepted_counter_trade(
+        deps,
+        contract_info.p2p_contract,
+        trade_id,
+        counter_id,
+    )?;
     let fee = fee_amount_raw(
         deps,
-        trade_info.associated_assets,
-        counter_info.associated_assets,
+        &trade_info.associated_assets,
+        &counter_info.associated_assets,
     )?;
 
-    Ok(FeeResponse {
-        fee: Uint128::from(fee),
-    })
+    Ok(FeeResponse { fee })
 }
 
+/// Allows to simulate the fee that will need to be paid if the submitted assets are those of the accepted counter trade
 pub fn simulate_fee(
     deps: Deps,
     trade_id: u64,
     counter_assets: Vec<AssetInfo>,
-) -> StdResult<FeeResponse> {
+) -> Result<FeeResponse, ContractError> {
     let contract_info = CONTRACT_INFO.load(deps.storage)?;
 
     let trade_info = load_trade(deps, contract_info.p2p_contract, trade_id)?;
-    let fee = fee_amount_raw(deps, trade_info.associated_assets, counter_assets)?;
+    let fee = fee_amount_raw(deps, &trade_info.associated_assets, &counter_assets)?;
 
-    Ok(FeeResponse {
-        fee: Uint128::from(fee),
-    })
+    Ok(FeeResponse { fee })
 }
 
 #[cfg(test)]
 pub mod tests {
     use super::*;
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
+    use p2p_trading_export::state::Cw20Coin;
     //use cosmwasm_std::{coins, Coin, SubMsg};
 
     fn init_helper(deps: DepsMut) -> Response {
@@ -305,7 +378,7 @@ pub mod tests {
             name: "fee_contract".to_string(),
             owner: None,
             p2p_contract: "p2p".to_string(),
-            treasury: "treasury".to_string(),
+            fee_distributor: "treasury".to_string(),
         };
         let info = mock_info("creator", &[]);
         let env = mock_env();
@@ -339,7 +412,7 @@ pub mod tests {
                 second_teer_limit: Some(Uint128::from(9u128)),
                 second_teer_rate: Some(Uint128::from(10u128)),
                 third_teer_rate: Some(Uint128::from(11u128)),
-                acceptable_fee_deviation: Some(Uint128::from(12u128))
+                acceptable_fee_deviation: Some(Uint128::from(12u128)),
             },
         )
         .unwrap();
@@ -360,73 +433,54 @@ pub mod tests {
         );
     }
 
-    /*
-
-    fn pay_fee_helper(
-        deps: DepsMut,
-        trader: &str,
-        trade_id: u64,
-        c: Vec<Coin>,
-    ) -> Result<Response, ContractError> {
-        let info = mock_info(trader, &c);
-        let env = mock_env();
-
-        let res = execute(deps, env, info, ExecuteMsg::PayFeeAndWithdraw { trade_id });
-        return res;
-    }
     #[test]
-    // Not working because the standard mock querier is shit
-    fn test_pay_fee() {
+    fn test_fee_amount() {
         let mut deps = mock_dependencies(&[]);
         init_helper(deps.as_mut());
-        let err = pay_fee_helper(deps.as_mut(), "creator", 0, coins(500u128, "uusd")).unwrap_err();
-        assert_eq!(
-            err,
-            ContractError::FeeNotPaidCorrectly {
-                required: 500_000u128,
-                provided: 500u128,
-            }
-        );
 
-        let err = pay_fee_helper(deps.as_mut(), "creator", 0, vec![]).unwrap_err();
-        assert_eq!(err, ContractError::FeeNotPaid {});
+        let fee = fee_amount_raw(deps.as_ref(), &[], &[]).unwrap();
+        assert_eq!(fee, Uint128::zero());
 
-        let res = pay_fee_helper(deps.as_mut(), "creator", 0, coins(500000u128, "uusd")).unwrap();
-        assert_eq!(
-            res.messages,
-            vec![SubMsg::new(
-                into_cosmos_msg(
-                    P2PExecuteMsg::WithdrawPendingAssets {
-                        trader: "creator".to_string(),
-                        trade_id: 0
-                    },
-                    "p2p"
-                )
-                .unwrap()
-            ),]
-        );
+        let fee = fee_amount_raw(
+            deps.as_ref(),
+            &[AssetInfo::Cw20Coin(Cw20Coin {
+                amount: Uint128::from(42u64),
+                address: "token".to_string(),
+            })],
+            &[],
+        )
+        .unwrap();
+        assert_eq!(fee, Uint128::new(250_000u128));
+
+        let fee = fee_amount_raw(
+            deps.as_ref(),
+            &[AssetInfo::Cw20Coin(Cw20Coin {
+                amount: Uint128::from(42u64),
+                address: "token".to_string(),
+            })],
+            &[AssetInfo::Cw20Coin(Cw20Coin {
+                amount: Uint128::from(42u64),
+                address: "token".to_string(),
+            })],
+        )
+        .unwrap();
+        assert_eq!(fee, Uint128::new(500_000u128));
+
+        let fee = fee_amount_raw(
+            deps.as_ref(),
+            &[
+                AssetInfo::Cw20Coin(Cw20Coin {
+                    amount: Uint128::from(42u64),
+                    address: "token".to_string(),
+                }),
+                AssetInfo::Cw20Coin(Cw20Coin {
+                    amount: Uint128::from(42u64),
+                    address: "token".to_string(),
+                }),
+            ],
+            &[],
+        )
+        .unwrap();
+        assert_eq!(fee, Uint128::new(500_000u128));
     }
-    */
-    /*
-    fn query_fee_helper(deps: Deps)-> StdResult<Binary> {
-        let env = mock_env();
-
-        let res = query(
-            deps,
-            env,
-             QueryMsg::Fee {
-                trade_id: 0,
-                counter_id: Some(0),
-            },
-        );
-        return res;
-
-    }
-    #[test]
-    fn test_query_fee() {
-        let mut deps = mock_dependencies(&[]);
-        init_helper(deps.as_mut());
-        query_fee_helper(deps.as_ref()).unwrap();
-    }
-    */
 }

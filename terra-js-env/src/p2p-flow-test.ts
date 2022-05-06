@@ -24,7 +24,8 @@ async function main() {
   let p2p_counter = counter.getContract(env.contracts.p2p);
   let fee = handler.getContract(env.contracts.fee);
   let fee_counter = counter.getContract(env.contracts.fee);
-
+  let fee_distributor = handler.getContract(env.contracts.fee_distributor);
+  
   let response: any;
 
   response = await p2p.query.contract_info();
@@ -54,6 +55,40 @@ async function main() {
     }
   });
   console.log('Added token', getContractLog(response));
+
+  // No we add an NFT !
+  let cw721_tokens = env['cw721'];
+  let cw721_token_names = Object.keys(cw721_tokens);
+  let nft = handler.getContract(cw721_tokens[cw721_token_names[0]]);
+ 
+  // We mint a new one
+  let token_id = handler.getAddress() + Math.ceil(Math.random() * 10000)
+  await nft.execute.mint({
+      token_id: token_id,
+      owner: handler.getAddress(),
+      token_uri: 'testing'
+    });
+
+  await nft.execute.approve({
+    spender: p2p.address,
+    token_id: token_id
+  });
+
+  // Then we add the funds
+  
+  response = await p2p.execute.add_asset({
+    trade_id: trade_id,
+    asset: {
+      cw721_coin: {
+        address: nft.address,
+        token_id
+      }
+    }
+  });  
+  console.log('Added NFT', getContractLog(response));
+  
+
+
 
   // We confirm our trade !
   response = await p2p.execute.confirm_trade({
@@ -108,6 +143,7 @@ async function main() {
   );
   console.log('Added terra native fund', getContractLog(response));
   */
+
   // We confirm our counter trade !
   response = await p2p_counter.execute.confirm_counter_trade({
     trade_id: trade_id,
@@ -150,10 +186,17 @@ async function main() {
           address: cw20_tokens[cw20_token_names[0]],
           amount: amount
         },
+      },
+      {
+        cw20_coin: {
+          address: cw20_tokens[cw20_token_names[0]],
+          amount: amount
+        },
       }
     ]
   });
   console.log(response, response.fee);
+  
 
   response = await fee.query.fee_rates();
   console.log(response);
@@ -163,12 +206,13 @@ async function main() {
     trade_id: trade_id
   },
   {"uusd": fee_to_pay});
+  console.log(response);
 
   // We withdraw the funds
   response = await fee_counter.execute.pay_fee_and_withdraw({
     trade_id: trade_id
   },
-  {"uusd": "477500"});
+  {"uusd": fee_to_pay});
 
   response = await iliq.query.balance({ address: handler.getAddress() });
   console.log('trader', response);
@@ -176,6 +220,13 @@ async function main() {
   response = await iliq.query.balance({ address: counter.getAddress() });
   console.log('counter', response);
   //We check the token balances
+
+  response = await fee_distributor.query.addresses();
+  console.log(response);
+  response = await fee_distributor.query.amount({address:nft.address});
+  console.log(response);
+
+
 }
 
 main()

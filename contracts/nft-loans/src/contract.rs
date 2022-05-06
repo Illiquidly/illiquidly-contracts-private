@@ -16,7 +16,7 @@ use crate::state::{
 use cw1155::Cw1155ExecuteMsg;
 use cw721::Cw721ExecuteMsg;
 
-use nft_loans_export::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
+use nft_loans_export::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
 use nft_loans_export::state::{
     BorrowerInfo, CollateralInfo, ContractInfo, LoanState, LoanTerms, OfferInfo, OfferState,
 };
@@ -118,6 +118,23 @@ pub fn execute(
     }
 }
 
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn migrate(_deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, ContractError> {
+    // No state migrations performed, just returned a Response
+    Ok(Response::default())
+}
+
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
+    match msg {
+        QueryMsg::ContractInfo {} => to_binary(&query_contract_info(deps)?),
+        QueryMsg::CollateralInfo { borrower, loan_id } => {
+            to_binary(&query_collateral_info(deps, borrower, loan_id)?)
+        }
+        QueryMsg::BorrowerInfo { borrower } => to_binary(&query_borrower_info(deps, borrower)?),
+    }
+}
+
 pub fn set_owner(
     deps: DepsMut,
     _env: Env,
@@ -205,6 +222,7 @@ pub fn deposit_collateral(
                 msg: None,
             },
             address,
+            None,
         )?;
     } else {
         // In case of a CW721
@@ -218,6 +236,7 @@ pub fn deposit_collateral(
                 token_id,
             },
             address,
+            None,
         )?;
     }
 
@@ -666,6 +685,7 @@ pub fn _withdraw_asset(asset: AssetInfo, sender: Addr, recipient: Addr) -> StdRe
                     msg: None,
                 },
                 address,
+                None,
             )
         }
 
@@ -678,20 +698,10 @@ pub fn _withdraw_asset(asset: AssetInfo, sender: Addr, recipient: Addr) -> StdRe
                     token_id,
                 },
                 address,
+                None,
             )
         }
         _ => Err(StdError::generic_err("Unreachable error")),
-    }
-}
-
-#[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
-    match msg {
-        QueryMsg::ContractInfo {} => to_binary(&query_contract_info(deps)?),
-        QueryMsg::CollateralInfo { borrower, loan_id } => {
-            to_binary(&query_collateral_info(deps, borrower, loan_id)?)
-        }
-        QueryMsg::BorrowerInfo { borrower } => to_binary(&query_borrower_info(deps, borrower)?),
     }
 }
 
@@ -1519,7 +1529,8 @@ pub mod tests {
                             value: Uint128::new(45u128),
                             msg: None,
                         },
-                        "nft"
+                        "nft",
+                        None
                     )
                     .unwrap()
                 ),
@@ -1646,7 +1657,8 @@ pub mod tests {
                             value: Uint128::new(50u128),
                             msg: None,
                         },
-                        "nft"
+                        "nft",
+                        None
                     )
                     .unwrap()
                 ),

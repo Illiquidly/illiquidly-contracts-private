@@ -10,9 +10,6 @@ pub enum ContractError {
     #[error("Unauthorized")]
     Unauthorized {},
 
-    #[error("Please be careful what you send, some sthings are not possible")]
-    MalformedMessage {},
-
     #[error("An unplanned bug just happened :/")]
     ContractBug {},
 

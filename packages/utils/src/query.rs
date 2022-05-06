@@ -3,7 +3,9 @@ use cosmwasm_std::{to_binary, Addr, Deps, QueryRequest, StdError, StdResult, Was
 use p2p_trading_export::msg::QueryMsg as P2PQueryMsg;
 use p2p_trading_export::state::TradeInfo;
 
-pub fn load_accepted_trade(
+/// Load a trade and the provided counter trade
+/// If it isn't provided, the function will try to query the accepted counter trade if it exists
+pub fn load_trade_and_accepted_counter_trade(
     deps: Deps,
     p2p_contract: Addr,
     trade_id: u64,
@@ -22,11 +24,12 @@ pub fn load_accepted_trade(
         }
     };
 
-    let counter_info = load_counter_trade(deps, p2p_contract.clone(), trade_id, counter_id)?;
+    let counter_info = load_counter_trade(deps, p2p_contract, trade_id, counter_id)?;
 
     Ok((trade_info, counter_info))
 }
 
+/// Load a trade from the P2P contract
 pub fn load_trade(deps: Deps, p2p_contract: Addr, trade_id: u64) -> StdResult<TradeInfo> {
     deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
         contract_addr: p2p_contract.to_string(),
@@ -34,6 +37,7 @@ pub fn load_trade(deps: Deps, p2p_contract: Addr, trade_id: u64) -> StdResult<Tr
     }))
 }
 
+/// Load a counter_trade from the P2P contract
 pub fn load_counter_trade(
     deps: Deps,
     p2p_contract: Addr,

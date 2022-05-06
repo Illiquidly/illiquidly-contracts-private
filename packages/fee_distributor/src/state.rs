@@ -1,4 +1,4 @@
-use cosmwasm_std::Addr;
+use cosmwasm_std::{Addr, Uint128};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -7,6 +7,6 @@ use serde::{Deserialize, Serialize};
 pub struct ContractInfo {
     pub name: String,
     pub owner: Addr,
-    pub p2p_contract: Addr,
-    pub team: Addr,
+    pub treasury: Addr,
+    pub projects_allocation: Uint128, // In percent
 }
