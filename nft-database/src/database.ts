@@ -18,6 +18,7 @@ import axios from 'axios';
 
 type Nullable<T> = T | null;
 
+
 const UPDATE_INTERVAL = 60_000;
 const IDLE_UPDATE_INTERVAL = 20_000;
 const PORT = 8080;
@@ -402,7 +403,8 @@ async function main() {
                 IDLE_UPDATE_INTERVAL)
         ) {
           if (!isLocked) {
-            await releaseUpdateLock(lock);
+            await releaseUpdateLock(lock)
+            .catch((error) => console.log("Lock couldn't be released : ", error));
           }
           await res.status(200).send(serialise(currentData));
           return;

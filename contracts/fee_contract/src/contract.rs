@@ -265,9 +265,9 @@ pub fn update_fee_rates(
 
     // We verify the rates are ordered
     let new_fee_rates = FEE_RATES.load(deps.storage)?;
-    if new_fee_rates.second_teer_limit <= new_fee_rates.first_teer_limit{
-        return Err(ContractError::TeersNotOrdered{})
-    } 
+    if new_fee_rates.second_teer_limit <= new_fee_rates.first_teer_limit {
+        return Err(ContractError::TeersNotOrdered {});
+    }
 
     Ok(Response::new().add_attribute("updated", "fee_rates"))
 }
