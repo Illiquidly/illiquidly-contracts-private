@@ -369,7 +369,7 @@ async function main() {
       let official_list: any = await axios
         .get(`https://assets.terra.money/cw721/contracts.json`);
       let local_list: any = require('../nft_list.json');
-      let nft_list = {...official_list.data[network], ...local_list};
+      let nft_list = {...official_list.data[network], ...local_list[network]};
       await res.status(200).send(nft_list);
     }
   })

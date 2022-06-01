@@ -1,6 +1,8 @@
 import { LCDClient, TxLog } from '@terra-money/terra.js';
 import axios from 'axios';
 import pLimit from 'p-limit';
+var _ = require('lodash');
+
 const limitNFT = pLimit(10);
 const limitToken = pLimit(50);
 const AXIOS_TIMEOUT = 10_000;
@@ -12,7 +14,7 @@ export interface TxInterval {
 
 export const chains: any = {
   testnet: {
-    URL: 'https://bombay.stakesystems.io',
+    URL: "https://bombay-lcd.terra.dev/",
     chainID: 'bombay-12'
   },
   mainnet: {
@@ -31,7 +33,6 @@ function addFromWasmEvents(tx: any, nftsInteracted: any) {
     for (let log of tx.logs) {
       let parsedLog = new TxLog(log.msg_index, log.log, log.events);
       let from_contract = parsedLog.eventsByType.from_contract;
-      //console.log(from_contract)
       if (from_contract) {
         if (from_contract.action) {
           if (
@@ -145,7 +146,8 @@ export async function updateInteractedNfts(
       }
       if (newNfts) {
         newNfts.forEach((nft) => nftsInteracted.add(nft));
-        if (callback) {
+        console.log(newNfts.size)
+	if (callback) {
           await callback(newNfts, {
             newest: newestTxIdSeen,
             oldest: lastTxIdSeen
@@ -164,6 +166,13 @@ async function getOneTokenBatchFromNFT(
   nft: string,
   start_after: string | undefined = undefined
 ) {
+
+	console.log({
+		tokens: {
+			owner: address,
+			start_after: start_after
+		}
+	})	
   return lcdClient.wasm
     .contractQuery(nft, {
       tokens: {
@@ -197,8 +206,8 @@ async function parseTokensFromOneNft(
 ) {
   let tokens: any;
   let start_after: string | undefined = undefined;
+  let last_tokens: any;
   let allTokens: any = {};
-
   do {
     tokens = await getOneTokenBatchFromNFT(
       lcdClient,
@@ -206,7 +215,6 @@ async function parseTokensFromOneNft(
       nft,
       start_after
     );
-
     if (tokens && tokens.length > 0) {
       start_after = tokens[tokens.length - 1].tokenId;
       let tokenExport = Object.assign(
@@ -215,6 +223,11 @@ async function parseTokensFromOneNft(
       );
       allTokens = { ...allTokens, ...tokenExport };
     }
+	if(_.isEqual(last_tokens, tokens) && tokens){
+		// If we have the same response twice, we stop, it's not right
+		tokens = undefined;
+	}
+	last_tokens = tokens;
   } while (tokens && tokens.length > 0);
 
   if (Object.keys(allTokens).length === 0) {

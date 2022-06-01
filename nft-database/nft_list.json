@@ -3,12 +3,12 @@
         
     },
     "testnet": {
-        "address": {
-            "contract": "address",
-            "name": "Levana cards",
-            "symbol": "LEV",
-            "icon": "https://plain-leaf-4762.on.fleek.co/logo.png",
-            "homepage": "https://factions.levana.finance/"
-        }
+   	"terra19hasymrgld7794e3xg4uddp9lnmvlldhyj09es":{
+		"contract": "terra19hasymrgld7794e3xg4uddp9lnmvlldhyj09es",
+		"name": "Levana Dragons",
+		"symbol": "LEV",
+		"icon": "https://factions.levana.finance/favicon.ico",
+		"homepage": "https://factions.levana.finance/"
+	}	
     }
 }
