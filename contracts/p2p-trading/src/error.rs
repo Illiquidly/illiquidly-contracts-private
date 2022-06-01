@@ -10,9 +10,6 @@ pub enum ContractError {
     #[error("Unauthorized")]
     Unauthorized {},
 
-    #[error("Please be careful what you send, some sthings are not possible")]
-    MalformedMessage {},
-
     #[error("An unplanned bug just happened :/")]
     ContractBug {},
 
@@ -21,6 +18,11 @@ pub enum ContractError {
 
     #[error("Key does not exist in TradeInfo")]
     NotFoundInTradeInfo {},
+
+    #[error(
+        "The trade_id field should be present when modifying the last counter_trade submitted"
+    )]
+    TradeIdMissing {},
 
     #[error("Trader not creator of the trade")]
     TraderNotCreator {},
@@ -43,23 +45,11 @@ pub enum ContractError {
     #[error("Can change the state of the trade from {from:?} to {to:?}")]
     CantChangeTradeState { from: TradeState, to: TradeState },
 
-    #[error("Can change the state of the counter-trade from {from:?} to {to:?}")]
-    CantChangeCounterTradeState { from: TradeState, to: TradeState },
-
-    #[error("Sorry, you can't accept a counter trade that is not published yet")]
-    CantAcceptNotPublishedCounter {},
-
     #[error("Sorry, you can't accept a counter trade that is not published yet")]
     TradeAlreadyAccepted {},
 
     #[error("Sorry, the trade is published, you can't modify it. You can cancel it if you're not satisfied")]
     TradeAlreadyPublished {},
-
-    #[error("Sorry, the counter trade is published, you can't modify it. You can cancel it if you're not satisfied")]
-    CounterTradeAlreadyPublished {},
-
-    #[error("Sorry, the trade has to be refused or cancelled to withdraw your funds")]
-    CounterTradeNotAborted {},
 
     #[error("Sorry, this trade is not accepted yet")]
     TradeNotAccepted {},
@@ -73,9 +63,33 @@ pub enum ContractError {
     #[error("Assets were already withdrawn, don't try to scam the platform please")]
     TradeAlreadyWithdrawn {},
 
+    #[error("Can change the state of the counter-trade from {from:?} to {to:?}")]
+    CantChangeCounterTradeState { from: TradeState, to: TradeState },
+
+    #[error("Sorry, you can't accept a counter trade that is not published yet")]
+    CantAcceptNotPublishedCounter {},
+
+    #[error("Sorry, the counter trade is published, you can't modify it. You can cancel it if you're not satisfied")]
+    CounterTradeAlreadyPublished {},
+
+    #[error("Sorry, the trade has to be refused or cancelled to withdraw your funds")]
+    CounterTradeNotAborted {},
+
     #[error("Only the trader or the counter-trader can withdraw assets, don't try to scam the platform please")]
     NotWithdrawableByYou {},
 
     #[error("This trade is only allowed to a selected few, sorry :/")]
     AddressNotWhitelisted {},
+
+    #[error(
+        "Asset not found in your trade (wrong position or wrong asset specified or wrong token_id)"
+    )]
+    AssetNotFound { position: usize },
+
+    #[error("Asset found in your trade but you are trying to withdraw too much. address: {address:?}, wanted: {wanted:?}, available {available:?}")]
+    TooMuchWithdrawn {
+        address: String,
+        wanted: u128,
+        available: u128,
+    },
 }

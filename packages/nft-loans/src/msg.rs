@@ -3,13 +3,16 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use utils::msg::is_valid_name;
 
-use crate::state::LoanTerms;
+use crate::state::{CollateralInfo, LoanTerms};
+
+#[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
+pub struct MigrateMsg {}
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
 pub struct InstantiateMsg {
     pub name: String,
     pub owner: Option<String>,
-    pub treasury: String,
+    pub fee_distributor: String,
     pub fee_rate: Uint128,
 }
 
@@ -88,22 +91,12 @@ pub enum ExecuteMsg {
     SetOwner {
         owner: String,
     },
-    SetTreasury {
-        treasury: String,
+    SetFeeDistributor {
+        fee_depositor: String,
     },
     SetFeeRate {
         fee_rate: Uint128,
     },
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema, Default)]
-#[serde(rename_all = "snake_case")]
-pub struct QueryFilters {
-    pub states: Option<Vec<String>>,
-    pub owner: Option<String>,
-    pub whitelisted_user: Option<String>,
-    pub contains_token: Option<String>,
-    pub wanted_nft: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -112,4 +105,21 @@ pub enum QueryMsg {
     ContractInfo {},
     CollateralInfo { borrower: String, loan_id: u64 },
     BorrowerInfo { borrower: String },
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct CollateralResponse {
+    pub borrower: String,
+    pub loan_id: u64,
+    pub collateral: CollateralInfo,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct OfferResponse {
+    pub lender: String,
+    pub borrower: String,
+    pub loan_id: u64,
+    pub offer_id: u64,
 }

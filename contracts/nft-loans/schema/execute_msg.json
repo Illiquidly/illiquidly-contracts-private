@@ -297,6 +297,33 @@
     {
       "type": "object",
       "required": [
+        "force_default"
+      ],
+      "properties": {
+        "force_default": {
+          "type": "object",
+          "required": [
+            "borrower",
+            "loan_id"
+          ],
+          "properties": {
+            "borrower": {
+              "type": "string"
+            },
+            "loan_id": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "Used only when the loan can be paid back late",
+      "type": "object",
+      "required": [
         "withdraw_defaulted_loan"
       ],
       "properties": {
@@ -401,21 +428,11 @@
     "DefaultTerms": {
       "type": "object",
       "required": [
-        "can_payback_late"
+        "late_payback_rate"
       ],
       "properties": {
-        "can_payback_late": {
-          "type": "boolean"
-        },
         "late_payback_rate": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/Uint128"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "$ref": "#/definitions/Uint128"
         }
       }
     },

@@ -5,7 +5,7 @@ let env_name: string;
 if (process.argv[2]) {
   env_name = process.argv[2];
 } else {
-  env_name = 'production';
+  env_name = 'dev';
 }
 env = env[env_name];
 

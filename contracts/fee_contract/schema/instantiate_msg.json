@@ -3,12 +3,22 @@
   "title": "InstantiateMsg",
   "type": "object",
   "required": [
+    "fee_distributor",
     "name",
     "p2p_contract"
   ],
   "properties": {
+    "fee_distributor": {
+      "type": "string"
+    },
     "name": {
       "type": "string"
+    },
+    "owner": {
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "p2p_contract": {
       "type": "string"

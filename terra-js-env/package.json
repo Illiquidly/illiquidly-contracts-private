@@ -20,6 +20,8 @@
     "loan-flow-test": "node dist/loans/loan_flow.js",
     "loan-query": "node dist/loans/loan_query.js",
     "upload-nft": "node dist/nft/upload_new_nft.js",
+    "migrate": "node dist/P2P/migrate_p2p.js",
+    "depositor-test": "node dist/depositor/deposit_test.js",
     "prettier-format": "prettier --config .prettierrc 'src/**/*.ts' --write"
   },
   "keywords": [

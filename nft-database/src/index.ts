@@ -17,15 +17,20 @@ export const chains: any = {
     URL: "https://bombay-lcd.terra.dev/",
     chainID: 'bombay-12'
   },
-  mainnet: {
-    URL: 'https://lcd.terra.dev',
+  classic: {
+    URL: 'https://columbus-lcd.terra.dev',
     chainID: 'columbus-5'
+  },
+  mainnet: {
+    URL: 'https://phoenix-lcd.terra.dev',
+    chainID: 'phoenix-1'
   }
 };
 
 export let fcds: any = {
-  testnet: 'https://bombay-fcd.terra.dev',
-  mainnet: 'https://fcd.terra.dev'
+  testnet: 'https://pisco-fcd.terra.dev',
+  classic: 'https://columbus-fcd.terra.dev',
+  mainnet: 'https://phoenix-fcd.terra.dev'
 };
 
 function addFromWasmEvents(tx: any, nftsInteracted: any) {
@@ -60,7 +65,7 @@ function addFromMsg(tx: any, nftsInteracted: any) {
       }
     }
   }
-  return nftsInteracted;
+  return nftsInteracted; 
 }
 
 function getNftsFromTxList(tx_data: any): [Set<string>, number, number] {

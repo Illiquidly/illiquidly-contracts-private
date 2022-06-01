@@ -34,6 +34,9 @@ pub struct InstantiateMsg {
     pub owner: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
+pub struct MigrateMsg {}
+
 impl InstantiateMsg {
     pub fn validate(&self) -> StdResult<()> {
         // Check name, symbol, decimals

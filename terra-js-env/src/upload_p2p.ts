@@ -1,5 +1,7 @@
 import { Address } from './terra_utils';
 import { env, add_uploaded_token, add_contract } from './env_helper';
+import {MsgMigrateContract, MsgUpdateContractAdmin } from "@terra-money/terra.js";
+import * as fs from 'fs';
 
 /// Here we want to upload the p2p contract and add the fee contract
 async function main() {
@@ -13,6 +15,10 @@ async function main() {
   let fee_codeId: string[] = await handler.uploadContract(
     '../artifacts/fee_contract.wasm'
   );
+  let feeDistributor_codeId: string[] = await handler.uploadContract(
+    '../artifacts/fee_distributor.wasm'
+  );
+
 
   // Initialize p2p contract
   let p2pInitMsg = {
@@ -24,11 +30,25 @@ async function main() {
 
   console.log('Uploaded the p2p contract');
 
+  // Initialize fee_distributor contract
+  let feeDistributorInitMsg = {
+    name: 'feeDistributor',
+    treasury: handler.getAddress()
+  };
+
+  let feeDistributor = await handler.instantiateContract(+feeDistributor_codeId[0],  feeDistributorInitMsg);
+  add_contract('fee_distributor', feeDistributor.address);
+
+  console.log('Uploaded the distributor contract');
+
+
+
   // Initialize fee contract
   let feeInitMsg = {
     name: 'FirstFeeContract',
     p2p_contract: p2p.address,
-    treasury: handler.getAddress()
+    treasury: handler.getAddress(),
+    fee_distributor: feeDistributor.address
   };
 
   let fee = await handler.instantiateContract(+fee_codeId[0], feeInitMsg);

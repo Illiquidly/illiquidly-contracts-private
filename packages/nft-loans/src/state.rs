@@ -56,13 +56,6 @@ pub struct LoanTerms {
     pub principle: Coin,
     pub interest: Uint128,
     pub duration_in_blocks: u64,
-    pub default_terms: Option<DefaultTerms>,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema, Default)]
-#[serde(rename_all = "snake_case")]
-pub struct DefaultTerms {
-    pub late_payback_rate: Uint128, // (100%/block = 10_000_000)
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug, strum_macros::Display)]
@@ -89,6 +82,6 @@ pub enum OfferState {
 pub struct ContractInfo {
     pub name: String,
     pub owner: Addr,
-    pub treasury: String,
+    pub fee_distributor: String,
     pub fee_rate: Uint128,
 }

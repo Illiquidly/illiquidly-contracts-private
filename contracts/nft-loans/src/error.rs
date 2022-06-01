@@ -10,9 +10,6 @@ pub enum ContractError {
     #[error("Unauthorized")]
     Unauthorized {},
 
-    #[error("Please be careful what you send, some sthings are not possible")]
-    MalformedMessage {},
-
     #[error("An unplanned bug just happened :/")]
     ContractBug {},
 
@@ -24,6 +21,9 @@ pub enum ContractError {
 
     #[error("Sorry, your asset is not withdrawable at this stage")]
     NotWithdrawable {},
+
+    #[error("Sorry, your asset is not withdrawable at this stage")]
+    NotModifiable {},
 
     #[error("Sorry, no assets to withdraw here")]
     NoFundsToWithdraw {},
@@ -46,9 +46,9 @@ pub enum ContractError {
     #[error("Wrong state of the loan for the current operation : {state:?}")]
     WrongLoanState { state: LoanState },
 
-    #[error("Wrong state of the offer for the current operation : {state:?}")]
-    WrongOfferState { state: OfferState },
-
     #[error("Can change the state of the offer from {from:?} to {to:?}")]
     CantChangeOfferState { from: OfferState, to: OfferState },
+
+    #[error("The loan has already been defaulted, you can't withdraw the funds again")]
+    LoanAlreadyDefaulted {},
 }

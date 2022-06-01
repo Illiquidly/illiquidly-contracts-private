@@ -26,10 +26,8 @@ async function main() {
   let punk = "terra1pk646xtdgwym74k46cajttdu6uvypa5jw5wa3j"
   let nft_contract = handler.getContract(punk);
 
-  let bl = await nft_contract.execute.bluoi();
-  console.log("quid",bl);
-
-
+  console.log(await fee.query.contract_info());
+  
   let response: any;
   response = await p2p.query.contract_info();
   console.log(response);
@@ -79,33 +77,6 @@ async function main() {
     }
   }
 
-  console.log("All countererded now : ");
-  c = true;
-  start_after = undefined;
-  while (c) {
-    console.log({
-      start_after: start_after,
-      limit: 10,
-      filters: {
-        states: ['Countered'],
-        counterer: handler.getAddress()
-      }})
-    response = await p2p.query.get_all_trades({
-      start_after: start_after,
-      limit: 10,
-      filters: {
-        states: ['Countered'],
-        counterer: handler.getAddress()
-      }
-    });
-    console.log(response);
-    if (response && response.trades && response.trades.length > 0) {
-      start_after = response.trades[response.trades.length - 1].trade_id;
-    } else {
-      c = false;
-    }
-  }
-
   console.log("All counterers, like all of them now : ");
   c = true;
   let start_after_any: any = undefined;
@@ -131,6 +102,26 @@ async function main() {
       c = false;
     }
   }
+
+  console.log("All trades, like all of them now : ");
+  c = true;
+  start_after = undefined;
+   while (c) {
+    //console.log(start_after)
+    response = await p2p.query.get_all_trades({
+      start_after: start_after,
+      limit: 20,
+      filters: {
+      }
+    });
+    console.log(response);
+    if (response && response.trades && response.trades.length > 0) {
+      start_after = response.trades[response.trades.length - 1].trade_id;
+    } else {
+      c = false;
+    }
+  }
+  
 }
 
 main()

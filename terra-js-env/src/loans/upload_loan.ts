@@ -1,5 +1,5 @@
 import { Address } from '../terra_utils';
-import { env, add_uploaded_token, add_contract } from '../env_helper';
+import { env, add_contract } from '../env_helper';
 
 /// Here we want to upload the p2p contract and add the fee contract
 async function main() {
@@ -13,7 +13,7 @@ async function main() {
   // Initialize p2p contract
   let loanInitMsg = {
     name: 'P2PLoans',
-    treasury: handler.getAddress(),
+    fee_distributor: env.contracts.fee_distributor,
     fee_rate: '5000'
   };
 
@@ -24,7 +24,7 @@ async function main() {
 }
 
 main()
-  .then((resp) => {})
+  .then(() => {})
   .catch((err) => {
     console.log(err);
   });

@@ -16,15 +16,15 @@ pub const COUNTER_TRADE_INFO: Map<(U64Key, U64Key), TradeInfo> = Map::new("count
 pub fn add_funds(
     fund: Coin,
     info_funds: Vec<Coin>,
-) -> impl FnOnce(Option<TradeInfo>) -> StdResult<TradeInfo> {
-    move |d: Option<TradeInfo>| -> StdResult<TradeInfo> {
+) -> impl FnOnce(Option<TradeInfo>) -> Result<TradeInfo, ContractError> {
+    move |d: Option<TradeInfo>| -> Result<TradeInfo, ContractError> {
         match d {
             Some(mut trade) => {
                 // We check the sent funds are with the right format
                 if info_funds.len() != 1 || fund != info_funds[0] {
-                    return Err(StdError::generic_err(
+                    return Err(ContractError::Std(StdError::generic_err(
                         "Funds sent do not match message AssetInfo",
-                    ));
+                    )));
                 }
                 let existing_denom = trade.associated_assets.iter_mut().find(|c| match c {
                     AssetInfo::Coin(x) => x.denom == fund.denom,
@@ -46,9 +46,7 @@ pub fn add_funds(
                 Ok(trade)
             }
             //TARPAULIN : Unreachable in current code state
-            None => Err(StdError::GenericErr {
-                msg: "Trade Id not found !".to_string(),
-            }),
+            None => Err(ContractError::NotFoundInTradeInfo {}),
         }
     }
 }
@@ -56,8 +54,8 @@ pub fn add_funds(
 pub fn add_cw20_coin(
     address: String,
     sent_amount: Uint128,
-) -> impl FnOnce(Option<TradeInfo>) -> StdResult<TradeInfo> {
-    move |d: Option<TradeInfo>| -> StdResult<TradeInfo> {
+) -> impl FnOnce(Option<TradeInfo>) -> Result<TradeInfo, ContractError> {
+    move |d: Option<TradeInfo>| -> Result<TradeInfo, ContractError> {
         match d {
             Some(mut trade) => {
                 let existing_token = trade.associated_assets.iter_mut().find(|c| match c {
@@ -83,9 +81,7 @@ pub fn add_cw20_coin(
                 Ok(trade)
             }
             //TARPAULIN : Unreachable in current code state
-            None => Err(StdError::GenericErr {
-                msg: "Trade Id not found !".to_string(),
-            }),
+            None => Err(ContractError::NotFoundInTradeInfo {}),
         }
     }
 }
@@ -93,8 +89,8 @@ pub fn add_cw20_coin(
 pub fn add_cw721_coin(
     address: String,
     token_id: String,
-) -> impl FnOnce(Option<TradeInfo>) -> StdResult<TradeInfo> {
-    move |d: Option<TradeInfo>| -> StdResult<TradeInfo> {
+) -> impl FnOnce(Option<TradeInfo>) -> Result<TradeInfo, ContractError> {
+    move |d: Option<TradeInfo>| -> Result<TradeInfo, ContractError> {
         match d {
             Some(mut one) => {
                 one.associated_assets
@@ -102,9 +98,7 @@ pub fn add_cw721_coin(
                 Ok(one)
             }
             //TARPAULIN : Unreachable in current code state
-            None => Err(StdError::GenericErr {
-                msg: "Trade Id not found !".to_string(),
-            }),
+            None => Err(ContractError::NotFoundInTradeInfo {}),
         }
     }
 }
@@ -113,8 +107,8 @@ pub fn add_cw1155_coin(
     address: String,
     token_id: String,
     value: Uint128,
-) -> impl FnOnce(Option<TradeInfo>) -> StdResult<TradeInfo> {
-    move |d: Option<TradeInfo>| -> StdResult<TradeInfo> {
+) -> impl FnOnce(Option<TradeInfo>) -> Result<TradeInfo, ContractError> {
+    move |d: Option<TradeInfo>| -> Result<TradeInfo, ContractError> {
         match d {
             Some(mut trade) => {
                 let existing_token = trade.associated_assets.iter_mut().find(|c| match c {
@@ -144,9 +138,7 @@ pub fn add_cw1155_coin(
                 Ok(trade)
             }
             //TARPAULIN : Unreachable in current code state
-            None => Err(StdError::GenericErr {
-                msg: "Trade Id not found !".to_string(),
-            }),
+            None => Err(ContractError::NotFoundInTradeInfo {}),
         }
     }
 }
@@ -214,7 +206,7 @@ pub fn get_actual_counter_state(
         TradeState::Cancelled => counter_info.state = TradeState::Cancelled,
         TradeState::Accepted => match counter_info.state {
             TradeState::Accepted => {}
-            _ => counter_info.state = TradeState::Cancelled,
+            _ => counter_info.state = TradeState::Refused,
         },
         _ => {}
     }

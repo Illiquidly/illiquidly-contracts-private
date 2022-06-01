@@ -18,6 +18,7 @@ import axios from 'axios';
 
 type Nullable<T> = T | null;
 
+
 const UPDATE_INTERVAL = 60_000;
 const IDLE_UPDATE_INTERVAL = 20_000;
 const PORT = 8080;
@@ -194,8 +195,6 @@ async function updateOwnedAndSave(
       ...currentData
     });
   }
-  console.log(new_txs)
-  console.log(currentData.txs.external,currentData.txs.internal)
 
   // If there is an interval, we init the interval data
   if (
@@ -206,8 +205,6 @@ async function updateOwnedAndSave(
     currentData.txs.internal.newest = new_txs.oldest;
     currentData.txs.internal.oldest = currentData.txs.external.newest;  
   }
-  console.log(new_txs)
-  console.log(currentData.txs.external,currentData.txs.internal)
 
   // We fill the internal hole first
   if(
@@ -406,7 +403,8 @@ async function main() {
                 IDLE_UPDATE_INTERVAL)
         ) {
           if (!isLocked) {
-            await releaseUpdateLock(lock);
+            await releaseUpdateLock(lock)
+            .catch((error) => console.log("Lock couldn't be released : ", error));
           }
           await res.status(200).send(serialise(currentData));
           return;
