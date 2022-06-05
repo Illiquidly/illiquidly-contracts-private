@@ -29,7 +29,7 @@ import axios from 'axios';
 type Nullable<T> = T | null;
 
 const UPDATE_DESPITE_LOCK_TIME = 60_000;
-const IDLE_UPDATE_INTERVAL = 20_0;
+const IDLE_UPDATE_INTERVAL = 20_000;
 const PORT = 8080;
 const QUERY_TIMEOUT = 50_000;
 
