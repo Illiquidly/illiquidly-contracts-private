@@ -1,11 +1,13 @@
 use crate::error::ContractError;
 #[cfg(not(feature = "library"))]
-use anyhow::Result;
-use cosmwasm_std::{BankMsg, Coin, DepsMut, Env, MessageInfo, Response, StdResult, Uint128};
+use anyhow::{anyhow, Result};
+use cosmwasm_std::{
+    BankMsg, Coin, DepsMut, Env, MessageInfo, Response, StdResult, Storage, Uint128,
+};
 use cw20::Cw20ExecuteMsg;
 use cw20_base::allowances::execute_burn_from;
 use cw20_base::contract::execute_burn;
-use cw20_base::state::{TOKEN_INFO, BALANCES};
+use cw20_base::state::{BALANCES, TOKEN_INFO};
 use cw_4626::state::{AssetInfo, State, STATE};
 use utils::msg::into_cosmos_msg;
 
@@ -282,7 +284,7 @@ pub fn _execute_mint(
 
 // Borrow mecanism
 /// Withdraw some underlying asset, with no repercussion.
-/// A configuration error could lead to draining of assets 
+/// A configuration error could lead to draining of assets
 pub fn borrow(
     deps: DepsMut,
     _env: Env,
@@ -292,10 +294,9 @@ pub fn borrow(
 ) -> Result<Response> {
     let mut state = STATE.load(deps.storage)?;
     // Only the authorized address can borrow assets (this usually is a contract address)
-    if state.borrower.is_none() || info.sender != state.borrower.clone().unwrap(){
-        return Err(anyhow::anyhow!(ContractError::Unauthorized{}))
+    if state.borrower.is_none() || info.sender != state.borrower.clone().unwrap() {
+        return Err(anyhow::anyhow!(ContractError::Unauthorized {}));
     }
-
 
     // We update the internal state of the contract, more assets were borrowed
     state.total_assets_borrowed += assets;
@@ -320,25 +321,9 @@ pub fn repay(
     info: MessageInfo,
     owner: Option<String>,
     assets: Uint128,
-) -> Result<Response, ContractError> {
-    let mut state = STATE.load(deps.storage)?;
-
-    // Cannot deposit 0 amount
-    if assets == Uint128::zero() {
-        return Err(ContractError::ZeroDeposit {});
-    };
-    // Then we update the total debt
-    // If the current debt is higher than the repay amount, we repay some of the debt with the deposit
-    // Else we repay all the debt and simply deposit the rest in the contract without minting new vault tokens
-    let debt_repaid = 
-        if state.total_assets_borrowed > assets{
-            state.total_assets_borrowed -= assets;
-            assets
-        }else{
-            state.total_assets_borrowed = Uint128::zero();
-            state.total_assets_borrowed
-        };
-    STATE.save(deps.storage, &state)?;
+) -> Result<Response> {
+    let debt_repaid = _repay(deps.storage, assets)?;
+    let state = STATE.load(deps.storage)?;
 
     // Then we make sure the funds are correctly deposited to the contract
     let res = Response::new();
@@ -346,15 +331,15 @@ pub fn repay(
         AssetInfo::Coin(x) => {
             // We need to check if the funds sent match the AssetInfo we have
             if info.funds.len() != 1 || info.funds[0].denom != x {
-                return Err(ContractError::WrongAssetDeposited {
+                return Err(anyhow!(ContractError::WrongAssetDeposited {
                     sent: info.funds[0].denom.clone(),
                     expected: x,
-                });
+                }));
             } else if assets != info.funds[0].amount {
-                return Err(ContractError::InsufficientAssetDeposited {
+                return Err(anyhow!(ContractError::InsufficientAssetDeposited {
                     sent: info.funds[0].amount,
                     expected: assets,
-                });
+                }));
             }
             res
         }
@@ -362,7 +347,7 @@ pub fn repay(
             // If the vault relies on a CW20, we create a CW20 transferFrom message
             res.add_message(into_cosmos_msg(
                 Cw20ExecuteMsg::TransferFrom {
-                    owner: owner.unwrap_or(info.sender.to_string()),
+                    owner: owner.unwrap_or_else(|| info.sender.to_string()),
                     recipient: env.contract.address.into(),
                     amount: assets,
                 },
@@ -377,72 +362,26 @@ pub fn repay(
         .add_attribute("caller", info.sender)
         .add_attribute("assets", assets.to_string())
         .add_attribute("debt_repaid", debt_repaid.to_string())
-        .add_attribute("raw_deposit", (assets-debt_repaid).to_string())
-        )
+        .add_attribute("raw_deposit", (assets - debt_repaid).to_string()))
 }
 
-pub fn repay_from(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    assets: Uint128,
-) -> Result<Response, ContractError> {
-    let mut state = STATE.load(deps.storage)?;
+pub fn _repay(storage: &mut dyn Storage, assets: Uint128) -> Result<Uint128> {
+    let mut state = STATE.load(storage)?;
 
     // Cannot deposit 0 amount
     if assets == Uint128::zero() {
-        return Err(ContractError::ZeroDeposit {});
+        return Err(anyhow!(ContractError::ZeroDeposit {}));
     };
     // Then we update the total debt
     // If the current debt is higher than the repay amount, we repay some of the debt with the deposit
     // Else we repay all the debt and simply deposit the rest in the contract without minting new vault tokens
-    let debt_repaid = 
-        if state.total_assets_borrowed > assets{
-            state.total_assets_borrowed -= assets;
-            assets
-        }else{
-            state.total_assets_borrowed = Uint128::zero();
-            state.total_assets_borrowed
-        };
-    STATE.save(deps.storage, &state)?;
-
-    // Then we make sure the funds are correctly deposited to the contract
-    let res = Response::new();
-    let res = match state.underlying_asset {
-        AssetInfo::Coin(x) => {
-            // We need to check if the funds sent match the AssetInfo we have
-            if info.funds.len() != 1 || info.funds[0].denom != x {
-                return Err(ContractError::WrongAssetDeposited {
-                    sent: info.funds[0].denom.clone(),
-                    expected: x,
-                });
-            } else if assets != info.funds[0].amount {
-                return Err(ContractError::InsufficientAssetDeposited {
-                    sent: info.funds[0].amount,
-                    expected: assets,
-                });
-            }
-            res
-        }
-        AssetInfo::Cw20(x) => {
-            // If the vault relies on a CW20, we create a CW20 transferFrom message
-            res.add_message(into_cosmos_msg(
-                Cw20ExecuteMsg::TransferFrom {
-                    owner: info.sender.to_string(),
-                    recipient: env.contract.address.into(),
-                    amount: assets,
-                },
-                x,
-                None,
-            )?)
-        }
+    let debt_repaid = if state.total_assets_borrowed > assets {
+        state.total_assets_borrowed -= assets;
+        assets
+    } else {
+        state.total_assets_borrowed = Uint128::zero();
+        state.total_assets_borrowed
     };
-
-    Ok(res
-        .add_attribute("action", "repay")
-        .add_attribute("caller", info.sender)
-        .add_attribute("assets", assets.to_string())
-        .add_attribute("debt_repaid", debt_repaid.to_string())
-        .add_attribute("raw_deposit", (assets-debt_repaid).to_string())
-        )
+    STATE.save(storage, &state)?;
+    Ok(debt_repaid)
 }

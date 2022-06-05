@@ -16,7 +16,7 @@ pub struct InstantiateMsg {
     pub mint: Option<MinterResponse>,
     pub marketing: Option<InstantiateMarketingInfo>,
     pub asset: AssetInfo,
-    pub borrower: Option<String>
+    pub borrower: Option<String>,
 }
 
 impl InstantiateMsg {
@@ -143,15 +143,22 @@ pub enum ExecuteMsg {
         receiver: String,
     },
 
-
     // Treasury borrow specific functions (outside of EIP 4626, but still needed in most cases, let us do that plz)
     /// Borrow some underlying assets to get yield elsewhere
-    Borrow {
-        receiver: String,
-        assets: Uint128
-    },
+    Borrow { receiver: String, assets: Uint128 },
     Repay {
         owner: Option<String>,
-        assets: Uint128
-    }
+        assets: Uint128,
+    },
+    Receive {
+        sender: String,
+        amount: Uint128,
+        msg: Binary,
+    },
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum ReceiveMsg {
+    Repay { assets: Uint128 },
 }

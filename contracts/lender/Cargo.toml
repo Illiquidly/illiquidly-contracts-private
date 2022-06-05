@@ -19,6 +19,7 @@ library = []
 
 [dependencies]
 cw721 = "0.9.0"
+cw20 = "0.9.0"
 cw20-base = { version = "0.9.0", features = ["library"] }
 cosmwasm-std = { version = "0.16.0" }
 schemars = "0.8.1"
@@ -26,6 +27,7 @@ serde = { version = "1.0.103", default-features = false, features = ["derive"] }
 thiserror = { version = "1.0.23" }
 cw_4626 = { path = "../../packages/CW4626", version = "0.1.0" }
 lender-export = { path = "../../packages/lender", version = "0.1.0" }
+fee-distributor-export = { path = "../../packages/fee_distributor", version = "0.1.0" }
 utils = { path = "../../packages/utils", version = "0.1.0" }
 primitive-types = {version= "^0.11.0"}
 cosmwasm-bignumber = "^2.2.0"

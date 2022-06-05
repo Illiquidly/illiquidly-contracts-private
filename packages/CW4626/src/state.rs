@@ -16,7 +16,7 @@ pub struct State {
     pub underlying_asset: AssetInfo,
     pub total_underlying_asset_supply: Uint128,
     pub total_assets_borrowed: Uint128,
-    pub borrower: Option<Addr>
+    pub borrower: Option<Addr>,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -46,7 +46,6 @@ pub fn query_asset_liabilities(deps: Deps, _env: Env) -> Result<Uint128, StdErro
     let state = STATE.load(deps.storage)?;
     Ok(state.total_assets_borrowed)
 }
-
 
 pub fn query_fund_balance(deps: Deps, account_addr: Addr, denom: String) -> StdResult<Uint128> {
     // load price form the oracle

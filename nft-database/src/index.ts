@@ -7,31 +7,9 @@ const limitNFT = pLimit(10);
 const limitToken = pLimit(50);
 const AXIOS_TIMEOUT = 10_000;
 
-export interface TxInterval {
-  oldest: number | null;
-  newest: number | null;
-}
-
-export const chains: any = {
-  testnet: {
-    URL: "https://bombay-lcd.terra.dev/",
-    chainID: 'bombay-12'
-  },
-  classic: {
-    URL: 'https://columbus-lcd.terra.dev',
-    chainID: 'columbus-5'
-  },
-  mainnet: {
-    URL: 'https://phoenix-lcd.terra.dev',
-    chainID: 'phoenix-1'
-  }
-};
-
-export let fcds: any = {
-  testnet: 'https://pisco-fcd.terra.dev',
-  classic: 'https://columbus-fcd.terra.dev',
-  mainnet: 'https://phoenix-fcd.terra.dev'
-};
+import {
+  chains, fcds
+} from "./utils/blockchain/chains.js";
 
 function addFromWasmEvents(tx: any, nftsInteracted: any) {
   if (tx.logs) {
@@ -65,7 +43,7 @@ function addFromMsg(tx: any, nftsInteracted: any) {
       }
     }
   }
-  return nftsInteracted; 
+  return nftsInteracted;
 }
 
 function getNftsFromTxList(tx_data: any): [Set<string>, number, number] {
@@ -94,8 +72,8 @@ export async function updateInteractedNfts(
   start: number | null,
   stop: number | null,
   callback: any,
-  hasTimedOut: any = {timeout: false},
-){
+  hasTimedOut: any = { timeout: false }
+) {
   let nftsInteracted: Set<string> = new Set();
   let query_next: boolean = true;
   let limit = 100;
@@ -109,7 +87,7 @@ export async function updateInteractedNfts(
   let newestTxIdSeen: number | null = null;
   let lastTxIdSeen: number | null = null;
   while (query_next) {
-    if(hasTimedOut.timeout){
+    if (hasTimedOut.timeout) {
       return;
     }
     const source = axios.CancelToken.source();
@@ -134,9 +112,9 @@ export async function updateInteractedNfts(
     } else {
       // We query the NFTs from the transaction result and messages
       let [newNfts, lastTxId, newestTxId] = getNftsFromTxList(tx_data);
-      if(lastTxId != 0){
+      if (lastTxId != 0) {
         offset = lastTxId;
-      }else{
+      } else {
         query_next = false;
       }
       if (newestTxIdSeen == null || newestTxId > newestTxIdSeen) {
@@ -151,8 +129,8 @@ export async function updateInteractedNfts(
       }
       if (newNfts) {
         newNfts.forEach((nft) => nftsInteracted.add(nft));
-        console.log(newNfts.size)
-	if (callback) {
+        console.log(newNfts.size);
+        if (callback) {
           await callback(newNfts, {
             newest: newestTxIdSeen,
             oldest: lastTxIdSeen
@@ -171,13 +149,6 @@ async function getOneTokenBatchFromNFT(
   nft: string,
   start_after: string | undefined = undefined
 ) {
-
-	console.log({
-		tokens: {
-			owner: address,
-			start_after: start_after
-		}
-	})	
   return lcdClient.wasm
     .contractQuery(nft, {
       tokens: {
@@ -228,11 +199,11 @@ async function parseTokensFromOneNft(
       );
       allTokens = { ...allTokens, ...tokenExport };
     }
-	if(_.isEqual(last_tokens, tokens) && tokens){
-		// If we have the same response twice, we stop, it's not right
-		tokens = undefined;
-	}
-	last_tokens = tokens;
+    if (_.isEqual(last_tokens, tokens) && tokens) {
+      // If we have the same response twice, we stop, it's not right
+      tokens = undefined;
+    }
+    last_tokens = tokens;
   } while (tokens && tokens.length > 0);
 
   if (Object.keys(allTokens).length === 0) {
@@ -288,10 +259,8 @@ export async function parseNFTSet(
   });
 }
 
-async function main() {
-  let mainnet = 'mainnet';
+export async function main() {
   let testnet = 'testnet';
-  let address = 'terra1pa9tyjtxv0qd5pgqyu6ugtedds0d42wt5rxk4w';
   let testnet_address = 'terra17lmam6zguazs5q5u6z5mmx76uj63gldnse2pdp';
   testnet_address = 'terra17lmam6zguazs5q5u6z5mmx76uj63gldnse2pdp';
 

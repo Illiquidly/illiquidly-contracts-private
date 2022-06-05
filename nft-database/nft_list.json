@@ -2,13 +2,16 @@
     "mainnet": {
         
     },
+    "classic":{
+
+    },
     "testnet": {
-   	"terra19hasymrgld7794e3xg4uddp9lnmvlldhyj09es":{
-		"contract": "terra19hasymrgld7794e3xg4uddp9lnmvlldhyj09es",
-		"name": "Levana Dragons",
-		"symbol": "LEV",
-		"icon": "https://factions.levana.finance/favicon.ico",
-		"homepage": "https://factions.levana.finance/"
-	}	
+	   	"terra19hasymrgld7794e3xg4uddp9lnmvlldhyj09es":{
+			"contract": "terra19hasymrgld7794e3xg4uddp9lnmvlldhyj09es",
+			"name": "Levana Dragons",
+			"symbol": "LEV",
+			"icon": "https://factions.levana.finance/favicon.ico",
+			"homepage": "https://factions.levana.finance/"
+		}	
     }
 }

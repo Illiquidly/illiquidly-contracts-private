@@ -3,9 +3,17 @@
 import {
   updateInteractedNfts,
   parseNFTSet,
-  chains,
-  TxInterval
 } from './index.js';
+
+import {
+  updateInteractedCW20s,
+  parseCW20Set,
+} from "./CW20-querier.js";
+
+
+import {
+  chains 
+} from "./utils/blockchain/chains.js";
 import express from 'express';
 import 'dotenv/config';
 import https from 'https';
@@ -16,38 +24,42 @@ import Redlock from 'redlock';
 import axios from 'axios';
 
 
+
+
 type Nullable<T> = T | null;
 
-
-const UPDATE_INTERVAL = 60_000;
-const IDLE_UPDATE_INTERVAL = 20_000;
+const UPDATE_DESPITE_LOCK_TIME = 60_000;
+const IDLE_UPDATE_INTERVAL = 20_0;
 const PORT = 8080;
 const QUERY_TIMEOUT = 50_000;
 
-enum NFTState {
+enum UpdateState {
   Full,
   Partial,
   isUpdating
 }
 
+interface TxInterval {
+  oldest: number | null;
+  newest: number | null;
+}
 interface TxQueried {
   external: TxInterval;
   internal: TxInterval;
 }
-interface NFTsInteracted {
-  interacted_nfts: Set<string>;
-  owned_nfts: any;
-  state: NFTState;
+
+interface ContractsInteracted {
+  interactedContracts: Set<string>;
+  ownedTokens: any;
+  state: UpdateState;
   txs: TxQueried;
-  last_update_start_time: number;
 }
 
-interface SerializableNFTsInteracted {
-  interacted_nfts: string[];
-  owned_nfts: any;
-  state: NFTState;
+interface SerializableContractsInteracted {
+  interacted_contracts: string[];
+  ownedTokens: any;
+  state: UpdateState;
   txs: TxQueried;
-  last_update_start_time: number;
 }
 
 async function initDB() {
@@ -85,16 +97,16 @@ async function initMutex(db: Redis) {
   return redlock;
 }
 
-function fillEmpty(currentData: Nullable<NFTsInteracted>): NFTsInteracted {
+function fillEmpty(currentData: Nullable<ContractsInteracted>): ContractsInteracted {
   if (!currentData || Object.keys(currentData).length === 0) {
-    return default_api_structure();
+    return defaultContractsApiStructure();
   } else {
     return currentData;
   }
 }
 
 async function acquireUpdateLock(lock: any, key: string) {
-  return await lock.acquire([key + 'updateLock'], UPDATE_INTERVAL);
+  return await lock.acquire([key + 'updateLock'], UPDATE_DESPITE_LOCK_TIME);
 }
 
 async function releaseUpdateLock(lock: any) {
@@ -110,21 +122,21 @@ async function setLastUpdateStartTime(db: any, key: string, time: number) {
   await db.set(key + '_updateStartTime', time);
 }
 
-function serialise(currentData: NFTsInteracted): SerializableNFTsInteracted {
+function serialise(currentData: ContractsInteracted): SerializableContractsInteracted {
   const serialised: any = { ...currentData };
-  if (serialised.interacted_nfts) {
-    serialised.interacted_nfts = Array.from(serialised.interacted_nfts);
+  if (serialised.interactedContracts) {
+    serialised.interactedContracts = Array.from(serialised.interactedContracts);
   }
   return serialised;
 }
 
 function deserialise(
-  serialisedData: SerializableNFTsInteracted
-): NFTsInteracted | null {
+  serialisedData: SerializableContractsInteracted
+): ContractsInteracted | null {
   if (serialisedData) {
     const currentData: any = { ...serialisedData };
-    if (currentData.interacted_nfts) {
-      currentData.interacted_nfts = new Set(currentData.interacted_nfts);
+    if (currentData.interactedContracts) {
+      currentData.interactedContracts = new Set(currentData.interactedContracts);
     }
     return currentData;
   } else {
@@ -132,22 +144,22 @@ function deserialise(
   }
 }
 
-function saveToDb(db: any, key: string, currentData: NFTsInteracted) {
+function saveToDb(db: any, key: string, currentData: ContractsInteracted) {
   const serialisedData = serialise(currentData);
   return db.set(key, JSON.stringify(serialisedData));
 }
 
-async function getDb(db: any, key: string): Promise<NFTsInteracted> {
+async function getDb(db: any, key: string): Promise<ContractsInteracted> {
   const serialisedData = await db.get(key);
   const currentData = deserialise(JSON.parse(serialisedData));
   return fillEmpty(currentData);
 }
 
-function default_api_structure(): NFTsInteracted {
+function defaultContractsApiStructure(): ContractsInteracted {
   return {
-    interacted_nfts: new Set(),
-    owned_nfts: {},
-    state: NFTState.Full,
+    interactedContracts: new Set(),
+    ownedTokens: {},
+    state: UpdateState.Full,
     txs: {
       external: {
         oldest: null,
@@ -157,122 +169,125 @@ function default_api_structure(): NFTsInteracted {
         oldest: null,
         newest: null
       }
-    },
-    last_update_start_time: 0
+    }
   };
 }
 
-async function updateOwnedNfts(
-  network: string,
-  address: string,
-  newNfts: Set<string>,
-  currentData: NFTsInteracted
-) {
-  const ownedNfts: any = await parseNFTSet(network, newNfts, address);
-  Object.keys(ownedNfts).forEach((nft) => {
-    currentData.owned_nfts[nft] = ownedNfts[nft];
-  });
 
-  return currentData;
+function updateSeenTransaction(currentData: ContractsInteracted, newTxs: TxInterval){
+  // If there is an interval, we init the interval data
+  if (
+    newTxs.oldest &&
+    currentData.txs.external.newest &&
+    newTxs.oldest > currentData.txs.external.newest
+  ) {
+    currentData.txs.internal.newest = newTxs.oldest;
+    currentData.txs.internal.oldest = currentData.txs.external.newest;
+  }
+
+  // We fill the internal hole first
+  if (
+    currentData.txs.internal.newest &&
+    currentData.txs.internal.oldest &&
+    newTxs.newest &&
+    newTxs.oldest &&
+    currentData.txs.internal.newest > newTxs.oldest &&
+    newTxs.newest >= currentData.txs.internal.oldest
+  ) {
+    currentData.txs.internal.newest = newTxs.oldest;
+  }
+
+  if (
+    currentData.txs.external.newest == null ||
+    (newTxs.newest && newTxs.newest > currentData.txs.external.newest)
+  ) {
+    currentData.txs.external.newest = newTxs.newest;
+  }
+  if (
+    currentData.txs.external.oldest == null ||
+    (newTxs.oldest && newTxs.oldest < currentData.txs.external.oldest)
+  ) {
+    currentData.txs.external.oldest = newTxs.oldest;
+  }
 }
 
-async function updateOwnedAndSave(
+
+async function updateOwnedTokensAndSave(
   network: string,
   address: string,
-  new_nfts: Set<string>,
-  currentData: NFTsInteracted,
-  new_txs: TxInterval
+  newContracts: Set<string>,
+  currentData: ContractsInteracted,
+  newTxs: TxInterval,
+  parseTokenSet: (n:string, c: Set<string>, a: string) => any
 ) {
-  if (new_nfts.size) {
-    const nfts: Set<string> = new Set(currentData.interacted_nfts);
+
+  // We start by updating the NFT object
+  if (newContracts.size) {
+    const contracts: Set<string> = new Set(currentData.interactedContracts);
 
     // For new nft interactions, we update the owned nfts
     console.log('Querying NFT data from LCD');
 
-    new_nfts.forEach((nft) => nfts.add(nft));
-    currentData.interacted_nfts = nfts;
-    currentData = await updateOwnedNfts(network, address, new_nfts, {
-      ...currentData
+    newContracts.forEach((token) => contracts.add(token));
+    currentData.interactedContracts = contracts;
+    // We query what tokens are actually owned by the address
+
+    const ownedTokens: any = await parseTokenSet(network, newContracts, address);
+    Object.keys(ownedTokens).forEach((token) => {
+      currentData.ownedTokens[token] = ownedTokens[token];
     });
   }
 
-  // If there is an interval, we init the interval data
-  if (
-    new_txs.oldest &&
-    currentData.txs.external.newest &&
-    new_txs.oldest > currentData.txs.external.newest
-  ) {
-    currentData.txs.internal.newest = new_txs.oldest;
-    currentData.txs.internal.oldest = currentData.txs.external.newest;  
-  }
+  // Then we update the transactions we've already seen
+  updateSeenTransaction(currentData, newTxs);
 
-  // We fill the internal hole first
-  if(
-    currentData.txs.internal.newest && 
-    currentData.txs.internal.oldest && 
-    new_txs.newest &&
-    new_txs.oldest &&
-    currentData.txs.internal.newest > new_txs.oldest && new_txs.newest >= currentData.txs.internal.oldest){
-    currentData.txs.internal.newest = new_txs.oldest;
-  } 
-
-  if (
-    currentData.txs.external.newest == null ||
-    (new_txs.newest && new_txs.newest > currentData.txs.external.newest)
-  ) {
-    currentData.txs.external.newest = new_txs.newest;
-  }
-  if (
-    currentData.txs.external.oldest == null ||
-    (new_txs.oldest && new_txs.oldest < currentData.txs.external.oldest)
-  ) {
-    currentData.txs.external.oldest = new_txs.oldest;
-  }
   return currentData;
 }
 
 async function updateAddress(
   db: any,
+  dbKey: string,
   network: Nullable<string>,
   address: Nullable<string>,
-  currentData: Nullable<NFTsInteracted>,
-  hasTimedOut: any
+  currentData: Nullable<ContractsInteracted>,
+  hasTimedOut: any,
+  queryNewInteractedContracts: any,
+  parseTokenSet: typeof parseNFTSet
 ) {
-  console.log("Let's udate");
-
   currentData = fillEmpty(currentData);
   if (!network || !address) {
     return currentData;
   }
-  const willQueryBefore = currentData.state != NFTState.Full;
+  const willQueryBefore = currentData.state != UpdateState.Full;
   // We update currentData to prevent multiple updates
-  currentData.state = NFTState.isUpdating;
-  currentData.last_update_start_time = Date.now();
-  await saveToDb(db, to_key(network, address), currentData);
+  currentData.state = UpdateState.isUpdating;
+  await saveToDb(db, dbKey, currentData);
 
-  const queryCallback = async (newNfts: Set<string>, txSeen: TxInterval) => {
+  const queryCallback = async (newContracts: Set<string>, txSeen: TxInterval) => {
     if (!network || !address || !currentData) {
       return;
     }
-    currentData = await updateOwnedAndSave(
+    console.log(newContracts);
+    currentData = await updateOwnedTokensAndSave(
       network,
       address,
-      newNfts,
+      newContracts,
       { ...currentData },
-      txSeen
+      txSeen,
+      parseTokenSet
     );
-    currentData.state = NFTState.isUpdating;
-    await saveToDb(db, to_key(network, address), currentData);
+    currentData.state = UpdateState.isUpdating;
+    await saveToDb(db, dbKey, currentData);
   };
 
-  // We start by querying data in the possible interval
+  // We start by querying data in the possible interval (between the latests transactions queried and the oldest ones)
   if (
     currentData.txs.internal.newest != null &&
     currentData.txs.internal.oldest != null &&
     currentData.txs.internal.oldest < currentData.txs.internal.newest
   ) {
     //Here we can query interval transactions
-    await updateInteractedNfts(
+    await queryNewInteractedContracts(
       network,
       address,
       currentData.txs.internal.newest,
@@ -283,8 +298,7 @@ async function updateAddress(
   }
 
   // Then we query new transactions
-
-  await updateInteractedNfts(
+  await queryNewInteractedContracts(
     network,
     address,
     null,
@@ -292,9 +306,10 @@ async function updateAddress(
     queryCallback,
     hasTimedOut
   );
+
   // We then query old data if not finalized
   if (willQueryBefore) {
-    await updateInteractedNfts(
+    await queryNewInteractedContracts(
       network,
       address,
       currentData.txs.external.oldest,
@@ -304,24 +319,33 @@ async function updateAddress(
     );
   }
 
-  if(hasTimedOut.timeout){
-    currentData.state = NFTState.Partial
-  }else{
-    currentData.state = NFTState.Full;
+  if (hasTimedOut.timeout) {
+    currentData.state = UpdateState.Partial;
+  } else {
+    currentData.state = UpdateState.Full;
   }
 
   return currentData;
 }
 
-function to_key(network: string, address: string) {
-  return `${address}@${network}`;
+function toTokenKey(network: string, address: string) {
+  return `token:${address}@${network}`;
 }
 
-function validate(network: string, res: any): boolean {
+function toNFTKey(network: string, address: string) {
+  return `nft:${address}@${network}`;
+}
+
+const acceptedActions = [undefined, "update","force_update"]
+
+function validateRequest(network: string, action: string | undefined, res: any): boolean {
   if (chains[network] == undefined) {
     res.status(404).send({ status: 'Network not found' });
     return false;
-  } else {
+  } else if(!acceptedActions.includes(action)){
+    res.status(404).send({ status: `Action not found. Choose one of undefined${acceptedActions}` });
+    return false;
+  }else{
     return true;
   }
 }
@@ -350,6 +374,44 @@ app.use(function (_req, res, next) {
   }
 });
 
+
+function returnQueriedData(res: any, action: string, returnData: any){
+    // If there is no update, we simply return the result
+    if (action == 'update') {
+      returnData.state = UpdateState.isUpdating;
+    } else if (action == 'force_update') {
+      returnData = defaultContractsApiStructure();
+      returnData.state = UpdateState.isUpdating;
+    }
+    res.status(200).send(serialise(returnData));
+}
+
+async function canUpdate(db: Redis, redlock: Redlock,  dbKey: string){
+
+    
+    // First we check that the we don't update too often
+    if(Date.now() <
+          (await lastUpdateStartTime(db, dbKey)) + IDLE_UPDATE_INTERVAL){
+      console.log("Too much requests my girl");
+      return;
+    }
+
+    // Then we check that we can update the records (and someone is not doing the same thing simultaneously)
+    // We do that my using a Redis Redlock. This Redlock lasts at most UPDATE_DESPITE_LOCK_TIME, to not be blocking in case of program crash
+    let isLocked = false;
+    let lock = await acquireUpdateLock(redlock, dbKey).catch((_error) => {
+      console.log("islocked");
+      isLocked = true;
+    });
+    if(isLocked){
+      return;
+    }
+
+    await setLastUpdateStartTime(db, dbKey, Date.now());
+    return lock;
+}
+
+
 async function main() {
   let db = await initDB();
   let redlock = await initMutex(db);
@@ -360,80 +422,147 @@ async function main() {
   //db.flushdb();
 
   // Query a list of known NFTS
-  app.get('/nfts/query/:network', async (req: any, res: any) =>{
+  app.get('/nfts/query/:network', async (req: any, res: any) => {
     const network = req.params.network;
-    if(validate(network, res)){
-      let official_list: any = await axios
-        .get(`https://assets.terra.money/cw721/contracts.json`);
-      let local_list: any = require('../nft_list.json');
-      let nft_list = {...official_list.data[network], ...local_list[network]};
-      await res.status(200).send(nft_list);
+    if (!validateRequest(network, undefined, res)) {
+      return;
     }
-  })
+    let officialList: any = await axios.get(
+      `https://assets.terra.money/cw721/contracts.json`
+    );
+    let localList: any = require('../nft_list.json');
+    let nftList = { ...officialList.data[network], ...localList[network] };
+    await res.status(200).send(nftList);
+  });
 
-
-  // Simple query, just query the current state
+  // Query the current NFT database state and trigger update if necessary
   app.get('/nfts/query/:network/:address', async (req: any, res: any) => {
     const address = req.params.address;
     const network = req.params.network;
-    if (validate(network, res)) {
-      let currentData: NFTsInteracted = await getDb(
-        db,
-        to_key(network, address)
-      );
+    const action = req.query.action;
 
-      const action = req.query.action;
-
-      // In general, we simply return the current database state
-
-      // If we want to update, we do it in the background
-      if (action == 'update' || action == 'force_update') {
-        let isLocked = false;
-        let lock = await acquireUpdateLock(
-          redlock,
-          to_key(network, address)
-        ).catch((_error) => {
-          isLocked = true;
-        });
-        if (
-          currentData &&
-          (isLocked ||
-            Date.now() <
-              (await lastUpdateStartTime(db, to_key(network, address))) +
-                IDLE_UPDATE_INTERVAL)
-        ) {
-          if (!isLocked) {
-            await releaseUpdateLock(lock)
-            .catch((error) => console.log("Lock couldn't be released : ", error));
-          }
-          await res.status(200).send(serialise(currentData));
-          return;
-        }
-        // Force update restarts everything from scratch
-        if (action == 'force_update') {
-          currentData = default_api_structure();
-        }
-        const returnData = { ...currentData };
-        returnData.state = NFTState.isUpdating;
-        await res.status(200).send(serialise(returnData));
-
-        await setLastUpdateStartTime(db, to_key(network, address), Date.now());
-        let hasTimedOut = { timeout: false };
-        let timeout = 
-          setTimeout(async () => {
-              hasTimedOut.timeout = true;
-              console.log("has timeout");
-            }, QUERY_TIMEOUT);
-
-        currentData = await updateAddress(db, network, address, { ...currentData }, hasTimedOut);
-        clearTimeout(timeout);
-        await saveToDb(db, to_key(network, address), currentData);
-        await releaseUpdateLock(lock);
-        console.log("Released lock");
-      } else {
-        await res.status(200).send(serialise(currentData));
-      }
+    if (!validateRequest(network,action, res)) {
+      return;
     }
+
+    let dbKey = toNFTKey(network, address);
+    let currentData: ContractsInteracted = await getDb(db, dbKey);
+
+    // First we send a message back to the user
+    returnQueriedData(res, action, {...currentData});
+
+    // If we don't want to update, there is nothing to do anymore
+    if (action != 'update' && action != 'force_update') {
+      return;
+    }
+
+    // Here we want to update the database
+    let lock = await canUpdate(db, redlock, dbKey);
+    if (!lock){
+      return;
+    }
+
+    // We deal with timeouts and shit
+    let hasTimedOut = { timeout: false };
+    let timeout = setTimeout(async () => {
+      hasTimedOut.timeout = true;
+      console.log('has timed-out');
+    }, QUERY_TIMEOUT);
+
+    // We launch the actual update code
+
+    // Force update restarts everything from scratch
+    if (action == 'force_update') {
+      currentData = defaultContractsApiStructure();
+    }
+    currentData = await updateAddress(
+      db,
+      dbKey,
+      network,
+      address,
+      { ...currentData },
+      hasTimedOut,
+      updateInteractedNfts,
+      parseNFTSet
+    );
+    clearTimeout(timeout);
+
+    // We save the updated object to db and release the Lock on the database
+    await saveToDb(db, dbKey, currentData);
+    await releaseUpdateLock(lock);
+    console.log('Released lock');
+  });
+
+  // Token part
+  // Query the list of known CW20 tokens
+  app.get('/tokens/query/:network', async (req: any, res: any) => {
+    const network = req.params.network;
+    if (validateRequest(network, undefined, res)) {
+      let officialList: any = await axios.get(
+        `https://assets.terra.money/cw20/contracts.json`
+      );
+      let localList: any = require('../cw20_list.json');
+      let nftList = { ...officialList.data[network], ...localList[network] };
+      await res.status(200).send(nftList);
+    }
+  });
+
+  // Query the current NFT database state and trigger update if necessary
+  app.get('/cw20/query/:network/:address', async (req: any, res: any) => {
+    const address = req.params.address;
+    const network = req.params.network;
+    const action = req.query.action;
+
+    if (!validateRequest(network,action, res)) {
+      return;
+    }
+
+    let dbKey = toTokenKey(network, address);
+    let currentData: ContractsInteracted = await getDb(db, dbKey);
+
+    // First we send a message back to the user
+    returnQueriedData(res, action, {...currentData});
+
+    // If we don't want to update, there is nothing to do anymore
+    if (action != 'update' && action != 'force_update') {
+      return;
+    }
+
+    // Here we want to update the database
+    let lock = await canUpdate(db, redlock, dbKey);
+    if (!lock){
+      return;
+    }
+
+    // We deal with timeouts and shit
+    let hasTimedOut = { timeout: false };
+    let timeout = setTimeout(async () => {
+      hasTimedOut.timeout = true;
+      console.log('has timed-out');
+    }, QUERY_TIMEOUT);
+
+    // We launch the actual update code
+
+    // Force update restarts everything from scratch
+    if (action == 'force_update') {
+      currentData = defaultContractsApiStructure();
+    }
+    currentData = await updateAddress(
+      db,
+      dbKey,
+      network,
+      address,
+      { ...currentData },
+      hasTimedOut,
+      updateInteractedCW20s,
+      parseCW20Set
+    );
+    clearTimeout(timeout);
+
+    // We save the updated object to db and release the Lock on the database
+    await saveToDb(db, dbKey, currentData);
+    await releaseUpdateLock(lock);
+    console.log('Released lock');
   });
 
   if (process.env.EXECUTION == 'PRODUCTION') {

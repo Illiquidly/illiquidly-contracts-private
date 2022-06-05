@@ -12,7 +12,7 @@ export interface TxInterval {
 
 export const chains: any = {
   testnet: {
-    URL: "https://bombay-lcd.terra.dev/",
+    URL: 'https://bombay-lcd.terra.dev/',
     chainID: 'bombay-12'
   },
   mainnet: {
@@ -88,8 +88,8 @@ export async function updateInteractedNfts(
   start: number | null,
   stop: number | null,
   callback: any,
-  hasTimedOut: any = {timeout: false},
-){
+  hasTimedOut: any = { timeout: false }
+) {
   let nftsInteracted: Set<string> = new Set();
   let query_next: boolean = true;
   let limit = 100;
@@ -103,7 +103,7 @@ export async function updateInteractedNfts(
   let newestTxIdSeen: number | null = null;
   let lastTxIdSeen: number | null = null;
   while (query_next) {
-    if(hasTimedOut.timeout){
+    if (hasTimedOut.timeout) {
       return;
     }
     const source = axios.CancelToken.source();
@@ -128,9 +128,9 @@ export async function updateInteractedNfts(
     } else {
       // We query the NFTs from the transaction result and messages
       let [newNfts, lastTxId, newestTxId] = getNftsFromTxList(tx_data);
-      if(lastTxId != 0){
+      if (lastTxId != 0) {
         offset = lastTxId;
-      }else{
+      } else {
         query_next = false;
       }
       if (newestTxIdSeen == null || newestTxId > newestTxIdSeen) {

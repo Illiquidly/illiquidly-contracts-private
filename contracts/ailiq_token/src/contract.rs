@@ -1,8 +1,8 @@
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult, Uint128,
+    from_binary, to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult, Uint128,
 };
 
 use cw20_base::allowances::{
@@ -17,19 +17,20 @@ use cw20_base::contract::{
 };
 
 use cw20_base::enumerable::{query_all_accounts, query_all_allowances};
-use cw20_base::ContractError;
 
 use cw20_base::msg::InstantiateMsg as CW20InstantiateMsg;
-use cw_4626::msg::{ExecuteMsg, InstantiateMsg};
+use cw_4626::msg::{ExecuteMsg, InstantiateMsg, ReceiveMsg};
 use cw_4626::query::QueryMsg;
-use cw_4626::state::{State, STATE};
+use cw_4626::state::{AssetInfo, State, STATE};
 
-use crate::moving::{borrow, deposit, mint, redeem, repay, withdraw};
+use crate::moving::{_repay, borrow, deposit, mint, redeem, repay, withdraw};
 use crate::query::{
     convert_to_assets, convert_to_shares, max_deposit, max_mint, max_redeem, max_withdraw,
     preview_deposit, preview_mint, preview_redeem, preview_withdraw, query_asset,
     query_total_assets,
 };
+
+use crate::error::ContractError;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -37,14 +38,17 @@ pub fn instantiate(
     env: Env,
     info: MessageInfo,
     msg: InstantiateMsg,
-) -> Result<Response, ContractError> {
+) -> Result<Response> {
     // We start by initating the state of the contract
-    let borrower = msg.borrower.map(|x| deps.api.addr_validate(&x)).transpose()?;
+    let borrower = msg
+        .borrower
+        .map(|x| deps.api.addr_validate(&x))
+        .transpose()?;
     let initial_state = State {
         underlying_asset: msg.asset,
         total_underlying_asset_supply: Uint128::zero(),
         total_assets_borrowed: Uint128::zero(),
-        borrower
+        borrower,
     };
 
     STATE.save(deps.storage, &initial_state)?;
@@ -58,7 +62,7 @@ pub fn instantiate(
         marketing: msg.marketing,
     };
 
-    cw20_base::contract::instantiate(deps, env, info, base_instantiate_msg)
+    cw20_base::contract::instantiate(deps, env, info, base_instantiate_msg).map_err(|x| anyhow!(x))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -91,8 +95,9 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> R
             owner,
             recipient,
             amount,
-        } => execute_transfer_from(deps, env, info, owner, recipient, amount)
-            .map_err(|x| anyhow!(x)),
+        } => {
+            execute_transfer_from(deps, env, info, owner, recipient, amount).map_err(|x| anyhow!(x))
+        }
         ExecuteMsg::BurnFrom { owner, amount } => {
             execute_burn_from(deps, env, info, owner, amount).map_err(|x| anyhow!(x))
         }
@@ -101,8 +106,9 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> R
             contract,
             amount,
             msg,
-        } => execute_send_from(deps, env, info, owner, contract, amount, msg)
-            .map_err(|x| anyhow!(x)),
+        } => {
+            execute_send_from(deps, env, info, owner, contract, amount, msg).map_err(|x| anyhow!(x))
+        }
         ExecuteMsg::UpdateMarketing {
             project,
             description,
@@ -136,6 +142,11 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> R
         ExecuteMsg::Repay { owner, assets } => {
             repay(deps, env, info, owner, assets).map_err(|x| anyhow!(x))
         }
+        ExecuteMsg::Receive {
+            sender,
+            amount,
+            msg,
+        } => receive_assets(deps, env, info, sender, amount, msg).map_err(|x| anyhow!(x)),
     }
 }
 
@@ -179,6 +190,49 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
     }
 }
 
+pub fn receive_assets(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    _sender: String,
+    amount: Uint128,
+    msg: Binary,
+) -> Result<Response> {
+    match from_binary(&msg)? {
+        ExecuteMsg::Repay { owner, assets } => {
+            let state = STATE.load(deps.storage)?;
+            match state.underlying_asset {
+                AssetInfo::Cw20(x) => {
+                    if x != info.sender {
+                        return Err(anyhow!(ContractError::WrongAssetDeposited {
+                            sent: info.sender.to_string(),
+                            expected: x
+                        },));
+                    } else if amount != assets {
+                        return Err(anyhow!(ContractError::InsufficientAssetDeposited {
+                            sent: amount,
+                            expected: assets
+                        },));
+                    }
+                    let debt_repaid = _repay(deps.storage, amount)?;
+
+                    Ok(Response::new()
+                        .add_attribute("action", "repay")
+                        .add_attribute("caller", info.sender)
+                        .add_attribute("assets", assets.to_string())
+                        .add_attribute("debt_repaid", debt_repaid.to_string())
+                        .add_attribute("raw_deposit", (assets - debt_repaid).to_string()))
+                }
+                AssetInfo::Coin(x) => Err(anyhow!(ContractError::WrongAssetDeposited {
+                    sent: info.sender.to_string(),
+                    expected: x
+                },)),
+            }
+        }
+        _ => Err(anyhow!(ContractError::InvalidMessage {})),
+    }
+}
+
 #[cfg(test)]
 pub mod tests {
     use super::*;
@@ -203,7 +257,7 @@ pub mod tests {
             mint: None,
             marketing: None,
             asset: AssetInfo::Coin("uluna".to_string()),
-            borrower: Some("borrower".to_string())
+            borrower: Some("borrower".to_string()),
         };
         let info = mock_info("creator", &[]);
         let env = mock_env();

@@ -1,11 +1,9 @@
-#[cfg(not(feature = "library"))]
-use cw20_base::state::{TokenInfo, TOKEN_INFO};
 use cosmwasm_bignumber::{Decimal256, Uint256};
 use cosmwasm_std::{Deps, Env, StdResult, Uint128};
+#[cfg(not(feature = "library"))]
+use cw20_base::state::{TokenInfo, TOKEN_INFO};
 
-use cw_4626::state::{
-    query_asset_balance, query_asset_liabilities, AssetInfo, STATE, 
-};
+use cw_4626::state::{query_asset_balance, query_asset_liabilities, AssetInfo, STATE};
 
 use cw20_base::contract::query_balance;
 pub fn query_asset(deps: Deps) -> StdResult<AssetInfo> {
@@ -106,7 +104,7 @@ pub mod tests {
             mint: None,
             marketing: None,
             asset: AssetInfo::Coin("uluna".to_string()),
-            borrower: Some("borrower".to_string())
+            borrower: Some("borrower".to_string()),
         };
         let info = mock_info("creator", &[]);
         let env = mock_env();

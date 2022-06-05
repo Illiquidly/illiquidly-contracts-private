@@ -9,6 +9,9 @@ pub enum ContractError {
     #[error("Unauthorized")]
     Unauthorized {},
 
+    #[error("Invalid Execute Message: lender contract")]
+    InvalidMessage {},
+
     #[error("Cannot set to own account")]
     CannotSetOwnAccount {},
 

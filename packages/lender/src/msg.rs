@@ -1,20 +1,22 @@
-use cosmwasm_std::{StdError, StdResult};
+use cosmwasm_std::{Binary, StdError, StdResult};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::{Uint128};
-use crate::state::{BorrowTerms, Cw721Info};
+use crate::state::{BorrowMode, Cw721Info};
+use cosmwasm_std::Uint128;
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
 pub struct InstantiateMsg {
     pub name: String,
     pub owner: Option<String>,
     pub oracle: Option<String>,
-    pub vault_token: String
+    pub vault_token: String,
+    pub increasor_incentives: Uint128,
+    pub interests_fee_rate: Uint128,
+    pub fee_distributor: String,
 }
 
 impl InstantiateMsg {
-   
     pub fn validate(&self) -> StdResult<()> {
         // Check name, symbol, decimals
         if !is_valid_name(&self.name) {
@@ -34,31 +36,43 @@ fn is_valid_name(name: &str) -> bool {
     true
 }
 
-
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
     // User accessible functions
     Borrow {
         asset_info: Cw721Info,
-        wanted_terms: BorrowTerms,
-        principle_slippage: Uint128
+        assets_to_borrow: Uint128,
+        borrow_mode: BorrowMode,
+    },
+    BorrowMore {
+        loan_id: u64,
+        assets_to_borrow: Uint128,
     },
     Repay {
-        borrower: String, 
+        borrower: String,
         loan_id: u64,
-        assets: Uint128
+        assets: Uint128,
+    },
+    Receive {
+        sender: String,
+        amount: Uint128,
+        msg: Binary,
+    },
+    ModifyRate {
+        borrower: String,
+        loan_id: u64,
     },
     // Admin specific
     SetOwner {
-        owner: String
+        owner: String,
     },
     SetOracle {
-        oracle: String
+        oracle: String,
     },
     ToggleLock {
-        lock: bool
-    }
+        lock: bool,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -70,4 +84,16 @@ pub enum QueryMsg {
     /// Returns metadata on the contract - name, owner, oracle, etc.
     /// Return type: ContractInfoResponse.
     ContratInfo {},
+    /// Returns the borrow info of the designated loan
+    BorrowInfo {
+        owner: String,
+        loan_id: u64,
+    },
+    BorrowZones {
+        asset_info: Cw721Info,
+    },
+    BorrowTerms {
+        asset_info: Cw721Info,
+        borrow_mode: BorrowMode,
+    },
 }

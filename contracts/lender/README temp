@@ -1,0 +1,56 @@
+1. Borrow
+	In order to borrow funds from the pool (that consists of one type of asset, a native token or a CW20 token)
+	the borrower needs to locak a collateral.
+	They do so by folowwing those steps : 
+		1. Approve the lender-contract for the transfer of their NFT
+		2. Send a borrow message
+	If those two steps are succesfull (there are multiple cases of failure possible), their collateral is locked and they get the corresponding assets in return.
+
+2. Borrow more
+	If the borrower chose a continuous type loan, and the relative price of their NFT increases, they can borrow more assets against their NFT. 
+	In order to do so, they simply need to call the contract that will lend them the assets. The borrower can never borrow funds above the safeZone limit of the asset (usually 33% of the floor price, calculated using a mecanism no detailed here. You can find more details at @link)
+
+
+3. Repay
+	Borrowers may want to repay their loan at a certain point. They will do that for multiple reasons :
+	1. They want to get their NFT back
+	2. They want to make sure their LTV is not too high (if it's too high, they risk loosing their NFT)
+
+	If you chose a fixed duration loan, you can only repay the loan in full and get your NFT back.
+	If you chose a continuous loan, if you repay fully, you will get your NFT back.
+	If you repay partially, you will lower your LTV and potentially lower your interest rate, as you move away from the expensive loan zone.
+
+	In order to repay a loan, you will need to send assets (the same as the ones you borrowed, native tokens or CW20 depending on the pool type) to the lender-contract with information about the loan to repay and the type of loan they want to have (fixed-time or continuous).
+
+4. Liquidation
+	A loan can be liquidated if it follows the folowwing criteria : 
+		1. If the loan is Fixed-Duration, if the loan_duration has expired
+		2. If the loan is continuous, if the borrower reaches the liquidation zone (see Interest Zones)
+	If a loan can be liquidated, anyone can repay the loan (with a small premium) and get the NFT collateral back.
+	As soon as the loan is liquidated, it is considered closed and the original owner can't access it anymore.
+
+
+5. Interest Zones
+	There are three zones for a collateral to sit in. (Remember the price of assets is dictated by an external oracle)
+	1. The Safe Zone (usually 0-33% LTV)
+	2. The expensive Zone (usually 33-66% LTV)
+	3. The liquidation Zone (usually 66-100% LTV)
+
+	The SafeZone is the normal zone to sit in. You get your usual interest rate, not so high, and you can repay your loan anytime
+	The Expensive Zone gets you closer to danger. You can still repay your loan anytime, but you get abnormally high fees when borrowing assets. This is justified by the fact that the more LTV you have the more risk the protocol (and its lenders) bear.
+	The Liquidation Zone is your doom. If your collateral is in this zone, you can loose your NFT anytime, as anyone will be able to repay your loan and get your NFT in return. NEVER CROSS THIS LINE, or you'll loose everything.
+
+	Smart-contract run their code only when actors call them. The zone can only change when someone calls the contract.
+	But why would anyone care about other people's LTVs (as sending messages to contracts costs a transaction fee) --> because they can profit from it.
+	When someone changes the status of your loan from the safezone to the expensive zone (and only if they have the right to do so), they will get a percentage (now sitting at 50%) of the extra fees generated for the protocol. So when you will be repaying your loan, they will get 50% of the difference between the interests you owe and the interests you would have paid if the interests rate was unchanged.
+
+	On the other side, you (and only you) can make the loan go back to their original interest rate after spending some time in the expensive zone. You do that by repaying a small amount of the loan to the contract. This amount should at least cover the interests due since the last rate increase.
+
+
+
+What's missing to these contracts : 
+	1. See how we would collect fees from the loans --> Do we always keep in mind what came from the treasury in the borrow object ? 
+		--> Always repay the interests first and then the treasury + fee.
+		--> This will have to be a specific function
+	1. The possibility to collect fees from interests for the treasury or else (it has to go through our fee_distributor really)
+	2. 
