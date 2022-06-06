@@ -499,7 +499,7 @@ async function main() {
     const network = req.params.network;
     if (validateRequest(network, undefined, res)) {
       let officialList: any = await axios.get(
-        `https://assets.terra.money/cw20/contracts.json`
+        `https://assets.terra.money/cw20/tokens.json`
       );
       let localList: any = require('../cw20_list.json');
       let nftList = { ...officialList.data[network], ...localList[network] };

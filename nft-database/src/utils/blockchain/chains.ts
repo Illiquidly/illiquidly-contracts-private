@@ -1,5 +1,5 @@
-
 /*
+
 export const chains: any = {
   testnet: {
     URL: 'https://bombay-lcd.terra.dev/',
@@ -39,3 +39,5 @@ export let fcds: any = {
   testnet: 'https://pisco-fcd.terra.dev',
   mainnet: 'https://columbus-fcd.terra.dev',
 };
+
+

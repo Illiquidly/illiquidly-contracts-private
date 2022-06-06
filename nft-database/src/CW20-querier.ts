@@ -1,6 +1,8 @@
 import { LCDClient, TxLog } from '@terra-money/terra.js';
 import axios from 'axios';
 import pLimit from 'p-limit';
+var cloudscraper = require('cloudscraper');
+
 const limitCW20 = pLimit(40);
 const AXIOS_TIMEOUT = 10_000;
 
@@ -44,6 +46,12 @@ function getCW20sFromTxList(tx_data: any): [Set<string>, number, number] {
   var CW20Interacted: Set<string> = new Set();
   let lastTxIdSeen = 0;
   let newestTxIdSeen = 0;
+  // In case we are using cloudscraper to get rid of cloudflare
+  if(tx_data.data == undefined){
+    tx_data = {
+      data: JSON.parse(tx_data)
+    }
+  }
   for (let tx of tx_data.data.txs) {
     // We add NFTS interacted with
     CW20Interacted = addFromWasmEvents(tx, CW20Interacted);
@@ -86,7 +94,7 @@ export async function updateInteractedCW20s(
     const axiosTimeout = setTimeout(() => {
       source.cancel();
     }, AXIOS_TIMEOUT);
-    let tx_data: any = await axios
+    let tx_data: any = await cloudscraper
       .get(
         `${fcds[network]}/v1/txs?offset=${offset}&limit=${limit}&account=${address}`,
         { cancelToken: source.token }
