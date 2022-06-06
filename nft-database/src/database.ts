@@ -336,7 +336,7 @@ function toNFTKey(network: string, address: string) {
   return `nft:${address}@${network}`;
 }
 
-const acceptedActions = [undefined, "update","force_update"]
+const acceptedActions = [undefined, "plain_db", "update","force_update"]
 
 function validateRequest(network: string, action: string | undefined, res: any): boolean {
   if (chains[network] == undefined) {
