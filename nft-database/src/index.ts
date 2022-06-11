@@ -22,6 +22,7 @@ function addFromWasmEvents(tx: any, nftsInteracted: any) {
         if (from_contract.action) {
           if (
             from_contract.action.includes('transfer_nft') ||
+            from_contract.action.includes('send_nft') ||
             from_contract.action.includes('mint')
           ) {
             from_contract.contract_address.forEach(
