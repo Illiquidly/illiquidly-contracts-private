@@ -28,10 +28,10 @@ import axios from 'axios';
 
 type Nullable<T> = T | null;
 
-const UPDATE_DESPITE_LOCK_TIME = 60_000;
+const UPDATE_DESPITE_LOCK_TIME = 120_000;
 const IDLE_UPDATE_INTERVAL = 20_000;
 const PORT = 8080;
-const QUERY_TIMEOUT = 50_000;
+const QUERY_TIMEOUT = 100_000;
 
 enum UpdateState {
   Full,
@@ -110,7 +110,7 @@ async function acquireUpdateLock(lock: any, key: string) {
 }
 
 async function releaseUpdateLock(lock: any) {
-  await lock.release();
+  await lock.release().catch((error:any) => console.log("Couldn't release lock", error));
 }
 
 async function lastUpdateStartTime(db: any, key: string): Promise<number> {

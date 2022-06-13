@@ -163,11 +163,13 @@ async function getOneTokenBatchFromNFT(
     .contractQuery(nft, {
       tokens: {
         owner: address,
-        start_after: start_after
+        start_after: start_after,
+      	limit: 100,
       }
     })
     .then((tokenId: any) => {
       if (tokenId) {
+	     console.log(tokenId)
         return Promise.all(
           tokenId['tokens'].map((id: string) =>
             limitToken(() => getOneTokenInfo(lcdClient, nft, id))
