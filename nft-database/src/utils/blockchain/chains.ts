@@ -35,9 +35,11 @@ export const chains: any = {
   },
 };
 
-export let fcds: any = {
+export const fcds: any = {
   testnet: 'https://pisco-fcd.terra.dev',
   mainnet: 'https://columbus-fcd.terra.dev',
 };
+
+export const registered_nft_contracts: any = "https://assets.terra.money/cw721/contracts.json";
 
 

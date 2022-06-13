@@ -1,6 +1,7 @@
 import { LCDClient, TxLog } from '@terra-money/terra.js';
 import axios from 'axios';
 import pLimit from 'p-limit';
+const fs = require("fs");
 var cloudscraper = require('cloudscraper');
 
 var _ = require('lodash');
@@ -10,8 +11,28 @@ const limitToken = pLimit(50);
 const AXIOS_TIMEOUT = 10_000;
 
 import {
-  chains, fcds
+  chains, fcds, registered_nft_contracts
 } from "./utils/blockchain/chains.js";
+
+
+
+
+
+async function registeredNFTs(network: string): Promise<string[]>{
+  let chosen_network: string;
+  if(network == "mainnet"){
+    chosen_network = "classic";
+  }else{
+    chosen_network = network;
+  }
+  let nft_list = await axios
+      .get(registered_nft_contracts);
+  if(nft_list?.data[chosen_network]){
+    return Object.keys(nft_list.data[chosen_network])
+  }else{
+    return []
+  }
+}
 
 function addFromWasmEvents(tx: any, nftsInteracted: any) {
   if (tx.logs) {
@@ -84,6 +105,7 @@ export async function updateInteractedNfts(
   hasTimedOut: any = { timeout: false }
 ) {
   let nftsInteracted: Set<string> = new Set();
+  console.log(nftsInteracted);
   let query_next: boolean = true;
   let limit = 100;
   let offset;
@@ -92,7 +114,6 @@ export async function updateInteractedNfts(
   } else {
     offset = 0;
   }
-  console.log(start, stop);
   let newestTxIdSeen: number | null = null;
   let lastTxIdSeen: number | null = null;
   while (query_next) {
@@ -122,6 +143,13 @@ export async function updateInteractedNfts(
     } else {
       // We query the NFTs from the transaction result and messages
       let [newNfts, lastTxId, newestTxId] = getNftsFromTxList(tx_data);
+
+      // If it's the first time we query the fcd, we need to add recognized NFTs (because some minted NFTs don't get recognized in mint)
+      if(start == null && stop == null){
+        let registered = await registeredNFTs(network)
+        registered.forEach((nft) => newNfts.add(nft));
+      }
+
       if (lastTxId != 0) {
         offset = lastTxId;
       } else {
@@ -139,7 +167,6 @@ export async function updateInteractedNfts(
       }
       if (newNfts) {
         newNfts.forEach((nft) => nftsInteracted.add(nft));
-        console.log(newNfts.size);
         if (callback) {
           await callback(newNfts, {
             newest: newestTxIdSeen,
@@ -169,7 +196,6 @@ async function getOneTokenBatchFromNFT(
     })
     .then((tokenId: any) => {
       if (tokenId) {
-	     console.log(tokenId)
         return Promise.all(
           tokenId['tokens'].map((id: string) =>
             limitToken(() => getOneTokenInfo(lcdClient, nft, id))

@@ -458,9 +458,11 @@ async function main() {
 
     // Here we want to update the database
     let lock = await canUpdate(db, redlock, dbKey);
+    /*
     if (!lock){
       return;
     }
+    */
 
     // We deal with timeouts and shit
     let hasTimedOut = { timeout: false };
