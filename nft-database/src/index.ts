@@ -19,16 +19,10 @@ import {
 
 
 async function registeredNFTs(network: string): Promise<string[]>{
-  let chosen_network: string;
-  if(network == "mainnet"){
-    chosen_network = "classic";
-  }else{
-    chosen_network = network;
-  }
   let nft_list = await axios
       .get(registered_nft_contracts);
-  if(nft_list?.data[chosen_network]){
-    return Object.keys(nft_list.data[chosen_network])
+  if(nft_list?.data[network]){
+    return Object.keys(nft_list.data[network])
   }else{
     return []
   }
