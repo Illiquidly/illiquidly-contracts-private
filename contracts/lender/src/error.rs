@@ -53,8 +53,11 @@ pub enum ContractError {
     #[error("You can only change to the expensive zone from the safe zone")]
     OnlyFromSafeZone {},
 
-    #[error("A fixed interest/duration loan, doesn't have an intere rate")]
+    #[error("A fixed interest/duration loan, doesn't have an interest rate")]
     FixedLoanNoInterestRate {},
+
+    #[error("Unavailable for a fixed loan")]
+    UnavailableFixedLoan {},
 
     #[error("The format of your transfer message was wrong for the lender contract")]
     ReceiveMsgNotAccepted {},
@@ -66,5 +69,5 @@ pub enum ContractError {
     ParamNotAccepted {},
 
     #[error("A repaiement must cover the increasor incentives")]
-    MustAtLeastCoverIncreasor {},
+    MustAtLeastCoverIncreasorIncentive {},
 }

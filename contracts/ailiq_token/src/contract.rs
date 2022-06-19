@@ -19,7 +19,7 @@ use cw20_base::contract::{
 use cw20_base::enumerable::{query_all_accounts, query_all_allowances};
 
 use cw20_base::msg::InstantiateMsg as CW20InstantiateMsg;
-use cw_4626::msg::{ExecuteMsg, InstantiateMsg, ReceiveMsg};
+use cw_4626::msg::{ExecuteMsg, InstantiateMsg};
 use cw_4626::query::QueryMsg;
 use cw_4626::state::{AssetInfo, State, STATE};
 
@@ -199,7 +199,7 @@ pub fn receive_assets(
     msg: Binary,
 ) -> Result<Response> {
     match from_binary(&msg)? {
-        ExecuteMsg::Repay { owner, assets } => {
+        ExecuteMsg::Repay { assets, .. } => {
             let state = STATE.load(deps.storage)?;
             match state.underlying_asset {
                 AssetInfo::Cw20(x) => {

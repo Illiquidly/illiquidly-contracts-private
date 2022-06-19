@@ -2,7 +2,7 @@ use cosmwasm_std::{Binary, StdError, StdResult};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::state::{BorrowMode, Cw721Info};
+use crate::state::{BorrowMode, BorrowZone, Cw721Info};
 use cosmwasm_std::Uint128;
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
@@ -59,7 +59,7 @@ pub enum ExecuteMsg {
         amount: Uint128,
         msg: Binary,
     },
-    ModifyRate {
+    RaiseRate {
         borrower: String,
         loan_id: u64,
     },
@@ -86,7 +86,7 @@ pub enum QueryMsg {
     ContratInfo {},
     /// Returns the borrow info of the designated loan
     BorrowInfo {
-        owner: String,
+        borrower: String,
         loan_id: u64,
     },
     BorrowZones {
@@ -95,5 +95,13 @@ pub enum QueryMsg {
     BorrowTerms {
         asset_info: Cw721Info,
         borrow_mode: BorrowMode,
+        borrow_zone: BorrowZone,
     },
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[serde(rename_all = "snake_case")]
+pub struct ZonesResponse {
+    pub safe_zone_limit: Uint128,
+    pub expensive_zone_limit: Uint128,
 }

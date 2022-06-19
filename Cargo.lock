@@ -397,6 +397,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "escrow-export"
+version = "0.1.0"
+dependencies = [
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-storage-plus",
+ "cw20",
+ "cw20-base",
+ "cw721",
+ "schemars",
+ "serde",
+ "strum",
+ "strum_macros",
+ "thiserror",
+ "utils",
+]
+
+[[package]]
 name = "fee-contract"
 version = "0.9.0"
 dependencies = [
@@ -711,6 +729,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "nft-escrow"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-storage-plus",
+ "cw20",
+ "cw20-base",
+ "cw721",
+ "escrow-export",
+ "schemars",
+ "serde",
+ "terra-cosmwasm",
+ "thiserror",
+ "utils",
+]
+
+[[package]]
 name = "nft-loans"
 version = "0.9.0"
 dependencies = [
@@ -752,10 +789,50 @@ dependencies = [
 ]
 
 [[package]]
+name = "nft-oracle"
+version = "0.9.0"
+dependencies = [
+ "anyhow",
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-storage-plus",
+ "cw20",
+ "cw20-base",
+ "cw721",
+ "cw_4626",
+ "oracle-export",
+ "schemars",
+ "serde",
+ "terra-cosmwasm",
+ "thiserror",
+ "utils",
+]
+
+[[package]]
 name = "opaque-debug"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "624a8340c38c1b80fd549087862da4ba43e08858af025b236e509b6649fc13d5"
+
+[[package]]
+name = "oracle-export"
+version = "0.1.0"
+dependencies = [
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-storage-plus",
+ "cw20",
+ "cw20-base",
+ "cw721",
+ "cw_4626",
+ "p2p-trading-export",
+ "schemars",
+ "serde",
+ "strum",
+ "strum_macros",
+ "thiserror",
+ "utils",
+]
 
 [[package]]
 name = "p2p-trading"

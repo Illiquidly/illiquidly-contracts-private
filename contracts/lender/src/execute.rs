@@ -14,7 +14,7 @@ use utils::msg::into_cosmos_msg;
 use crate::query::{
     can_repay_loan, get_asset_interests, get_asset_price, get_borrower_interest_rate,
     get_interests_with, get_last_collateral, get_liquidation_value, get_loan_value,
-    get_safe_zone_limit_price, get_total_interests, get_zone,
+    get_new_interests_accrued, get_safe_zone_limit_price, get_total_interests, get_zone,
 };
 use cw20::Cw20ExecuteMsg;
 use cw721::Cw721ExecuteMsg;
@@ -132,7 +132,7 @@ pub fn execute_borrow_more(
     }
     let contract_info = CONTRACT_INFO.load(deps.storage)?;
 
-    // First we query the terms of a loan involving the asset
+    // First we make sure the loan indeed has a collateral
     let borrower = info.sender.clone();
     let mut borrow_info = BORROWS.load(deps.storage, (&borrower, loan_id.into()))?;
     let collateral_info = borrow_info
@@ -140,10 +140,18 @@ pub fn execute_borrow_more(
         .collateral
         .ok_or(ContractError::AssetAlreadyWithdrawn {})?;
 
+    // Then the loan type should be a continuous one to borrow more
+    if let InterestType::Fixed { .. } = borrow_info.interests {
+        return Err(anyhow!(ContractError::UnavailableFixedLoan {}));
+    }
+
     // First you need to repay the increasor if you want to borrow more
     if borrow_info.borrow_zone != BorrowZone::SafeZone {
         return Err(anyhow!(ContractError::NeedToRepayExpensiveZone {}));
     }
+
+    // We update the loan interests accrued up to there
+    _update_interests_accrued(env.clone(), &mut borrow_info)?;
 
     let asset_price = get_asset_price(deps.as_ref(), env.clone(), collateral_info.clone())?;
     let borrow_limit = get_safe_zone_limit_price(asset_price)?;
@@ -158,28 +166,15 @@ pub fn execute_borrow_more(
         }));
     }
 
-    // We update the interests accrued
-    let borrow_mode = match borrow_info.interests {
-        InterestType::Fixed { .. } => BorrowMode::Fixed,
-        InterestType::Continuous {
-            last_interest_rate,
-            ref mut interests_accrued,
-        } => {
-            *interests_accrued += get_interests_with(
-                env.clone(),
-                borrow_info.principle,
-                last_interest_rate,
-                borrow_info.start_block,
-            );
-            BorrowMode::Continuous
-        }
-    };
+    // We set the new principle
+    borrow_info.principle += assets_to_borrow;
+
     // We set the new interests rate
     borrow_info.interests = get_asset_interests(
         deps.as_ref(),
         env.clone(),
         collateral_info,
-        borrow_mode,
+        BorrowMode::Continuous,
         BorrowZone::SafeZone,
     )?;
     borrow_info.start_block = env.block.height;
@@ -201,7 +196,8 @@ pub fn execute_borrow_more(
         .add_message(borrow_message)
         .add_attribute("action", "borrow")
         .add_attribute("borrower", info.sender)
-        .add_attribute("loan_id", loan_id.to_string()))
+        .add_attribute("loan_id", loan_id.to_string())
+        .add_attribute("asset_borrowed", assets_to_borrow))
 }
 
 // Borrow mecanism
@@ -241,40 +237,41 @@ pub fn _execute_repay(
         .clone()
         .collateral
         .ok_or(ContractError::AssetAlreadyWithdrawn {})?;
+    let nft_address = asset_info.nft_address.clone();
 
     let loan_value = get_loan_value(env.clone(), &borrow_info);
 
     // First we start by dealing with the increasor incentives
     // This function will repay the incresor their share, or fail
-    let increasor_incentive: Option<Uint128> =
-        get_increasor_incentive(env.clone(), contract_info.clone(), &borrow_info)?;
-    let increasor_message: Vec<CosmosMsg> = if let Some(incentive) = increasor_incentive {
-        send_interests_to_increasor(contract_info.clone(), &borrow_info, incentive)?
-            .map_or(vec![], |x| vec![x])
-    } else {
-        vec![]
-    };
-    let assets_left_to_repay = assets - increasor_incentive.unwrap_or(Uint128::zero());
+
+    let (increasor_incentive, increasor_message) =
+        send_interests_to_increasor(env.clone(), contract_info.clone(), &borrow_info)?
+            .unwrap_or((Uint128::zero(), vec![]));
+
+    let assets_left_to_repay: Uint128 = assets
+        .checked_sub(increasor_incentive)
+        .map_err(|_| anyhow!(ContractError::MustAtLeastCoverIncreasorIncentive {}))?;
+
     // We erase the increasor from memory
     borrow_info.rate_increasor = None;
+
+    // Then, we update the interests accrued to the loan
+    _update_interests_accrued(env.clone(), &mut borrow_info)?;
 
     // Now we can go to the repay part
     let repay_messages = if sender == borrower {
         if assets >= loan_value {
             // Case 1. The borrower repays the whole loan
 
-            // Now we repay the loan to the treasury and to the fee depositor
+            // We save the interests repaid for later use
             // This will always be safe (per construction, increasor_incentive is a perentage of the interests)
-            let repay_and_fee_messages = create_repay_and_fee_messages(
-                contract_info,
-                assets_left_to_repay - borrow_info.principle,
-                assets_left_to_repay,
-                borrow_info.collateral.unwrap().nft_address,
-            )?;
+            let interests_repaid = assets_left_to_repay - borrow_info.principle;
 
-            // Finally we update the internal state of the contract to reflect the loan has ended
-            borrow_info.principle = Uint128::zero();
+            // We update the internal state of the contract to reflect the loan has ended
+            // The collateral has been withdrawn
+            // The principle is not existent anymore
             borrow_info.collateral = None;
+            borrow_info.principle = Uint128::zero();
             [
                 // We send the borrower their collateral back
                 vec![into_cosmos_msg(
@@ -282,27 +279,26 @@ pub fn _execute_repay(
                         recipient: borrower.to_string(),
                         token_id: asset_info.token_id,
                     },
-                    asset_info.nft_address,
+                    nft_address.clone(),
                     None,
                 )?],
                 // We repay the vault and the fee_depositor
-                repay_and_fee_messages,
+                create_repay_and_fee_messages(
+                    contract_info,
+                    interests_repaid,
+                    assets_left_to_repay,
+                    nft_address,
+                )?,
             ]
             .concat()
         } else {
             // Case 2. If the borrower repays the loan only partially
 
-            // If there is something to repay to an increasor, this repaiement must cover at least those costs
-            if let Some(incentive) = increasor_incentive {
-                if incentive > assets {
-                    return Err(anyhow!(ContractError::MustAtLeastCoverIncreasor {}));
-                }
-            };
-
-            // We repay part of the loan (internal structure)
+            // We repay part of the loan, interests first, principle second
             let interests_repaid = _repay_some_loan(env.clone(), &mut borrow_info, assets)?;
 
             // We update the interest rate
+
             let borrow_zone = get_zone(deps.as_ref(), env.clone(), &borrow_info)?;
             if borrow_zone == BorrowZone::SafeZone
                 && borrow_info.borrow_zone == BorrowZone::ExpensiveZone
@@ -310,8 +306,8 @@ pub fn _execute_repay(
                 borrow_info.borrow_zone = BorrowZone::SafeZone;
                 borrow_info.interests = get_asset_interests(
                     deps.as_ref(),
-                    env.clone(),
-                    borrow_info.collateral.clone().unwrap(),
+                    env,
+                    asset_info,
                     BorrowMode::Continuous,
                     BorrowZone::SafeZone,
                 )?;
@@ -327,13 +323,19 @@ pub fn _execute_repay(
     } else {
         // Case 3. Someone else liquidates the collateral
         // TODO
-        let liquidation_value = get_liquidation_value(env.clone(), &borrow_info)?;
+        // They can only liquidate a loan if they pay enough assets to the contract (liquidation value)
+        let liquidation_value = get_liquidation_value(env, &borrow_info)?;
         if assets < liquidation_value {
             return Err(anyhow::anyhow!(ContractError::CanOnlyLiquidateWholeLoan {}));
         }
-        let nft_address = borrow_info.collateral.clone().unwrap().nft_address;
+
+        // We save those variables to create cosmos messages
         let interests_repaid = assets_left_to_repay - borrow_info.principle;
 
+        // The loan is ended
+        // The collateral has been withdrawn
+        // The principle is not existent anymore
+        // The loan has been liquidated
         borrow_info.collateral = None;
         borrow_info.principle = Uint128::zero();
         borrow_info.borrow_zone = BorrowZone::LiquidationZone;
@@ -344,7 +346,7 @@ pub fn _execute_repay(
                     recipient: sender.to_string(),
                     token_id: asset_info.token_id,
                 },
-                asset_info.nft_address,
+                nft_address.clone(),
                 None,
             )?],
             create_repay_and_fee_messages(
@@ -358,7 +360,6 @@ pub fn _execute_repay(
     };
 
     // We save the changes to memory
-    borrow_info.start_block = env.block.height;
     BORROWS.save(deps.storage, (&borrower, loan_id.into()), &borrow_info)?;
 
     Ok(Response::new()
@@ -374,15 +375,19 @@ pub fn _execute_repay(
         ))
 }
 
-pub fn get_increasor_incentive(
+// In this function, we check if there was an increasor of interest rate between the last update and now
+// If so, we need to send funds back to them when updating the interest rate
+pub fn send_interests_to_increasor(
     env: Env,
     contract_info: ContractInfo,
     borrow_info: &BorrowInfo,
-) -> Result<Option<Uint128>> {
+) -> Result<Option<(Uint128, Vec<CosmosMsg>)>> {
+    // If we had someone increase the rate of the loan
     if let Some(increasor) = borrow_info.rate_increasor.clone() {
         let current_rate = get_borrower_interest_rate(borrow_info)?;
         let previous_rate = increasor.previous_rate;
         if current_rate > previous_rate {
+            // We compute their incentive
             let incentive = get_interests_with(
                 env,
                 borrow_info.principle,
@@ -390,29 +395,18 @@ pub fn get_increasor_incentive(
                 borrow_info.start_block,
             ) * contract_info.increasor_incentives
                 / Uint128::from(PERCENTAGE_RATE);
-            Ok(Some(incentive))
-        } else {
-            Ok(None)
-        }
-    } else {
-        Ok(None)
-    }
-}
 
-// In this funciton, we check if there was an increasor of interest rate between the last update and now
-// If so, we need to send funds back to them when updating the interest rate
-pub fn send_interests_to_increasor(
-    contract_info: ContractInfo,
-    borrow_info: &BorrowInfo,
-    incentive: Uint128,
-) -> Result<Option<CosmosMsg>> {
-    if let Some(increasor) = borrow_info.rate_increasor.clone() {
-        if incentive != Uint128::zero() {
-            Ok(Some(send_asset(
-                contract_info.vault_asset,
-                increasor.increasor.to_string(),
-                incentive,
-            )?))
+            if incentive == Uint128::zero() {
+                Ok(None)
+            } else {
+                // If there is an incentive to give, we create a message to do so
+                let send_messages = send_asset(
+                    contract_info.vault_asset,
+                    increasor.increasor.to_string(),
+                    incentive,
+                )?;
+                Ok(Some((incentive, vec![send_messages])))
+            }
         } else {
             Ok(None)
         }
@@ -543,7 +537,7 @@ pub fn send_asset_to_contract<M: Serialize>(
     }
 }
 
-pub fn execute_modify_interest_rate(
+pub fn execute_raise_interest_rate(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
@@ -554,42 +548,27 @@ pub fn execute_modify_interest_rate(
     let mut borrow_info = BORROWS.load(deps.storage, (&borrower, loan_id.into()))?;
     let zone = get_zone(deps.as_ref(), env.clone(), &borrow_info)?;
 
-    match zone {
-        BorrowZone::SafeZone => {
-            // You can only make the loan go back if you were in the ExpensiveZone before
-            if borrow_info.borrow_zone != BorrowZone::ExpensiveZone {
-                return Err(anyhow!(ContractError::OnlyFromExpensiveZone {}));
-            }
-            // Only the borrower can make their loan go back to the safe zone
-            if borrower != info.sender {
-                return Err(anyhow!(ContractError::OnlyBorrowerCanLowerRate {}));
-            }
-            // We set the new interest rate
-            borrow_info.borrow_zone = BorrowZone::SafeZone;
-            set_interest_rate(deps.as_ref(), env, &mut borrow_info)?;
-        }
-        BorrowZone::ExpensiveZone => {
-            // You can only increase the rate from the safe zone
-            if borrow_info.borrow_zone != BorrowZone::SafeZone {
-                return Err(anyhow!(ContractError::OnlyFromSafeZone {}));
-            }
-            // The sender is saved in the increasor object
-            if borrow_info.rate_increasor.is_some() {
-                return Err(anyhow!(ContractError::CantIncreaseRateMultipleTimes {}));
-            }
-            borrow_info.rate_increasor = Some(RateIncreasor {
-                increasor: info.sender,
-                previous_rate: get_borrower_interest_rate(&borrow_info)?,
-            });
+    // We start by updating the interest rate accrued so far
+    _update_interests_accrued(env.clone(), &mut borrow_info)?;
 
-            // We increase the interest rate
-            borrow_info.borrow_zone = BorrowZone::ExpensiveZone;
-            set_interest_rate(deps.as_ref(), env, &mut borrow_info)?;
+    if zone == BorrowZone::ExpensiveZone {
+        // You can only increase the rate from the safe zone
+        if borrow_info.borrow_zone != BorrowZone::SafeZone {
+            return Err(anyhow!(ContractError::OnlyFromSafeZone {}));
         }
-        BorrowZone::LiquidationZone => {}
+        // The sender is saved in the increasor object
+        if borrow_info.rate_increasor.is_some() {
+            return Err(anyhow!(ContractError::CantIncreaseRateMultipleTimes {}));
+        }
+        borrow_info.rate_increasor = Some(RateIncreasor {
+            increasor: info.sender,
+            previous_rate: get_borrower_interest_rate(&borrow_info)?,
+        });
+
+        // We increase the interest rate
+        borrow_info.borrow_zone = BorrowZone::ExpensiveZone;
+        set_interest_rate(deps.as_ref(), env, &mut borrow_info)?;
     }
-
-    // We set the new interest rate
 
     Ok(Response::new())
 }
@@ -613,4 +592,31 @@ pub fn set_interest_rate(deps: Deps, env: Env, borrow_info: &mut BorrowInfo) -> 
         }
     };
     Ok(())
+}
+pub fn _update_interests_accrued(env: Env, borrow_info: &mut BorrowInfo) -> Result<Uint128> {
+    // We get the interests accrued since the last call
+    let new_interest_accrued = get_new_interests_accrued(env.clone(), borrow_info);
+
+    // We update the borrow info accordingly (only in the continuous case)
+    // And we return the current interests due
+    match borrow_info.interests {
+        InterestType::Fixed { interests, .. } => Ok(interests),
+
+        InterestType::Continuous {
+            interests_accrued,
+            last_interest_rate,
+        } => {
+            let new_interests = interests_accrued + new_interest_accrued;
+            if new_interest_accrued > Uint128::zero() {
+                borrow_info.interests = {
+                    InterestType::Continuous {
+                        interests_accrued: new_interests,
+                        last_interest_rate,
+                    }
+                };
+                borrow_info.start_block = env.block.height;
+            }
+            Ok(new_interests)
+        }
+    }
 }

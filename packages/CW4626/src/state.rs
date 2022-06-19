@@ -2,8 +2,9 @@ use cosmwasm_std::{
     to_binary, Addr, BalanceResponse, BankQuery, Deps, Env, QueryRequest, StdError, StdResult,
     Uint128, WasmQuery,
 };
+
 use cw20::{Cw20QueryMsg, TokenInfoResponse};
-use cw_storage_plus::Item;
+use cw_storage_plus::{Item, PrimaryKey};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -31,6 +32,59 @@ pub struct MinterData {
 pub enum AssetInfo {
     Coin(String),
     Cw20(String),
+}
+
+impl ToString for AssetInfo {
+    fn to_string(&self) -> String {
+        match self {
+            AssetInfo::Coin(x) => {
+                let mut ret = "coin_".to_string();
+                ret.push_str(x);
+                ret
+            }
+            AssetInfo::Cw20(x) => {
+                let mut ret = "cw20_".to_string();
+                ret.push_str(x);
+                ret
+            }
+        }
+    }
+}
+
+// Provide a string version of this to raw encode strings
+impl<'a> PrimaryKey<'a> for &'a AssetInfo {
+    type Prefix = ();
+    type SubPrefix = ();
+
+    fn key(&self) -> Vec<&[u8]> {
+        match self {
+            AssetInfo::Coin(x) => {
+                let mut keys = "coin_".key();
+                keys.extend(&x.key());
+                keys
+            }
+            AssetInfo::Cw20(x) => {
+                let mut keys = "cw20_".key();
+                keys.extend(&x.key());
+                keys
+            }
+        }
+    }
+}
+
+impl<'a> PrimaryKey<'a> for AssetInfo {
+    type Prefix = ();
+    type SubPrefix = ();
+    fn key(&self) -> Vec<&[u8]> {
+        match self {
+            AssetInfo::Coin(x) => {
+                vec![x.as_bytes()]
+            }
+            AssetInfo::Cw20(x) => {
+                vec![x.as_bytes()]
+            }
+        }
+    }
 }
 
 pub fn query_asset_balance(deps: Deps, env: Env) -> Result<Uint128, StdError> {

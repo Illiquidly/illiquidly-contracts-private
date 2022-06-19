@@ -6,7 +6,7 @@ use cw_4626::query::QueryMsg as Cw4626QueryMsg;
 use cw_4626::state::AssetInfo;
 use lender_export::state::{
     BorrowInfo, BorrowMode, BorrowZone, Cw721Info, InterestType, InterestsInfo, BORROWS,
-    CONTRACT_INFO, MIN_BLOCK_OFFSET, PERCENTAGE_RATE,
+    MIN_BLOCK_OFFSET, PERCENTAGE_RATE,
 };
 use std::convert::TryInto;
 
@@ -120,6 +120,7 @@ pub fn get_total_interests(env: Env, borrow_info: &BorrowInfo) -> Uint128 {
             interests_accrued, ..
         } => interests_accrued,
     };
+    println!("{:?}", old_interests);
     old_interests + get_new_interests_accrued(env, borrow_info)
 }
 
@@ -155,6 +156,7 @@ pub fn get_interests_with(
     // Here we divide and multiply by MIN_BLOCK_OFFSET to make sure the interests due don't fluctuate too much
 }
 pub fn get_liquidation_value(env: Env, borrow_info: &BorrowInfo) -> Result<Uint128> {
+    // TODO determine a liquidation strategy
     Ok(get_loan_value(env, borrow_info))
 }
 

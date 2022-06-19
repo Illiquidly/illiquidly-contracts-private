@@ -1,0 +1,32 @@
+[package]
+name = "nft-escrow"
+version = "0.1.0"
+authors = ["Nicolas KOWALSKI <kowalski.kowalskin@gmail.com>"]
+edition = "2018"
+license = "Apache-2.0"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+backtraces = ["cosmwasm-std/backtraces"]
+# use library feature to disable all instantiate/execute/query exports
+library = []
+
+[dependencies]
+cw20 = "0.9.0"
+cw721 = "0.9.0"
+cw-storage-plus = "0.9.0"
+cw20-base = { version = "0.9.0", features = ["library"] }
+cosmwasm-std = { version = "0.16.0" }
+terra-cosmwasm = { version = "2.2" }
+schemars = "0.8.1"
+serde = { version = "1.0.103", default-features = false, features = ["derive"] }
+thiserror = { version = "1.0.23" }
+escrow-export = { path = "../../packages/escrow", version = "0.1.0" }
+utils = { path = "../../packages/utils", version = "0.1.0" }
+anyhow = "1.0"
+
+
+[dev-dependencies]
+cosmwasm-schema = { version = "0.16.0" }

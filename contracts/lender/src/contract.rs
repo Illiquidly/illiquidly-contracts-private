@@ -2,18 +2,20 @@ use anyhow::{anyhow, Result};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    from_binary, to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult,
-    Uint128,
+    from_binary, to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult, Uint128,
 };
 
-use lender_export::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
-use lender_export::state::{ContractInfo, State, CONTRACT_INFO, STATE};
+use lender_export::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, ZonesResponse};
+use lender_export::state::{ContractInfo, State, BORROWS, CONTRACT_INFO, STATE};
 
 use crate::error::ContractError;
 use crate::execute::{
-    _execute_repay, execute_borrow, execute_borrow_more, execute_modify_interest_rate,
+    _execute_repay, execute_borrow, execute_borrow_more, execute_raise_interest_rate,
 };
-use crate::query::get_vault_token_asset;
+use crate::query::{
+    get_asset_interests, get_asset_price, get_expensive_zone_limit_price,
+    get_safe_zone_limit_price, get_vault_token_asset,
+};
 use crate::state::{set_lock, set_oracle, set_owner};
 use cw_4626::state::AssetInfo;
 
@@ -62,6 +64,7 @@ pub fn instantiate(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> Result<Response> {
     match msg {
+        // Functions used to borrow funds
         ExecuteMsg::Borrow {
             asset_info,
             assets_to_borrow,
@@ -72,20 +75,22 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> R
             assets_to_borrow,
         } => execute_borrow_more(deps, env, info, loan_id, assets_to_borrow),
 
+        // Functions used to repay or liquidate loans
         ExecuteMsg::Receive {
             sender,
             amount,
             msg,
-        } => receive_assets(deps, env, info, sender, amount, msg).map_err(|x| anyhow!(x)),
+        } => receive_assets(deps, env, info, sender, amount, msg),
 
         ExecuteMsg::Repay {
             borrower,
             loan_id,
             assets,
-        } => execute_repay_native_funds(deps, env, info, borrower, loan_id, assets)
-            .map_err(|x| anyhow!(x)),
-        ExecuteMsg::ModifyRate { borrower, loan_id } => {
-            execute_modify_interest_rate(deps, env, info, borrower, loan_id).map_err(|x| anyhow!(x))
+        } => execute_repay_native_funds(deps, env, info, borrower, loan_id, assets),
+
+        // Function used to raise the interests rate
+        ExecuteMsg::RaiseRate { borrower, loan_id } => {
+            execute_raise_interest_rate(deps, env, info, borrower, loan_id)
         }
 
         // Contract Administration
@@ -96,11 +101,34 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> R
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
+pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::State {} => to_binary(&STATE.load(deps.storage)?),
         QueryMsg::ContratInfo {} => to_binary(&CONTRACT_INFO.load(deps.storage)?),
-        _ => Err(StdError::generic_err("Not implemented yet")),
+        QueryMsg::BorrowInfo { borrower, loan_id } => {
+            let borrower = deps.api.addr_validate(&borrower)?;
+            to_binary(&BORROWS.load(deps.storage, (&borrower, loan_id.into()))?)
+        }
+        QueryMsg::BorrowZones { asset_info } => {
+            let collateral_price = get_asset_price(deps, env, asset_info)?;
+            let safe_zone_limit = get_safe_zone_limit_price(collateral_price)?;
+            let expensive_zone_limit = get_expensive_zone_limit_price(collateral_price)?;
+            to_binary(&ZonesResponse {
+                safe_zone_limit,
+                expensive_zone_limit,
+            })
+        }
+        QueryMsg::BorrowTerms {
+            asset_info,
+            borrow_mode,
+            borrow_zone,
+        } => to_binary(&get_asset_interests(
+            deps,
+            env,
+            asset_info,
+            borrow_mode,
+            borrow_zone,
+        )?),
     }
 }
 
@@ -181,7 +209,7 @@ pub mod tests {
     use crate::custom_mock_querier::mock_dependencies;
     use crate::error::ContractError;
     use cosmwasm_std::testing::{mock_env, mock_info};
-    use cosmwasm_std::{coins, Coin, CosmosMsg, DepsMut, Uint128, WasmMsg};
+    use cosmwasm_std::{coins, Api, Coin, CosmosMsg, DepsMut, Uint128, WasmMsg};
     use cw721::Cw721ExecuteMsg;
     use cw_4626::msg::ExecuteMsg as Cw4626ExecuteMsg;
     use fee_distributor_export::msg::ExecuteMsg as DistributorExecuteMsg;
@@ -226,6 +254,51 @@ pub mod tests {
                 },
                 assets_to_borrow: Uint128::from(principle),
                 borrow_mode: BorrowMode::Fixed,
+            },
+        )
+    }
+
+    fn borrow_continuous_helper(
+        deps: DepsMut,
+        sender: &str,
+        nft_address: &str,
+        token_id: &str,
+        assets: Vec<Coin>,
+        principle: u128,
+    ) -> Result<Response> {
+        let info = mock_info(sender, &assets);
+        let env = mock_env();
+        execute(
+            deps,
+            env,
+            info,
+            ExecuteMsg::Borrow {
+                asset_info: Cw721Info {
+                    nft_address: nft_address.to_string(),
+                    token_id: token_id.to_string(),
+                },
+                assets_to_borrow: Uint128::from(principle),
+                borrow_mode: BorrowMode::Continuous,
+            },
+        )
+    }
+
+    fn borrow_more_helper(
+        deps: DepsMut,
+        sender: &str,
+        loan_id: u64,
+        assets: Vec<Coin>,
+        principle: u128,
+    ) -> Result<Response> {
+        let info = mock_info(sender, &assets);
+        let env = mock_env();
+        execute(
+            deps,
+            env,
+            info,
+            ExecuteMsg::BorrowMore {
+                loan_id,
+                assets_to_borrow: Uint128::from(principle),
             },
         )
     }
@@ -324,6 +397,16 @@ pub mod tests {
                 .add_attribute("collateral_token_id", "token_id")
                 .add_attribute("borrower", "creator")
         );
+
+        // We verify the internal structure has changed
+        let borrower = deps.api.addr_validate("creator").unwrap();
+        assert_eq!(
+            BORROWS
+                .load(&deps.storage, (&borrower, 0u64.into()))
+                .unwrap()
+                .principle,
+            Uint128::from(8742u128)
+        )
     }
 
     #[test]
@@ -538,5 +621,78 @@ pub mod tests {
                 .add_attribute("assets", 8809u128.to_string())
                 .add_attribute("collateral_withdrawn", "true")
         );
+    }
+
+    #[test]
+    fn test_no_borrow_fixed() {
+        let mut deps = mock_dependencies(&[]);
+        init_helper(deps.as_mut());
+
+        borrow_helper(
+            deps.as_mut(),
+            "creator",
+            "nft",
+            "token_id",
+            vec![],
+            50_000_000u128,
+        )
+        .unwrap();
+
+        // You can't borrow too much funds for a unique collateral
+        borrow_more_helper(deps.as_mut(), "creator", 0u64, vec![], 50_000_000u128).unwrap_err();
+
+        borrow_more_helper(deps.as_mut(), "creator", 0u64, vec![], 1_000_000u128).unwrap_err();
+    }
+
+    #[test]
+    fn test_borrow_more_sanity() {
+        let mut deps = mock_dependencies(&[]);
+        init_helper(deps.as_mut());
+
+        borrow_continuous_helper(
+            deps.as_mut(),
+            "creator",
+            "nft",
+            "token_id",
+            vec![],
+            50_000_000u128,
+        )
+        .unwrap();
+
+        // You can't borrow too much funds for a unique collateral
+        borrow_more_helper(deps.as_mut(), "creator", 0u64, vec![], 50_000_000u128).unwrap_err();
+
+        let res =
+            borrow_more_helper(deps.as_mut(), "creator", 0u64, vec![], 1_000_000u128).unwrap();
+
+        assert_eq!(
+            res,
+            Response::new()
+                .add_message(
+                    into_cosmos_msg(
+                        Cw4626ExecuteMsg::Borrow {
+                            receiver: "creator".to_string(),
+                            assets: Uint128::from(1_000_000u128),
+                        },
+                        "vault_token".to_string(),
+                        None,
+                    )
+                    .unwrap()
+                )
+                .add_attribute("action", "borrow")
+                .add_attribute("borrower", "creator")
+                .add_attribute("loan_id", "0")
+                .add_attribute("asset_borrowed", "1000000")
+        );
+
+        // We verify the internal structure has changed
+        let borrower = deps.api.addr_validate("creator").unwrap();
+        assert_eq!(
+            BORROWS
+                .load(&deps.storage, (&borrower, 0u64.into()))
+                .unwrap()
+                .principle,
+            Uint128::from(51_000_000u128)
+        )
     }
 }
