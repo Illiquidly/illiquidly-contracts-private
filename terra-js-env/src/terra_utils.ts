@@ -171,11 +171,10 @@ export class Address {
         `instantiate failed. code: ${instantiateTxResult.code}, codespace: ${instantiateTxResult.codespace}, raw_log: ${instantiateTxResult.raw_log}`
       );
     }
-
     const {
-      instantiate_contract: { contract_address }
+      instantiate: { _contract_address }
     } = instantiateTxResult.logs[0].eventsByType;
-    return this.getContract(contract_address[0]);
+    return this.getContract(_contract_address[0]);
   }
 }
 

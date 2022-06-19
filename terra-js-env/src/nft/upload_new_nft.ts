@@ -10,7 +10,7 @@ async function main() {
 
   // Uploading the contract code
   let nft_codeId: string[] = await handler.uploadContract(
-    '../artifacts/cw721_base.wasm'
+    '../artifacts/cw721_base1.0.wasm'
   );
 
   let codeName: string = 'NFT' + Math.ceil(Math.random() * 10000);
