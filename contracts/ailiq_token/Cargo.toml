@@ -18,19 +18,22 @@ backtraces = ["cosmwasm-std/backtraces"]
 library = []
 
 [dependencies]
-cw20 = "0.9.0"
-cw20-base = { version = "0.9.0", features = ["library"] }
-cosmwasm-std = { version = "0.16.0" }
+#CosmWasm
+cw20 = "0.13.0"
+cw20-base = { version = "0.13.0", features = ["library"] }
+cosmwasm-std = { version = "1.0.0" }
+
+# Other Modules
 schemars = "0.8.1"
 serde = { version = "1.0.103", default-features = false, features = ["derive"] }
 thiserror = { version = "1.0.23" }
+anyhow = "1.0"
+
+# Local Modules
 cw_4626 = { path = "../../packages/CW4626", version = "0.1.0" }
 utils = { path = "../../packages/utils", version = "0.1.0" }
-primitive-types = {version= "^0.11.0"}
-cosmwasm-bignumber = "^2.2.0"
-anyhow = "1.0"
-# Only for tests
-rand = "0.8.5"
+bignumber = { path = "../../packages/bignumber", version = "2.2.0" }
 
 [dev-dependencies]
-cosmwasm-schema = { version = "0.16.0" }
+cosmwasm-schema = { version = "1.0.0" }
+rand = {version="0.8.5"}

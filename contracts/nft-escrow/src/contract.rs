@@ -1,7 +1,7 @@
 #[cfg(not(feature = "library"))]
 use anyhow::{anyhow, Result};
 use cosmwasm_std::{
-    entry_point, from_binary, to_binary, Addr, Binary, Deps, DepsMut, Env, MessageInfo, Order, Response, StdError, StdResult,
+    entry_point, from_binary, to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Order, Response, StdError, StdResult,
 };
 use cw_storage_plus::{Bound};
 
@@ -9,10 +9,10 @@ use escrow_export::msg::{
     ContractInfoResponse, ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg, ReceiveMsg,
     TokenInfoResponse, TokensResponse,
 };
-use escrow_export::state::{ContractInfo, TokenInfo};
+use escrow_export::state::{ContractInfo, TokenInfo, TokenOwner};
 
 use crate::error::ContractError;
-use crate::state::{is_owner, CONTRACT_INFO, DEPOSITED_NFTS, USER_OWNED_NFTS};
+use crate::state::{is_owner, CONTRACT_INFO, DepositNft};
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -90,18 +90,23 @@ const MAX_LIMIT: u32 = 30;
 pub fn user_tokens(
     deps: Deps,
     owner: String,
-    start_after: Option<u32>,
+    start_after: Option<String>,
     limit: Option<u32>,
 ) -> StdResult<TokensResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
-    let start = start_after.unwrap_or(0u32) as usize;
+    let start = start_after.map(Bound::exclusive);
 
     let owner_addr = deps.api.addr_validate(&owner)?;
-    let tokens: Vec<_> = USER_OWNED_NFTS.load(deps.storage, &owner_addr)?;
+    let tokens: Vec<String> = DepositNft::default()
+        .nfts
+        .idx
+        .owner
+        .prefix(owner_addr)
+        .keys(deps.storage, start, None, Order::Ascending)
+        .take(limit)
+        .collect::<StdResult<Vec<_>>>()?;
 
-    Ok(TokensResponse {
-        tokens: tokens[start..(start + limit)].to_vec(),
-    })
+    Ok(TokensResponse { tokens })
 }
 
 pub fn registered_tokens(
@@ -109,34 +114,32 @@ pub fn registered_tokens(
     start_after: Option<String>,
     limit: Option<u32>,
 ) -> StdResult<TokenInfoResponse> {
-    let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
 
-    let start = start_after.map(Bound::exclusive);
-    let tokens = DEPOSITED_NFTS
-        .range(deps.storage, start, None, Order::Ascending)
-        .take(limit)
-        .map(|x| {
-            x.map(|(key, depositor)| {
-                let token_id = std::str::from_utf8(&key)
-                    .map(|x| x.to_string())
-                    .map_err(|_| {
-                        StdError::generic_err("Error while getting utf8 transcript of keys")
-                    })
-                    .unwrap();
-                TokenInfo {
-                    token_id,
-                    depositor: depositor.to_string(),
-                }
-            })
-        })
-        .collect::<Result<Vec<TokenInfo>, StdError>>()?;
+     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
+        let start = start_after.map(|s| Bound::ExclusiveRaw(s.into()));
 
-    Ok(TokenInfoResponse { tokens })
+        let tokens: StdResult<Vec<TokenInfo>> = DepositNft::default()
+            .nfts
+            .range(deps.storage, start, None, Order::Ascending)
+            .take(limit)
+            .map(|item| item.map(|(token_id, token_owner)| TokenInfo{
+                token_id,
+                depositor: token_owner.owner.to_string(),
+            }))
+            .collect();
+
+        Ok(TokenInfoResponse { tokens: tokens? })
+
+
 }
 
-pub fn depositor(deps: Deps, token_id: String) -> StdResult<String> {
-    let owner: Addr = DEPOSITED_NFTS.load(deps.storage, &token_id)?;
-    Ok(owner.to_string())
+pub fn depositor(deps: Deps, token_id: String) -> StdResult<TokenInfo> {
+    let depositor: TokenOwner = DepositNft::default()
+        .nfts.load(deps.storage, &token_id)?;
+    Ok(TokenInfo{
+        token_id,
+        depositor: depositor.owner.to_string()
+    })
 }
 
 pub fn set_owner(deps: DepsMut, _env: Env, info: MessageInfo, owner: String) -> Result<Response> {
@@ -177,18 +180,12 @@ pub fn execute_receive_nft(
             }
             // We save the token to memory
             let sender_addr = deps.api.addr_validate(&sender)?;
-            DEPOSITED_NFTS.save(deps.storage, &token_id, &sender_addr)?;
-            USER_OWNED_NFTS.update::<_, anyhow::Error>(
-                deps.storage,
-                &sender_addr,
-                |x| match x {
-                    Some(mut tokens) => {
-                        tokens.push(token_id.clone());
-                        Ok(tokens)
-                    }
-                    None => Ok(vec![token_id.clone()]),
-                },
-            )?;
+
+            DepositNft::default()
+        .nfts.save(deps.storage, &token_id, &TokenOwner{
+                owner: sender_addr
+            })?;
+
             Ok(Response::new()
                 .add_attribute("action", "deposit_nft")
                 .add_attribute("address", contract_info.nft_address)
@@ -218,7 +215,7 @@ pub mod tests {
 
     #[test]
     fn test_init_sanity() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         let res = init_helper(deps.as_mut());
         assert_eq!(0, res.messages.len());
     }
@@ -248,7 +245,7 @@ pub mod tests {
 
     #[test]
     fn test_deposit_nft() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         init_helper(deps.as_mut());
 
         let err = deposit_helper(deps.as_mut(), "other_nft", "id", "id").unwrap_err();
@@ -267,16 +264,17 @@ pub mod tests {
 
         // We verify both intermediary variables have been updated
         let addr = deps.api.addr_validate("creator").unwrap();
-        let deposit = USER_OWNED_NFTS.load(&deps.storage, &addr).unwrap();
-        assert_eq!(deposit, vec!["id".to_string()]);
 
-        let deposit = DEPOSITED_NFTS.load(&deps.storage, "id").unwrap();
-        assert_eq!(deposit, addr);
+        let deposit = DepositNft::default()
+        .nfts.load(&deps.storage, "id").unwrap();
+        assert_eq!(deposit, TokenOwner{
+            owner: addr
+        });
     }
 
     #[test]
     fn test_deposit_multiple_nft() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         init_helper(deps.as_mut());
 
         deposit_helper(deps.as_mut(), "nft", "id", "id").unwrap();
@@ -287,33 +285,38 @@ pub mod tests {
 
         // We verify both intermediary variables have been updated
         let addr = deps.api.addr_validate("creator").unwrap();
-        let deposit = USER_OWNED_NFTS.load(&deps.storage, &addr).unwrap();
-        assert_eq!(
-            deposit,
-            vec![
-                "id".to_string(),
-                "id1".to_string(),
-                "id2".to_string(),
-                "id3".to_string(),
-                "id4".to_string()
-            ]
-        );
-        let deposit = DEPOSITED_NFTS.load(&deps.storage, "id").unwrap();
-        assert_eq!(deposit, addr);
-        let deposit = DEPOSITED_NFTS.load(&deps.storage, "id1").unwrap();
-        assert_eq!(deposit, addr);
-        let deposit = DEPOSITED_NFTS.load(&deps.storage, "id2").unwrap();
-        assert_eq!(deposit, addr);
-        let deposit = DEPOSITED_NFTS.load(&deps.storage, "id3").unwrap();
-        assert_eq!(deposit, addr);
-        let deposit = DEPOSITED_NFTS.load(&deps.storage, "id4").unwrap();
-        assert_eq!(deposit, addr);
+       
+        let deposit = DepositNft::default()
+        .nfts.load(&deps.storage, "id").unwrap();
+        assert_eq!(deposit, TokenOwner{
+            owner: addr.clone()
+        });
+        let deposit = DepositNft::default()
+        .nfts.load(&deps.storage, "id1").unwrap();
+        assert_eq!(deposit, TokenOwner{
+            owner: addr.clone()
+        });
+        let deposit = DepositNft::default()
+        .nfts.load(&deps.storage, "id2").unwrap();
+        assert_eq!(deposit, TokenOwner{
+            owner: addr.clone()
+        });
+        let deposit = DepositNft::default()
+        .nfts.load(&deps.storage, "id3").unwrap();
+        assert_eq!(deposit, TokenOwner{
+            owner: addr.clone()
+        });
+        let deposit = DepositNft::default()
+        .nfts.load(&deps.storage, "id4").unwrap();
+        assert_eq!(deposit, TokenOwner{
+            owner: addr
+        });
     }
 
     #[test]
     fn test_query_contract_info() {
         let env = mock_env();
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         init_helper(deps.as_mut());
 
         let res = query(deps.as_ref(), env, QueryMsg::ContractInfo {}).unwrap();
@@ -330,7 +333,7 @@ pub mod tests {
     #[test]
     fn test_query_deposited_nft() {
         let env = mock_env();
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         init_helper(deps.as_mut());
 
         deposit_helper(deps.as_mut(), "nft", "id", "id").unwrap();

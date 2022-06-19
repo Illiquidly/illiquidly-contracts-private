@@ -1,3 +1,4 @@
+use cw_storage_plus::{Index, MultiIndex, IndexList};
 use cosmwasm_std::Addr;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -19,4 +20,20 @@ pub struct TokenInfo {
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct TokenOwner {
     pub owner: Addr,
+}
+
+
+pub struct TokenIndexes<'a>
+
+{
+    pub owner: MultiIndex<'a, Addr, TokenOwner, String>,
+}
+
+impl<'a> IndexList<TokenOwner> for TokenIndexes<'a>
+
+{
+    fn get_indexes(&'_ self) -> Box<dyn Iterator<Item = &'_ dyn Index<TokenOwner>> + '_> {
+        let v: Vec<&dyn Index<TokenOwner>> = vec![&self.owner];
+        Box::new(v.into_iter())
+    }
 }

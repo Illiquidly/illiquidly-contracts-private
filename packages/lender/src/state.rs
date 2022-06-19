@@ -1,12 +1,12 @@
 use cosmwasm_std::{Addr, Uint128};
-use cw_storage_plus::{Item, Map, U64Key};
+use cw_storage_plus::{Item, Map};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use cw_4626::state::AssetInfo;
 pub const CONTRACT_INFO: Item<ContractInfo> = Item::new("contract_info");
 pub const STATE: Item<State> = Item::new("state");
-pub const BORROWS: Map<(&Addr, U64Key), BorrowInfo> = Map::new("borrows");
+pub const BORROWS: Map<(&Addr, u64), BorrowInfo> = Map::new("borrows");
 
 // This allows the interest to pay to be stable (at the scale of a human) with the blocks mined
 pub const MIN_BLOCK_OFFSET: u64 = 10u64;

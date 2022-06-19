@@ -76,7 +76,7 @@ pub fn execute_borrow(
     // We save the borrow info to memory
     BORROWS.save(
         deps.storage,
-        (&info.sender, new_collateral_id.into()),
+        (&info.sender, new_collateral_id),
         &BorrowInfo {
             principle: assets_to_borrow,
             interests,
@@ -134,7 +134,7 @@ pub fn execute_borrow_more(
 
     // First we make sure the loan indeed has a collateral
     let borrower = info.sender.clone();
-    let mut borrow_info = BORROWS.load(deps.storage, (&borrower, loan_id.into()))?;
+    let mut borrow_info = BORROWS.load(deps.storage, (&borrower, loan_id))?;
     let collateral_info = borrow_info
         .clone()
         .collateral
@@ -180,7 +180,7 @@ pub fn execute_borrow_more(
     borrow_info.start_block = env.block.height;
 
     // We save the borrow info to memory
-    BORROWS.save(deps.storage, (&info.sender, loan_id.into()), &borrow_info)?;
+    BORROWS.save(deps.storage, (&info.sender, loan_id), &borrow_info)?;
 
     // And we transfer the borrowed assets to the lender
     let borrow_message = into_cosmos_msg(
@@ -221,7 +221,7 @@ pub fn _execute_repay(
     let contract_info = CONTRACT_INFO.load(deps.storage)?;
     // We load the borrow object that they want to repay
     let borrower = deps.api.addr_validate(&borrower)?;
-    let mut borrow_info = BORROWS.load(deps.storage, (&borrower, loan_id.into()))?;
+    let mut borrow_info = BORROWS.load(deps.storage, (&borrower, loan_id))?;
 
     // We check the sender can repay the loan
     can_repay_loan(
@@ -360,7 +360,7 @@ pub fn _execute_repay(
     };
 
     // We save the changes to memory
-    BORROWS.save(deps.storage, (&borrower, loan_id.into()), &borrow_info)?;
+    BORROWS.save(deps.storage, (&borrower, loan_id), &borrow_info)?;
 
     Ok(Response::new()
         .add_messages(increasor_message)
@@ -545,7 +545,7 @@ pub fn execute_raise_interest_rate(
     loan_id: u64,
 ) -> Result<Response> {
     let borrower = deps.api.addr_validate(&borrower)?;
-    let mut borrow_info = BORROWS.load(deps.storage, (&borrower, loan_id.into()))?;
+    let mut borrow_info = BORROWS.load(deps.storage, (&borrower, loan_id))?;
     let zone = get_zone(deps.as_ref(), env.clone(), &borrow_info)?;
 
     // We start by updating the interest rate accrued so far

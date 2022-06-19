@@ -49,7 +49,7 @@ pub enum QueryMsg {
     },
     UserTokens {
         user: String,
-        start_after: Option<u32>,
+        start_after: Option<String>,
         limit: Option<u32>,
     },
     Depositor {

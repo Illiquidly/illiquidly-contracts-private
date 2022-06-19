@@ -1,4 +1,4 @@
-use cw_storage_plus::{Item, Map, U64Key};
+use cw_storage_plus::{Item, Map};
 
 use cosmwasm_std::{Addr, Env, Storage};
 
@@ -9,7 +9,7 @@ use nft_loans_export::state::{
 
 pub const CONTRACT_INFO: Item<ContractInfo> = Item::new("contract_info");
 
-pub const COLLATERAL_INFO: Map<(&Addr, U64Key), CollateralInfo> = Map::new("collateral_info");
+pub const COLLATERAL_INFO: Map<(&Addr, u64), CollateralInfo> = Map::new("collateral_info");
 
 pub const BORROWER_INFO: Map<&Addr, BorrowerInfo> = Map::new("borrower_info");
 
@@ -34,7 +34,7 @@ pub fn add_new_offer(
     collateral.offers.push(offer.clone());
     COLLATERAL_INFO.save(
         storage,
-        (&collateral_key.0, collateral_key.1.into()),
+        (&collateral_key.0, collateral_key.1),
         collateral,
     )?;
     let offer_id = (collateral.offers.len() - 1) as u64;

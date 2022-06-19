@@ -4,7 +4,7 @@ use cosmwasm_std::{
 };
 
 use cw20::{Cw20QueryMsg, TokenInfoResponse};
-use cw_storage_plus::{Item, PrimaryKey};
+use cw_storage_plus::{Item, Key, PrimaryKey, KeyDeserialize};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -51,37 +51,41 @@ impl ToString for AssetInfo {
     }
 }
 
+impl KeyDeserialize for AssetInfo{
+    type Output = AssetInfo;
+
+    #[inline(always)]
+    fn from_vec(value: Vec<u8>) -> StdResult<Self::Output> {
+        let string_rep = String::from_utf8(value).map_err(StdError::invalid_utf8)?;
+        if let Some(coin_name) = string_rep.strip_prefix("coin_") {
+            Ok(AssetInfo::Coin(coin_name.to_string()))
+        }else if let Some(cw20_name) = string_rep.strip_prefix("cw20_") {
+            Ok(AssetInfo::Cw20(cw20_name.to_string()))
+        }else{
+            Err(StdError::generic_err("Wrong asset info saved in memory"))
+        }
+    }   
+}
+
 // Provide a string version of this to raw encode strings
-impl<'a> PrimaryKey<'a> for &'a AssetInfo {
+impl<'a> PrimaryKey<'a> for AssetInfo {
     type Prefix = ();
     type SubPrefix = ();
+    type Suffix = Self;
+    type SuperSuffix = Self;
 
-    fn key(&self) -> Vec<&[u8]> {
+    fn key(&self) -> Vec<Key> {
+
         match self {
             AssetInfo::Coin(x) => {
                 let mut keys = "coin_".key();
-                keys.extend(&x.key());
+                keys.extend(x.key());
                 keys
             }
             AssetInfo::Cw20(x) => {
                 let mut keys = "cw20_".key();
-                keys.extend(&x.key());
+                keys.extend(x.key());
                 keys
-            }
-        }
-    }
-}
-
-impl<'a> PrimaryKey<'a> for AssetInfo {
-    type Prefix = ();
-    type SubPrefix = ();
-    fn key(&self) -> Vec<&[u8]> {
-        match self {
-            AssetInfo::Coin(x) => {
-                vec![x.as_bytes()]
-            }
-            AssetInfo::Cw20(x) => {
-                vec![x.as_bytes()]
             }
         }
     }

@@ -3,13 +3,12 @@ use cosmwasm_std::{
     entry_point, to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult,
     Uint128,
 };
-use terra_cosmwasm::{SwapResponse, TerraQuerier};
 
 use fee_contract_export::error::ContractError;
 use fee_contract_export::msg::{ExecuteMsg, FeeResponse, InstantiateMsg, MigrateMsg, QueryMsg};
 use fee_contract_export::state::{ContractInfo, FeeInfo};
 
-use utils::query::{load_trade, load_trade_and_accepted_counter_trade};
+use p2p_trading_export::query::{load_trade, load_trade_and_accepted_counter_trade};
 
 use crate::state::{is_admin, CONTRACT_INFO, FEE_RATES};
 use fee_distributor_export::msg::ExecuteMsg as FeeDistributorMsg;
@@ -159,7 +158,7 @@ pub fn pay_fee_and_withdraw(
     // We accept a small fee deviation, in case the exchange rates fluctuate a bit between the query and the paiement.
     let acceptable_fee_deviation = FEE_RATES.load(deps.storage)?.acceptable_fee_deviation;
 
-    if funds.denom == "uusd" {
+    if funds.denom == "uluna" {
         if funds.amount + funds.amount * acceptable_fee_deviation / Uint128::from(1_000u128)
             < fee_amount
         {
@@ -169,17 +168,7 @@ pub fn pay_fee_and_withdraw(
             });
         }
     } else {
-        let querier = TerraQuerier::new(&deps.querier);
-        let swap_rate: SwapResponse = querier.query_swap(funds, "uusd")?;
-        let swap_amount = swap_rate.receive.amount;
-        if swap_amount + swap_amount * acceptable_fee_deviation / Uint128::from(1_000u128)
-            < fee_amount
-        {
-            return Err(ContractError::FeeNotPaidCorrectly {
-                required: fee_amount.u128(),
-                provided: swap_amount.u128(),
-            });
-        }
+        return Err(ContractError::FeeNotPaid{});
     }
 
     // Then we distribute the funds to the fee_distributor contract
@@ -286,18 +275,16 @@ pub fn fee_amount_raw(
     // Accumulate results to compute
     // 1. The percentage fee for terra native tokens
     // 2. The number of exchanged tokens in the transaction
-    let querier = TerraQuerier::new(&deps.querier);
     let (fund_fee, asset_number) = trade_assets.iter().chain(counter_assets.iter()).try_fold(
         (Uint128::zero(), Uint128::zero()),
-        |(fund_fee, asset_number), x| -> StdResult<(Uint128, Uint128)> {
+        |(fund_fee, asset_number), x| -> Result<(Uint128, Uint128), ContractError> {
             match x {
                 AssetInfo::Coin(coin) => {
-                    let usd_value = if coin.denom != "uusd" {
-                        querier.query_swap(coin.clone(), "uusd")?.receive.amount
-                    } else {
-                        coin.amount
-                    };
-                    let fee = usd_value * fee_info.asset_fee_rate / Uint128::from(1_000u128);
+                    if coin.denom != "uluna"{
+                        return Err(ContractError::FeeNotPaid{})
+                    }
+
+                    let fee = coin.amount * fee_info.asset_fee_rate / Uint128::from(1_000u128);
                     Ok((fund_fee + fee, asset_number))
                 }
                 _ => Ok((fund_fee, asset_number + Uint128::from(1u128))),
@@ -388,14 +375,14 @@ pub mod tests {
 
     #[test]
     fn test_init_sanity() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         let res = init_helper(deps.as_mut());
         assert_eq!(0, res.messages.len());
     }
 
     #[test]
     fn test_update_fee_rates() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         init_helper(deps.as_mut());
 
         let info = mock_info("creator", &[]);
@@ -435,7 +422,7 @@ pub mod tests {
 
     #[test]
     fn test_fee_amount() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         init_helper(deps.as_mut());
 
         let fee = fee_amount_raw(deps.as_ref(), &[], &[]).unwrap();

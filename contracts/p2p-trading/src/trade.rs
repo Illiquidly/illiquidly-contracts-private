@@ -56,7 +56,7 @@ pub fn create_trade(
         .last_trade_id
         .unwrap(); // This is safe because of the function architecture just there
 
-    TRADE_INFO.update(deps.storage, trade_id.into(), |trade| match trade {
+    TRADE_INFO.update(deps.storage, trade_id, |trade| match trade {
         // If the trade id already exists, the contract is faulty
         // Or an external error happened, or whatever...
         // In that case, we emit an error
@@ -207,22 +207,22 @@ pub fn add_asset_to_trade(
     match asset.clone() {
         AssetInfo::Coin(coin) => TRADE_INFO.update(
             deps.storage,
-            trade_id.into(),
+            trade_id,
             add_funds(coin, info.funds.clone()),
         ),
         AssetInfo::Cw20Coin(token) => TRADE_INFO.update(
             deps.storage,
-            trade_id.into(),
+            trade_id,
             add_cw20_coin(token.address.clone(), token.amount),
         ),
         AssetInfo::Cw721Coin(token) => TRADE_INFO.update(
             deps.storage,
-            trade_id.into(),
+            trade_id,
             add_cw721_coin(token.address.clone(), token.token_id),
         ),
         AssetInfo::Cw1155Coin(token) => TRADE_INFO.update(
             deps.storage,
-            trade_id.into(),
+            trade_id,
             add_cw1155_coin(token.address.clone(), token.token_id.clone(), token.value),
         ),
     }?;
@@ -255,7 +255,7 @@ pub fn withdraw_trade_assets_while_creating(
 
     // We withdraw the assets
     _try_withdraw_assets_unsafe(&mut trade_info, &assets)?;
-    TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
+    TRADE_INFO.save(deps.storage, trade_id, &trade_info)?;
 
     // We send the assets back to the sender
     let res = _create_withdraw_messages_unsafe(
@@ -517,7 +517,7 @@ pub fn add_whitelisted_users(
         .union(&hash_set)
         .cloned()
         .collect();
-    TRADE_INFO.save(storage, trade_id.into(), &trade_info)?;
+    TRADE_INFO.save(storage, trade_id, &trade_info)?;
 
     Ok(Response::new()
         .add_attribute("action", "modify_parameter")
@@ -543,7 +543,7 @@ pub fn remove_whitelisted_users(
     for user in &valid_whitelisted_users {
         trade_info.whitelisted_users.remove(user);
     }
-    TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
+    TRADE_INFO.save(deps.storage, trade_id, &trade_info)?;
 
     Ok(Response::new()
         .add_attribute("action", "modify_parameter")
@@ -574,7 +574,7 @@ pub fn add_nfts_wanted(
         .cloned()
         .collect();
 
-    TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
+    TRADE_INFO.save(deps.storage, trade_id, &trade_info)?;
 
     Ok(Response::new()
         .add_attribute("action", "modify_parameter")
@@ -600,7 +600,7 @@ pub fn remove_nfts_wanted(
     for nft in &valid_nfts_wanted {
         trade_info.additionnal_info.nfts_wanted.remove(nft);
     }
-    TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
+    TRADE_INFO.save(deps.storage, trade_id, &trade_info)?;
 
     Ok(Response::new()
         .add_attribute("action", "modify_parameter")
@@ -629,7 +629,7 @@ pub fn confirm_trade(
     }
     // We set the state as published
     trade_info.state = TradeState::Published;
-    TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
+    TRADE_INFO.save(deps.storage, trade_id, &trade_info)?;
 
     Ok(Response::new()
         .add_attribute("action", "confirm_trade")
@@ -672,7 +672,7 @@ pub fn accept_trade(
     };
     trade_info.state = TradeState::Accepted;
     trade_info.accepted_info = Some(accepted_info);
-    TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
+    TRADE_INFO.save(deps.storage, trade_id, &trade_info)?;
 
     // We update the coounter info comment and state
     counter_info.additionnal_info.trader_comment = comment.map(|comment| Comment {
@@ -682,7 +682,7 @@ pub fn accept_trade(
     counter_info.state = TradeState::Accepted;
     COUNTER_TRADE_INFO.save(
         deps.storage,
-        (trade_id.into(), counter_id.into()),
+        (trade_id, counter_id),
         &counter_info,
     )?;
 
@@ -717,7 +717,7 @@ pub fn refuse_counter_trade(
     counter_info.state = TradeState::Refused;
     COUNTER_TRADE_INFO.save(
         deps.storage,
-        (trade_id.into(), counter_id.into()),
+        (trade_id, counter_id),
         &counter_info,
     )?;
 
@@ -750,7 +750,7 @@ pub fn cancel_trade(
 
     // We change the trade state
     trade_info.state = TradeState::Cancelled;
-    TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
+    TRADE_INFO.save(deps.storage, trade_id, &trade_info)?;
 
     Ok(Response::new()
         .add_attribute("action", "cancel_trade")
@@ -780,7 +780,7 @@ pub fn withdraw_all_from_trade(
 
     let res = check_and_create_withdraw_messages(env, &info.sender, &trade_info)?;
     trade_info.assets_withdrawn = true;
-    TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
+    TRADE_INFO.save(deps.storage, trade_id, &trade_info)?;
 
     Ok(res
         .add_attribute("action", "withdraw_all_funds")

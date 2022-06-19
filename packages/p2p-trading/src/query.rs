@@ -1,7 +1,7 @@
 use cosmwasm_std::{to_binary, Addr, Deps, QueryRequest, StdError, StdResult, WasmQuery};
 
-use p2p_trading_export::msg::QueryMsg as P2PQueryMsg;
-use p2p_trading_export::state::TradeInfo;
+use crate::msg::QueryMsg as P2PQueryMsg;
+use crate::state::TradeInfo;
 
 /// Load a trade and the provided counter trade
 /// If it isn't provided, the function will try to query the accepted counter trade if it exists

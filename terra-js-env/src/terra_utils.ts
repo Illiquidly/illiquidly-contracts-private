@@ -36,6 +36,8 @@ class Transaction extends LCDClientWrapper {
     const tx = await this.wallet.createAndSignTx(post_msg);
     return await this.terra.tx.broadcast(tx);
   }
+
+
   async execute(msgName: string, msgArgs: Object, otherArgs: any = {}) {
     let msg = {
       [msgName]: {
@@ -137,12 +139,12 @@ export class Address {
     return await this.post([send]);
   }
   async uploadContract(binaryFile: string) {
+
     const storeCode = new MsgStoreCode(
       this.wallet.key.accAddress,
       fs.readFileSync(binaryFile).toString('base64')
     );
     let storeCodeTxResult = await this.post([storeCode]);
-
     if (isTxError(storeCodeTxResult)) {
       throw new Error(
         `store code failed. code: ${storeCodeTxResult.code}, codespace: ${storeCodeTxResult.codespace}, raw_log: ${storeCodeTxResult.raw_log}`
@@ -159,7 +161,8 @@ export class Address {
       this.wallet.key.accAddress,
       codeId, // code ID
       initMsg,
-      {} // init coins
+      {}, // init coins,
+      "initContract"
     );
     const instantiateTxResult = await this.post([instantiate]);
 

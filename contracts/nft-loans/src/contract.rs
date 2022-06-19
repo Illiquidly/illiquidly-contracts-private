@@ -1,11 +1,10 @@
+#[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     coins, to_binary, Addr, BankMsg, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Order,
     Response, StdError, StdResult, Uint128,
 };
-use cw_storage_plus::{Bound, PrimaryKey, U64Key};
-#[cfg(not(feature = "library"))]
-use std::convert::TryInto;
+use cw_storage_plus::{Bound};
 
 use crate::error::ContractError;
 
@@ -281,7 +280,7 @@ pub fn deposit_collateral(
     // Then we save an collateral info object
     COLLATERAL_INFO.save(
         deps.storage,
-        (&borrower, loan_id.into()),
+        (&borrower, loan_id),
         &CollateralInfo {
             terms,
             associated_asset: asset_info,
@@ -306,7 +305,7 @@ pub fn withdraw_collateral(
 ) -> Result<Response, ContractError> {
     // We query the loan info
     let borrower = info.sender;
-    let mut collateral = COLLATERAL_INFO.load(deps.storage, (&borrower, loan_id.into()))?;
+    let mut collateral = COLLATERAL_INFO.load(deps.storage, (&borrower, loan_id))?;
     is_collateral_withdrawable(&collateral)?;
 
     // We start by creating the transfer message
@@ -318,7 +317,7 @@ pub fn withdraw_collateral(
 
     // We update the internal state, the loan proposal is no longer valid
     collateral.state = LoanState::AssetWithdrawn;
-    COLLATERAL_INFO.save(deps.storage, (&borrower, loan_id.into()), &collateral)?;
+    COLLATERAL_INFO.save(deps.storage, (&borrower, loan_id), &collateral)?;
 
     Ok(Response::new()
         .add_message(transfer_message)
@@ -340,12 +339,12 @@ pub fn set_loan_terms(
 ) -> Result<Response, ContractError> {
     // We query the loan info
     let borrower = info.sender;
-    let mut collateral = COLLATERAL_INFO.load(deps.storage, (&borrower, loan_id.into()))?;
+    let mut collateral = COLLATERAL_INFO.load(deps.storage, (&borrower, loan_id))?;
     is_loan_modifiable(&collateral)?;
 
     // Update the terms
     collateral.terms = Some(terms);
-    COLLATERAL_INFO.save(deps.storage, (&borrower, loan_id.into()), &collateral)?;
+    COLLATERAL_INFO.save(deps.storage, (&borrower, loan_id), &collateral)?;
 
     Ok(Response::new()
         .add_attribute("action", "modify-loan_terms")
@@ -365,7 +364,7 @@ pub fn make_offer(
 ) -> Result<Response, ContractError> {
     // We query the loan info
     let borrower = deps.api.addr_validate(&borrower)?;
-    let mut collateral = COLLATERAL_INFO.load(deps.storage, (&borrower, loan_id.into()))?;
+    let mut collateral = COLLATERAL_INFO.load(deps.storage, (&borrower, loan_id))?;
     is_loan_counterable(&collateral)?;
 
     // Make sure the transaction contains funds that match the principle indicated in the terms
@@ -408,7 +407,7 @@ pub fn cancel_offer(
     let lender = info.sender;
     // We query the loan info
     let borrower = deps.api.addr_validate(&borrower)?;
-    let mut collateral = COLLATERAL_INFO.load(deps.storage, (&borrower, loan_id.into()))?;
+    let mut collateral = COLLATERAL_INFO.load(deps.storage, (&borrower, loan_id))?;
 
     // We can cancel an offer only if the Borrower is still searching for a loan
     if collateral.state != LoanState::Published {
@@ -437,7 +436,7 @@ pub fn cancel_offer(
     collateral.offers[offer_id as usize] = offer;
     // And mark the deposited funds as withdrawn
     collateral.offers[offer_id as usize].deposited_funds = None;
-    COLLATERAL_INFO.save(deps.storage, (&borrower, loan_id.into()), &collateral)?;
+    COLLATERAL_INFO.save(deps.storage, (&borrower, loan_id), &collateral)?;
 
     Ok(Response::new()
         .add_message(withdraw_response)
@@ -463,7 +462,7 @@ pub fn withdraw_refused_offer(
     let lender = info.sender;
     // We query the loan info
     let borrower = deps.api.addr_validate(&borrower)?;
-    let mut collateral = COLLATERAL_INFO.load(deps.storage, (&borrower, loan_id.into()))?;
+    let mut collateral = COLLATERAL_INFO.load(deps.storage, (&borrower, loan_id))?;
 
     // We need to verify the offer exists and the sender is actually the owner of the offer
     let offer = is_lender(lender.clone(), &collateral, offer_id as usize)?;
@@ -484,7 +483,7 @@ pub fn withdraw_refused_offer(
 
     // And we mark the deposited funds as withdrawn
     collateral.offers[offer_id as usize].deposited_funds = None;
-    COLLATERAL_INFO.save(deps.storage, (&borrower, loan_id.into()), &collateral)?;
+    COLLATERAL_INFO.save(deps.storage, (&borrower, loan_id), &collateral)?;
 
     Ok(Response::new()
         .add_message(withdraw_message)
@@ -507,7 +506,7 @@ pub fn _withdraw_offer_unsafe(
     offer_id: usize,
 ) -> Result<BankMsg, ContractError> {
     // We query the loan info
-    let collateral = COLLATERAL_INFO.load(deps.storage, (&borrower, loan_id.into()))?;
+    let collateral = COLLATERAL_INFO.load(deps.storage, (&borrower, loan_id))?;
     let offer = get_offer(&collateral, offer_id)?;
 
     // We get the funds to withdraw
@@ -533,7 +532,7 @@ pub fn refuse_offer(
 ) -> Result<Response, ContractError> {
     // We query the loan info
     let borrower = info.sender;
-    let mut collateral = COLLATERAL_INFO.load(deps.storage, (&borrower, loan_id.into()))?;
+    let mut collateral = COLLATERAL_INFO.load(deps.storage, (&borrower, loan_id))?;
 
     // Mark the offer as refused
     let mut offer = get_offer(&collateral, offer_id as usize)?;
@@ -541,7 +540,7 @@ pub fn refuse_offer(
     collateral.offers[offer_id as usize] = offer.clone();
 
     // And save the changes to the collateral object
-    COLLATERAL_INFO.save(deps.storage, (&borrower, loan_id.into()), &collateral)?;
+    COLLATERAL_INFO.save(deps.storage, (&borrower, loan_id), &collateral)?;
 
     Ok(Response::new()
         .add_attribute("action", "refuse-offer")
@@ -562,7 +561,7 @@ pub fn accept_loan(
 ) -> Result<Response, ContractError> {
     // We query the loan info
     let borrower = deps.api.addr_validate(&borrower)?;
-    let mut collateral = COLLATERAL_INFO.load(deps.storage, (&borrower, loan_id.into()))?;
+    let mut collateral = COLLATERAL_INFO.load(deps.storage, (&borrower, loan_id))?;
 
     // We verify the loan is acceptable as is
     is_loan_acceptable(&collateral)?;
@@ -597,7 +596,7 @@ pub fn accept_loan(
     )?;
     // We update the active loan variable
     collateral.active_loan = Some(offer_id);
-    COLLATERAL_INFO.save(deps.storage, (&borrower, loan_id.into()), &collateral)?;
+    COLLATERAL_INFO.save(deps.storage, (&borrower, loan_id), &collateral)?;
 
     // We withdraw funds to the borrower
     let message = _withdraw_offer_unsafe(
@@ -630,7 +629,7 @@ pub fn accept_offer(
 ) -> Result<Response, ContractError> {
     // We query the loan info
     let borrower = info.sender;
-    let mut collateral = COLLATERAL_INFO.load(deps.storage, (&borrower, loan_id.into()))?;
+    let mut collateral = COLLATERAL_INFO.load(deps.storage, (&borrower, loan_id))?;
     is_loan_acceptable(&collateral)?;
     let offer_id_usize = offer_id as usize;
     let mut offer = get_offer(&collateral, offer_id_usize)?;
@@ -644,7 +643,7 @@ pub fn accept_offer(
         offer.state = OfferState::Accepted;
         collateral.offers[offer_id_usize] = offer.clone();
 
-        COLLATERAL_INFO.save(deps.storage, (&borrower, loan_id.into()), &collateral)?;
+        COLLATERAL_INFO.save(deps.storage, (&borrower, loan_id), &collateral)?;
     } else {
         return Err(ContractError::OfferNotFound {});
     };
@@ -680,7 +679,7 @@ pub fn repay_borrowed_funds(
     let contract_info = CONTRACT_INFO.load(deps.storage)?;
     // We query the loan info
     let borrower = info.sender;
-    let mut collateral = COLLATERAL_INFO.load(deps.storage, (&borrower, loan_id.into()))?;
+    let mut collateral = COLLATERAL_INFO.load(deps.storage, (&borrower, loan_id))?;
     can_repay_loan(env.clone(), &collateral)?;
     let offer = get_active_loan(&collateral)?;
 
@@ -704,7 +703,7 @@ pub fn repay_borrowed_funds(
 
     // We save the collateral state
     collateral.state = LoanState::Ended;
-    COLLATERAL_INFO.save(deps.storage, (&borrower, loan_id.into()), &collateral)?;
+    COLLATERAL_INFO.save(deps.storage, (&borrower, loan_id), &collateral)?;
 
     // We prepare the funds to send back to the lender
     let lender_payback = offer.terms.principle.amount
@@ -766,7 +765,7 @@ pub fn withdraw_defaulted_loan(
 ) -> Result<Response, ContractError> {
     // We query the loan info
     let borrower = deps.api.addr_validate(&borrower)?;
-    let mut collateral = COLLATERAL_INFO.load(deps.storage, (&borrower, loan_id.into()))?;
+    let mut collateral = COLLATERAL_INFO.load(deps.storage, (&borrower, loan_id))?;
     is_loan_defaulted(env.clone(), &collateral)?;
     let offer = is_active_lender(info.sender, &collateral)?;
 
@@ -777,7 +776,7 @@ pub fn withdraw_defaulted_loan(
 
     // Saving the collateral state, the loan is defaulted, we can default it again
     collateral.state = LoanState::Defaulted;
-    COLLATERAL_INFO.save(deps.storage, (&borrower, loan_id.into()), &collateral)?;
+    COLLATERAL_INFO.save(deps.storage, (&borrower, loan_id), &collateral)?;
 
     // We create the collateral withdrawal message
     let withdraw_message = _withdraw_asset(
@@ -840,7 +839,7 @@ pub fn query_collateral_info(
 ) -> StdResult<CollateralInfo> {
     let borrower = deps.api.addr_validate(&borrower)?;
     COLLATERAL_INFO
-        .load(deps.storage, (&borrower, loan_id.into()))
+        .load(deps.storage, (&borrower, loan_id))
         .map_err(|_| StdError::generic_err("LoanNotFound"))
 }
 
@@ -852,7 +851,7 @@ pub fn query_offer_info(
 ) -> StdResult<OfferInfo> {
     let borrower = deps.api.addr_validate(&borrower)?;
     let collateral = COLLATERAL_INFO
-        .load(deps.storage, (&borrower, loan_id.into()))
+        .load(deps.storage, (&borrower, loan_id))
         .map_err(|_| StdError::generic_err("LoanNotFound"))?;
 
     get_offer(&collateral, offer_id as usize).map_err(|_| StdError::generic_err("OfferNotFound"))
@@ -873,17 +872,16 @@ pub fn query_collaterals(
 ) -> StdResult<Vec<CollateralResponse>> {
     let borrower = deps.api.addr_validate(&borrower)?;
     let limit = limit.unwrap_or(DEFAULT_QUERY_LIMIT).min(MAX_QUERY_LIMIT) as usize;
-    let start = start_after.map(|s| Bound::Exclusive(U64Key::new(s).joined_key()));
+    let start = start_after.map(Bound::exclusive);
 
     COLLATERAL_INFO
         .prefix(&borrower)
         .range(deps.storage, None, start, Order::Descending)
         .map(|result| {
-            result.map(|(key, el)| {
-                let loan_id = key.try_into().unwrap();
+            result.map(|(loan_id, el)| {
                 CollateralResponse {
                     borrower: borrower.to_string(),
-                    loan_id: u64::from_be_bytes(loan_id),
+                    loan_id,
                     collateral: el,
                 }
             })
@@ -925,7 +923,6 @@ pub mod tests {
         testing::{mock_dependencies, mock_env, mock_info},
         Api, Coin, SubMsg,
     };
-    use cw_storage_plus::U64Key;
 
     fn init_helper(deps: DepsMut) {
         let instantiate_msg = InstantiateMsg {
@@ -942,7 +939,7 @@ pub mod tests {
 
     #[test]
     fn test_init_sanity() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         let instantiate_msg = InstantiateMsg {
             name: "p2p-trading".to_string(),
             owner: Some("this_address".to_string()),
@@ -1249,7 +1246,7 @@ pub mod tests {
 
     #[test]
     fn test_add_collateral() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         init_helper(deps.as_mut());
         // We make sure the collateral is deposited correctly
         let res = add_collateral_helper(deps.as_mut(), "creator", "nft", "58", None, None).unwrap();
@@ -1269,7 +1266,7 @@ pub mod tests {
 
         let creator_addr = deps.api.addr_validate("creator").unwrap();
         let coll_info = COLLATERAL_INFO
-            .load(&deps.storage, (&creator_addr, 0.into()))
+            .load(&deps.storage, (&creator_addr, 0))
             .unwrap();
         assert_eq!(
             coll_info,
@@ -1283,7 +1280,7 @@ pub mod tests {
         );
 
         let coll_info = COLLATERAL_INFO
-            .load(&deps.storage, (&creator_addr, 1.into()))
+            .load(&deps.storage, (&creator_addr, 1))
             .unwrap();
         assert_eq!(
             coll_info,
@@ -1297,7 +1294,7 @@ pub mod tests {
         );
 
         let coll_info = COLLATERAL_INFO
-            .load(&deps.storage, (&creator_addr, 2.into()))
+            .load(&deps.storage, (&creator_addr, 2))
             .unwrap();
         assert_eq!(
             coll_info,
@@ -1314,7 +1311,7 @@ pub mod tests {
 
     #[test]
     fn test_withdraw_collateral() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         init_helper(deps.as_mut());
         add_collateral_helper(deps.as_mut(), "creator", "nft", "58", None, None).unwrap();
         add_collateral_helper(deps.as_mut(), "creator", "nft", "59", None, None).unwrap();
@@ -1333,7 +1330,7 @@ pub mod tests {
 
         let creator_addr = deps.api.addr_validate("creator").unwrap();
         let coll_info = COLLATERAL_INFO
-            .load(&deps.storage, (&creator_addr, 0.into()))
+            .load(&deps.storage, (&creator_addr, 0))
             .unwrap();
         assert_eq!(
             coll_info,
@@ -1348,7 +1345,7 @@ pub mod tests {
         );
 
         let coll_info = COLLATERAL_INFO
-            .load(&deps.storage, (&creator_addr, 1.into()))
+            .load(&deps.storage, (&creator_addr, 1))
             .unwrap();
         assert_eq!(
             coll_info,
@@ -1363,7 +1360,7 @@ pub mod tests {
         );
 
         let coll_info = COLLATERAL_INFO
-            .load(&deps.storage, (&creator_addr, 2.into()))
+            .load(&deps.storage, (&creator_addr, 2))
             .unwrap();
         assert_eq!(
             coll_info,
@@ -1396,7 +1393,7 @@ pub mod tests {
 
     #[test]
     fn test_accept_loan() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         init_helper(deps.as_mut());
         add_collateral_helper(deps.as_mut(), "creator", "nft", "58", None, None).unwrap();
         add_collateral_helper(deps.as_mut(), "creator", "nft", "59", None, None).unwrap();
@@ -1442,7 +1439,7 @@ pub mod tests {
         .unwrap_err();
         let creator_addr = deps.api.addr_validate("creator").unwrap();
         let coll_info = COLLATERAL_INFO
-            .load(&deps.storage, (&creator_addr, 0.into()))
+            .load(&deps.storage, (&creator_addr, 0))
             .unwrap();
 
         assert_eq!(
@@ -1468,7 +1465,7 @@ pub mod tests {
 
     #[test]
     fn test_accept_loan_and_modify() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         init_helper(deps.as_mut());
 
         let terms = LoanTerms {
@@ -1507,7 +1504,7 @@ pub mod tests {
 
     #[test]
     fn test_repay_loan_early() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         init_helper(deps.as_mut());
 
         let terms = LoanTerms {
@@ -1542,7 +1539,7 @@ pub mod tests {
 
     #[test]
     fn test_make_offer() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         init_helper(deps.as_mut());
         add_collateral_helper(deps.as_mut(), "creator", "nft", "58", None, None).unwrap();
         add_collateral_helper(deps.as_mut(), "creator", "nft", "59", None, None).unwrap();
@@ -1597,7 +1594,7 @@ pub mod tests {
 
     #[test]
     fn test_cancel_offer() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         init_helper(deps.as_mut());
         add_collateral_helper(deps.as_mut(), "creator", "nft", "58", None, None).unwrap();
         add_collateral_helper(deps.as_mut(), "creator", "nft", "59", None, None).unwrap();
@@ -1644,7 +1641,7 @@ pub mod tests {
 
     #[test]
     fn test_refuse_offer() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         init_helper(deps.as_mut());
         add_collateral_helper(deps.as_mut(), "creator", "nft", "58", None, None).unwrap();
         add_collateral_helper(deps.as_mut(), "creator", "nft", "59", None, None).unwrap();
@@ -1680,7 +1677,7 @@ pub mod tests {
         let offer = COLLATERAL_INFO
             .load(
                 &deps.storage,
-                (&deps.api.addr_validate("creator").unwrap(), U64Key::new(0)),
+                (&deps.api.addr_validate("creator").unwrap(), 0u64),
             )
             .unwrap()
             .offers[0]
@@ -1691,7 +1688,7 @@ pub mod tests {
 
     #[test]
     fn test_cancel_accepted() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         init_helper(deps.as_mut());
 
         let terms = LoanTerms {
@@ -1718,7 +1715,7 @@ pub mod tests {
 
     #[test]
     fn test_withdraw_refused() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         init_helper(deps.as_mut());
 
         let terms = LoanTerms {
@@ -1773,7 +1770,7 @@ pub mod tests {
     }
     #[test]
     fn test_accept_cancelled_offer() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         init_helper(deps.as_mut());
         add_collateral_helper(
             deps.as_mut(),
@@ -1808,7 +1805,7 @@ pub mod tests {
 
     #[test]
     fn test_normal_flow() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         init_helper(deps.as_mut());
 
         let terms = LoanTerms {
@@ -1934,7 +1931,7 @@ pub mod tests {
 
     #[test]
     fn test_defaulted_flow() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         init_helper(deps.as_mut());
 
         let terms = LoanTerms {

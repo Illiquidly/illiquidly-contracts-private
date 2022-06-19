@@ -5,9 +5,6 @@ authors = ["Nicolas KOWALSKI <kowalski.kowalskin@gmail.com>"]
 edition = "2018"
 description = "Messages for the p2p trading contract"
 license = "Apache-2.0"
-repository = "https://github.com/CosmWasm/cw-plus"
-homepage = "https://cosmwasm.com"
-documentation = "https://docs.cosmwasm.com"
 
 [lib]
 bench = false
@@ -18,20 +15,25 @@ backtraces = ["cosmwasm-std/backtraces"]
 library = []
 
 [dependencies]
-cw20 = "0.9.0"
-cw721 = "0.9.0"
-cw-storage-plus = "0.9.0"
-cw20-base = { version = "0.9.0", features = ["library"] }
-cosmwasm-std = { version = "0.16.0" }
+# CosmWasm
+cw20 = "0.13.0"
+cw721 = "0.13.0"
+cw-storage-plus = "0.13.0"
+cw20-base = { version = "0.13.0", features = ["library"] }
+cosmwasm-std = { version = "1.0.0" }
+
+#Other Modules
 schemars = "0.8.1"
 serde = { version = "1.0.103", default-features = false, features = ["derive"] }
 thiserror = { version = "1.0.23" }
 strum = "0.24"
 strum_macros = "0.24"
+
+# Local Modules
 p2p-trading-export = { path = "../p2p-trading", version = "0.1.0" }
 cw_4626 = { path = "../CW4626", version = "0.1.0" }
 utils = { path = "../utils", version = "0.1.0" }
 
 [dev-dependencies]
-cosmwasm-schema = { version = "0.16.0" }
+cosmwasm-schema = { version = "1.0.0" }
 

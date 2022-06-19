@@ -376,7 +376,7 @@ pub mod tests {
 
     #[test]
     fn test_deposit_sanity() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         init_helper(deps.as_mut());
 
         let mut rng = rand::thread_rng();
@@ -405,7 +405,7 @@ pub mod tests {
 
     #[test]
     fn test_multiple_swaps_sanity() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         let env = mock_env();
         init_helper(deps.as_mut());
 
@@ -449,7 +449,7 @@ pub mod tests {
 
     #[test]
     fn test_multiple_deposits_sanity() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         let env = mock_env();
         init_helper(deps.as_mut());
 
@@ -491,7 +491,7 @@ pub mod tests {
 
     #[test]
     fn test_simple_withdraw_sanity() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         init_helper(deps.as_mut());
 
         let mut rng = rand::thread_rng();
@@ -525,7 +525,7 @@ pub mod tests {
 
     #[test]
     fn test_mint_sanity() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         init_helper(deps.as_mut());
 
         let mut rng = rand::thread_rng();
@@ -560,7 +560,7 @@ pub mod tests {
 
     #[test]
     fn test_mint_give_back_sanity() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         init_helper(deps.as_mut());
 
         let mut rng = rand::thread_rng();
@@ -600,7 +600,7 @@ pub mod tests {
 
     #[test]
     fn test_multiple_swaps_after_mint_sanity() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         let env = mock_env();
         init_helper(deps.as_mut());
 
@@ -645,7 +645,7 @@ pub mod tests {
 
     #[test]
     fn test_multiple_mints_sanity() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         let env = mock_env();
         init_helper(deps.as_mut());
 
@@ -693,7 +693,7 @@ pub mod tests {
 
     #[test]
     fn test_simple_redeem_sanity() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         init_helper(deps.as_mut());
 
         let mut rng = rand::thread_rng();

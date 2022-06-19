@@ -376,7 +376,7 @@ pub fn withdraw_accepted_funds(
         counter_info.assets_withdrawn = true;
         COUNTER_TRADE_INFO.save(
             deps.storage,
-            (trade_id.into(), counter_id.into()),
+            (trade_id, counter_id),
             &counter_info,
         )?;
     } else if counter_info.owner == trader {
@@ -385,7 +385,7 @@ pub fn withdraw_accepted_funds(
 
         trade_type = "trade";
         trade_info.assets_withdrawn = true;
-        TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
+        TRADE_INFO.save(deps.storage, trade_id, &trade_info)?;
     } else {
         return Err(ContractError::NotWithdrawableByYou {});
     }
@@ -438,7 +438,7 @@ pub mod tests {
 
     #[test]
     fn test_init_sanity() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         let instantiate_msg = InstantiateMsg {
             name: "p2p-trading".to_string(),
             owner: Some("this_address".to_string()),
@@ -452,7 +452,7 @@ pub mod tests {
 
     #[test]
     fn test_change_owner() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         let info = mock_info("creator", &[]);
         let env = mock_env();
         init_helper(deps.as_mut());
@@ -729,7 +729,7 @@ pub mod tests {
 
         #[test]
         fn create_trade() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             init_helper(deps.as_mut());
 
             let res = create_trade_helper(deps.as_mut(), "creator");
@@ -808,7 +808,7 @@ pub mod tests {
 
         #[test]
         fn create_trade_and_nfts_wanted() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             init_helper(deps.as_mut());
 
             create_trade_helper(deps.as_mut(), "creator");
@@ -850,7 +850,7 @@ pub mod tests {
 
         #[test]
         fn create_multiple_trades_and_query() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             init_helper(deps.as_mut());
 
             let res = create_trade_helper(deps.as_mut(), "creator");
@@ -1090,7 +1090,7 @@ pub mod tests {
 
         #[test]
         fn create_trade_and_add_funds() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             init_helper(deps.as_mut());
 
             create_trade_helper(deps.as_mut(), "creator");
@@ -1150,7 +1150,7 @@ pub mod tests {
 
         #[test]
         fn create_trade_and_add_cw20_tokens() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             init_helper(deps.as_mut());
 
             create_trade_helper(deps.as_mut(), "creator");
@@ -1295,7 +1295,7 @@ pub mod tests {
 
         #[test]
         fn create_trade_and_add_cw721_tokens() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             init_helper(deps.as_mut());
 
             create_trade_helper(deps.as_mut(), "creator");
@@ -1351,7 +1351,7 @@ pub mod tests {
 
         #[test]
         fn create_trade_and_add_cw1155_tokens() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             init_helper(deps.as_mut());
 
             create_trade_helper(deps.as_mut(), "creator");
@@ -1410,7 +1410,7 @@ pub mod tests {
         }
         #[test]
         fn create_trade_and_withdraw() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             init_helper(deps.as_mut());
 
             create_trade_helper(deps.as_mut(), "creator");
@@ -1449,7 +1449,7 @@ pub mod tests {
         }
         #[test]
         fn create_trade_automatic_trade_id() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             let info = mock_info("creator", &[]);
             let env = mock_env();
             init_helper(deps.as_mut());
@@ -1489,7 +1489,7 @@ pub mod tests {
             )
             .unwrap();
 
-            let trade_info = TRADE_INFO.load(&deps.storage, 1u64.into()).unwrap();
+            let trade_info = TRADE_INFO.load(&deps.storage, 1u64).unwrap();
             assert_eq!(
                 trade_info.associated_assets,
                 vec![
@@ -1504,7 +1504,7 @@ pub mod tests {
 
         #[test]
         fn create_trade_add_remove_tokens() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             init_helper(deps.as_mut());
 
             create_trade_helper(deps.as_mut(), "creator");
@@ -1774,7 +1774,7 @@ pub mod tests {
 
         #[test]
         fn create_trade_add_remove_tokens_errors() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             init_helper(deps.as_mut());
 
             create_trade_helper(deps.as_mut(), "creator");
@@ -1904,7 +1904,7 @@ pub mod tests {
 
         #[test]
         fn confirm_trade() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             init_helper(deps.as_mut());
 
             create_trade_helper(deps.as_mut(), "creator");
@@ -1979,7 +1979,7 @@ pub mod tests {
 
         #[test]
         fn confirm_trade_and_try_add_assets() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             init_helper(deps.as_mut());
 
             create_trade_helper(deps.as_mut(), "creator");
@@ -2007,7 +2007,7 @@ pub mod tests {
 
         #[test]
         fn accept_trade() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             init_helper(deps.as_mut());
 
             create_trade_helper(deps.as_mut(), "creator");
@@ -2162,7 +2162,7 @@ pub mod tests {
 
         #[test]
         fn accept_trade_with_multiple_counter() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             init_helper(deps.as_mut());
 
             create_trade_helper(deps.as_mut(), "creator");
@@ -2343,7 +2343,7 @@ pub mod tests {
 
         #[test]
         fn cancel_trade() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             init_helper(deps.as_mut());
 
             create_trade_helper(deps.as_mut(), "creator");
@@ -2399,7 +2399,7 @@ pub mod tests {
 
         #[test]
         fn queries_with_multiple_trades_and_counter_trades() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             init_helper(deps.as_mut());
 
             create_trade_helper(deps.as_mut(), "creator");
@@ -2538,7 +2538,7 @@ pub mod tests {
 
         #[test]
         fn withdraw_accepted_assets() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             init_helper(deps.as_mut());
             set_fee_contract_helper(deps.as_mut());
             create_trade_helper(deps.as_mut(), "creator");
@@ -2801,7 +2801,7 @@ pub mod tests {
 
         #[test]
         fn withdraw_cancelled_trade() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             init_helper(deps.as_mut());
             create_trade_helper(deps.as_mut(), "creator");
 
@@ -2912,7 +2912,7 @@ pub mod tests {
 
         #[test]
         fn private() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             init_helper(deps.as_mut());
             create_private_trade_helper(deps.as_mut(), vec!["whitelist".to_string()]);
 
@@ -2977,7 +2977,7 @@ pub mod tests {
             create_private_trade_helper(deps.as_mut(), vec!["whitelist".to_string()]);
 
             remove_whitelisted_users(deps.as_mut(), 1, vec!["whitelist".to_string()]).unwrap();
-            let info = TRADE_INFO.load(&deps.storage, 1_u64.into()).unwrap();
+            let info = TRADE_INFO.load(&deps.storage, 1_u64).unwrap();
             let hash_set = HashSet::new();
             assert_eq!(info.whitelisted_users, hash_set);
 
@@ -2993,7 +2993,7 @@ pub mod tests {
                 vec!["whitelist-2".to_string(), "whitelist".to_string()],
             )
             .unwrap();
-            let info = TRADE_INFO.load(&deps.storage, 1_u64.into()).unwrap();
+            let info = TRADE_INFO.load(&deps.storage, 1_u64).unwrap();
 
             let whitelisted_users = vec![
                 "whitelist".to_string(),
@@ -3172,7 +3172,7 @@ pub mod tests {
 
         #[test]
         fn create_counter_trade() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             init_helper(deps.as_mut());
 
             create_trade_helper(deps.as_mut(), "creator");
@@ -3203,7 +3203,7 @@ pub mod tests {
         }
         #[test]
         fn create_counter_trade_and_add_funds() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             init_helper(deps.as_mut());
 
             create_trade_helper(deps.as_mut(), "creator");
@@ -3244,7 +3244,7 @@ pub mod tests {
 
         #[test]
         fn create_counter_trade_and_add_cw20_tokens() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             init_helper(deps.as_mut());
 
             create_trade_helper(deps.as_mut(), "creator");
@@ -3327,7 +3327,7 @@ pub mod tests {
 
         #[test]
         fn create_trade_and_add_cw721_tokens() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             init_helper(deps.as_mut());
 
             create_trade_helper(deps.as_mut(), "creator");
@@ -3395,7 +3395,7 @@ pub mod tests {
 
         #[test]
         fn create_counter_trade_automatic_trade_id() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             let info = mock_info("creator", &[]);
             let env = mock_env();
             init_helper(deps.as_mut());
@@ -3455,7 +3455,7 @@ pub mod tests {
             .unwrap();
 
             let trade_info = COUNTER_TRADE_INFO
-                .load(&deps.storage, (0u64.into(), 0u64.into()))
+                .load(&deps.storage, (0u64, 0u64))
                 .unwrap();
             assert_eq!(
                 trade_info.associated_assets,
@@ -3472,7 +3472,7 @@ pub mod tests {
 
         #[test]
         fn create_counter_trade_add_remove_tokens() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             init_helper(deps.as_mut());
 
             create_trade_helper(deps.as_mut(), "creator");
@@ -3702,7 +3702,7 @@ pub mod tests {
 
         #[test]
         fn create_trade_add_remove_tokens_errors() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             init_helper(deps.as_mut());
 
             create_trade_helper(deps.as_mut(), "creator");
@@ -3838,7 +3838,7 @@ pub mod tests {
 
         #[test]
         fn confirm_counter_trade() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             init_helper(deps.as_mut());
 
             create_trade_helper(deps.as_mut(), "creator");
@@ -3883,7 +3883,7 @@ pub mod tests {
 
         #[test]
         fn review_counter_trade() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             init_helper(deps.as_mut());
 
             create_trade_helper(deps.as_mut(), "creator");
@@ -3933,7 +3933,7 @@ pub mod tests {
 
         #[test]
         fn review_counter_trade_when_accepted() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             init_helper(deps.as_mut());
 
             create_trade_helper(deps.as_mut(), "creator");
@@ -3948,7 +3948,7 @@ pub mod tests {
 
         #[test]
         fn review_counter_trade_when_cancelled() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             init_helper(deps.as_mut());
 
             create_trade_helper(deps.as_mut(), "creator");
@@ -3963,7 +3963,7 @@ pub mod tests {
 
         #[test]
         fn review_counter_with_multiple() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             init_helper(deps.as_mut());
 
             create_trade_helper(deps.as_mut(), "creator");
@@ -3993,7 +3993,7 @@ pub mod tests {
 
         #[test]
         fn refuse_counter_trade() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             init_helper(deps.as_mut());
 
             create_trade_helper(deps.as_mut(), "creator");
@@ -4014,7 +4014,7 @@ pub mod tests {
 
         #[test]
         fn cancel_counter_trade() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             init_helper(deps.as_mut());
 
             create_trade_helper(deps.as_mut(), "creator");
@@ -4030,7 +4030,7 @@ pub mod tests {
 
         #[test]
         fn refuse_counter_trade_with_multiple() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             init_helper(deps.as_mut());
 
             create_trade_helper(deps.as_mut(), "creator");
@@ -4057,7 +4057,7 @@ pub mod tests {
 
         #[test]
         fn refuse_accepted_counter_trade() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             init_helper(deps.as_mut());
 
             create_trade_helper(deps.as_mut(), "creator");
@@ -4072,7 +4072,7 @@ pub mod tests {
 
         #[test]
         fn cancel_accepted_counter_trade() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             init_helper(deps.as_mut());
 
             create_trade_helper(deps.as_mut(), "creator");
@@ -4093,7 +4093,7 @@ pub mod tests {
 
         #[test]
         fn confirm_counter_trade_after_accepted() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             init_helper(deps.as_mut());
 
             create_trade_helper(deps.as_mut(), "creator");
@@ -4115,7 +4115,7 @@ pub mod tests {
 
         #[test]
         fn query_trades_by_counterer() {
-            let mut deps = mock_dependencies(&[]);
+            let mut deps = mock_dependencies();
             init_helper(deps.as_mut());
 
             create_trade_helper(deps.as_mut(), "creator");

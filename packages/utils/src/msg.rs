@@ -1,8 +1,5 @@
 use cosmwasm_std::{to_binary, Binary, Coin, CosmosMsg, StdResult, WasmMsg};
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
-
-use p2p_trading_export::state::TradeInfo;
+use serde::{ Serialize};
 
 pub fn is_valid_name(name: &str) -> bool {
     let bytes = name.as_bytes();
@@ -30,7 +27,9 @@ pub fn into_cosmos_msg<M: Serialize, T: Into<String>>(
     Ok(execute.into())
 }
 
+/*
 #[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
 pub struct TradeInfoResponse {
     pub trade_info: TradeInfo,
 }
+*/

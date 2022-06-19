@@ -1,11 +1,10 @@
-use cosmwasm_std::{Api, Pair};
+use cosmwasm_std::{Api};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::{Deps, Order, StdResult, Storage};
 
-use cw_storage_plus::{Bound, PrimaryKey, U64Key};
+use cw_storage_plus::{Bound};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::convert::TryInto;
 
 use crate::state::{get_actual_counter_state, CONTRACT_INFO, COUNTER_TRADE_INFO, TRADE_INFO};
 use p2p_trading_export::msg::QueryFilters;
@@ -39,35 +38,24 @@ pub fn query_contract_info(deps: Deps) -> StdResult<ContractInfo> {
 }
 
 // parse trades to human readable format
-fn parse_trades(_: &dyn Api, item: StdResult<Pair<TradeInfo>>) -> StdResult<TradeResponse> {
-    item.map(|(k, trade)| {
-        let trade_id = k.try_into().unwrap();
+fn parse_trades(_: &dyn Api, item: StdResult<(u64,TradeInfo)>) -> StdResult<TradeResponse> {
+    item.map(|(trade_id, trade)| {
         TradeResponse {
-            trade_id: u64::from_be_bytes(trade_id),
+            trade_id,
             counter_id: None,
             trade_info: Some(trade),
         }
     })
 }
 
-fn joined_to_key(ck: Vec<u8>) -> (u64, u64) {
-    let (trade_id, counter_id) = (&ck[2..10], &ck[10..]);
-
-    (
-        u64::from_be_bytes(trade_id.try_into().unwrap()),
-        u64::from_be_bytes(counter_id.try_into().unwrap()),
-    )
-}
-
 // parse counter trades to human readable format
 fn parse_all_counter_trades(
     _: &dyn Api,
     storage: &dyn Storage,
-    item: StdResult<Pair<TradeInfo>>,
+    item: StdResult<((u64,u64),TradeInfo)>,
 ) -> StdResult<TradeResponse> {
-    item.map(|(ck, mut counter)| {
+    item.map(|((trade_id, counter_id), mut counter)| {
         // First two bytes define size [0,8] since we know it's u64 skip it.
-        let (trade_id, counter_id) = joined_to_key(ck);
         get_actual_counter_state(storage, trade_id, &mut counter)?;
         Ok(TradeResponse {
             trade_id,
@@ -81,15 +69,14 @@ fn parse_all_counter_trades(
 fn parse_counter_trades(
     _: &dyn Api,
     storage: &dyn Storage,
-    item: StdResult<Pair<TradeInfo>>,
+    item: StdResult<(u64,TradeInfo)>,
     trade_id: u64,
 ) -> StdResult<TradeResponse> {
     item.map(|(counter_id, mut counter)| {
-        let counter_id = counter_id.try_into().unwrap();
         get_actual_counter_state(storage, trade_id, &mut counter)?;
         Ok(TradeResponse {
             trade_id,
-            counter_id: Some(u64::from_be_bytes(counter_id)),
+            counter_id: Some(counter_id),
             trade_info: Some(counter),
         })
     })?
@@ -186,7 +173,7 @@ pub fn query_all_trades_raw(
     filters: Option<QueryFilters>,
 ) -> StdResult<AllTradesResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
-    let start = start_after.map(|s| Bound::Exclusive(U64Key::new(s).joined_key()));
+    let start = start_after.map(Bound::exclusive);
 
     let mut trades: Vec<TradeResponse> = TRADE_INFO
         .range(deps.storage, None, start.clone(), Order::Descending)
@@ -202,8 +189,7 @@ pub fn query_all_trades_raw(
             .take(BASE_LIMIT)
             .last();
 
-        if let Some(trade_id) = trade_id {
-            let trade_id = u64::from_be_bytes(trade_id.try_into().unwrap());
+        if let Some(Ok(trade_id)) = trade_id {
             if trade_id != 0 {
                 trades = vec![TradeResponse {
                     trade_id,
@@ -226,7 +212,7 @@ pub fn query_all_trades_by_counterer(
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
 
     let start =
-        start_after.map(|s| Bound::Exclusive((U64Key::new(s), U64Key::new(0)).joined_key()));
+        start_after.map(|s| Bound::exclusive((s, 0)));
 
     let counter_filters = Some(QueryFilters {
         owner: Some(counterer),
@@ -244,8 +230,8 @@ pub fn query_all_trades_by_counterer(
         .unique()
         .map(|trade_id| {
             Ok((
-                U64Key::new(trade_id).joined_key(),
-                TRADE_INFO.load(deps.storage, trade_id.into())?,
+                trade_id,
+                TRADE_INFO.load(deps.storage, trade_id)?,
             ))
         })
         .map(|kv_item| parse_trades(deps.api, kv_item))
@@ -263,8 +249,8 @@ pub fn query_all_trades_by_counterer(
             .unique()
             .map(|trade_id| {
                 Ok((
-                    U64Key::new(trade_id).joined_key(),
-                    TRADE_INFO.load(deps.storage, trade_id.into())?,
+                    trade_id,
+                    TRADE_INFO.load(deps.storage, trade_id)?,
                 ))
             })
             .filter_map(|kv_item| parse_trades(deps.api, kv_item).ok())
@@ -293,7 +279,7 @@ pub fn query_all_counter_trades(
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
 
     let start = start_after.map(|s| {
-        Bound::Exclusive((U64Key::new(s.trade_id), U64Key::new(s.counter_id)).joined_key())
+        Bound::exclusive((s.trade_id, s.counter_id))
     });
 
     let mut counter_trades: Vec<TradeResponse> = COUNTER_TRADE_INFO
@@ -310,8 +296,7 @@ pub fn query_all_counter_trades(
             .take(BASE_LIMIT)
             .last();
 
-        if let Some(id) = id {
-            let (trade_id, counter_id) = joined_to_key(id);
+        if let Some(Ok((trade_id, counter_id))) = id {
             if trade_id != 0 || counter_id != 0 {
                 counter_trades = vec![TradeResponse {
                     trade_id,
@@ -334,10 +319,10 @@ pub fn query_counter_trades(
 ) -> StdResult<AllCounterTradesResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
 
-    let start = start_after.map(|s| Bound::Exclusive(U64Key::new(s).joined_key()));
+    let start = start_after.map(Bound::exclusive);
 
     let mut counter_trades: Vec<TradeResponse> = COUNTER_TRADE_INFO
-        .prefix(trade_id.into())
+        .prefix(trade_id)
         .range(deps.storage, None, start.clone(), Order::Descending)
         .take(BASE_LIMIT)
         .map(|kv_item| parse_counter_trades(deps.api, deps.storage, kv_item, trade_id))
@@ -347,13 +332,12 @@ pub fn query_counter_trades(
 
     if counter_trades.is_empty() {
         let counter_id = COUNTER_TRADE_INFO
-            .prefix(trade_id.into())
+            .prefix(trade_id)
             .keys(deps.storage, None, start, Order::Descending)
             .take(BASE_LIMIT)
             .last();
 
-        if let Some(counter_id) = counter_id {
-            let counter_id = u64::from_be_bytes(counter_id.try_into().unwrap());
+        if let Some(Ok(counter_id)) = counter_id {
             if trade_id != 0 || counter_id != 0 {
                 counter_trades = vec![TradeResponse {
                     trade_id,

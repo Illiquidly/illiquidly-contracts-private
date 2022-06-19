@@ -197,7 +197,7 @@ pub mod tests {
 
     #[test]
     fn test_init_sanity() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         let res = init_helper(deps.as_mut());
         assert_eq!(0, res.messages.len());
     }

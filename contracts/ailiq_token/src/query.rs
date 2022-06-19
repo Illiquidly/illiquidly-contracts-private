@@ -1,9 +1,9 @@
-use cosmwasm_bignumber::{Decimal256, Uint256};
-use cosmwasm_std::{Deps, Env, StdResult, Uint128};
 #[cfg(not(feature = "library"))]
+use cosmwasm_std::{Deps, Env, StdResult, Uint128};
 use cw20_base::state::{TokenInfo, TOKEN_INFO};
 
 use cw_4626::state::{query_asset_balance, query_asset_liabilities, AssetInfo, STATE};
+use bignumber::{Decimal256, Uint256};
 
 use cw20_base::contract::query_balance;
 pub fn query_asset(deps: Deps) -> StdResult<AssetInfo> {
@@ -30,8 +30,8 @@ pub fn compute_exchange_rate(
     let asset_balance =
         query_asset_balance(deps, env.clone())? - deposit_amount.unwrap_or_else(Uint128::zero);
     let liabilities = query_asset_liabilities(deps, env)?;
-    let total_assets = Decimal256::from_uint256(Uint256::from(asset_balance + liabilities));
-    Ok(total_assets / Decimal256::from_uint256(share_supply))
+    let total_assets = Decimal256::from_uint256(Uint256::from((asset_balance + liabilities).u128()));
+    Ok(total_assets / Decimal256::from_uint256(Uint256::from(share_supply.u128())))
 }
 
 pub fn convert_to_shares(
@@ -43,7 +43,7 @@ pub fn convert_to_shares(
     let token_info = TOKEN_INFO.load(deps.storage)?;
 
     let exchange_rate = compute_exchange_rate(deps, env, &token_info, deposit_amount)?;
-    Ok((Uint256::from(assets) / exchange_rate).into())
+    Ok((Uint256::from(assets.u128()) / exchange_rate).into())
 }
 
 pub fn convert_to_assets(
@@ -114,7 +114,7 @@ pub mod tests {
 
     #[test]
     fn test_convert_sanity() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         let env = mock_env();
         init_helper(deps.as_mut());
         let initial_assets = Uint128::from(6764562356574737676u128);

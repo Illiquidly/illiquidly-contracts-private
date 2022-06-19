@@ -1,4 +1,4 @@
-use cw_storage_plus::{Item, Map, U64Key};
+use cw_storage_plus::{Item, Map};
 
 use cosmwasm_std::{Addr, Coin, StdError, StdResult, Storage, Uint128};
 
@@ -9,9 +9,9 @@ use p2p_trading_export::state::{
 
 pub const CONTRACT_INFO: Item<ContractInfo> = Item::new("contract_info");
 
-pub const TRADE_INFO: Map<U64Key, TradeInfo> = Map::new("trade_info");
+pub const TRADE_INFO: Map<u64, TradeInfo> = Map::new("trade_info");
 
-pub const COUNTER_TRADE_INFO: Map<(U64Key, U64Key), TradeInfo> = Map::new("counter_trade_info");
+pub const COUNTER_TRADE_INFO: Map<(u64, u64), TradeInfo> = Map::new("counter_trade_info");
 
 pub fn add_funds(
     fund: Coin,
@@ -199,7 +199,7 @@ pub fn get_actual_counter_state(
     trade_id: u64,
     counter_info: &mut TradeInfo,
 ) -> StdResult<()> {
-    let trade_info = TRADE_INFO.load(storage, trade_id.into())?;
+    let trade_info = TRADE_INFO.load(storage, trade_id)?;
 
     match trade_info.state {
         TradeState::Refused => counter_info.state = TradeState::Cancelled,
@@ -219,7 +219,7 @@ pub fn load_counter_trade(
     counter_id: u64,
 ) -> Result<TradeInfo, ContractError> {
     let mut counter = COUNTER_TRADE_INFO
-        .load(storage, (trade_id.into(), counter_id.into()))
+        .load(storage, (trade_id, counter_id))
         .map_err(|_| ContractError::NotFoundInCounterTradeInfo {})?;
 
     get_actual_counter_state(storage, trade_id, &mut counter)?;
@@ -229,7 +229,7 @@ pub fn load_counter_trade(
 
 pub fn load_trade(storage: &dyn Storage, trade_id: u64) -> Result<TradeInfo, ContractError> {
     TRADE_INFO
-        .load(storage, trade_id.into())
+        .load(storage, trade_id)
         .map_err(|_| ContractError::NotFoundInTradeInfo {})
 }
 
@@ -238,7 +238,7 @@ pub fn can_suggest_counter_trade(
     trade_id: u64,
     sender: &Addr,
 ) -> Result<TradeInfo, ContractError> {
-    if let Ok(Some(trade)) = TRADE_INFO.may_load(storage, trade_id.into()) {
+    if let Ok(Some(trade)) = TRADE_INFO.may_load(storage, trade_id) {
         if (trade.state == TradeState::Published) | (trade.state == TradeState::Countered) {
             if !trade.whitelisted_users.is_empty() {
                 if !trade.whitelisted_users.contains(sender) {

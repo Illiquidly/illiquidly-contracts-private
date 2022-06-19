@@ -8,7 +8,6 @@ use lender_export::state::{
     BorrowInfo, BorrowMode, BorrowZone, Cw721Info, InterestType, InterestsInfo, BORROWS,
     MIN_BLOCK_OFFSET, PERCENTAGE_RATE,
 };
-use std::convert::TryInto;
 
 const SAFE_ZONE_LIMIT: u128 = 3_333u128;
 const EXPENSIVE_ZONE_LIMIT: u128 = 6_666u128;
@@ -102,15 +101,19 @@ pub fn get_zone(deps: Deps, env: Env, borrow_info: &BorrowInfo) -> Result<Borrow
 }
 
 pub fn get_last_collateral(deps: Deps, owner: &Addr) -> Option<u64> {
-    let last_collateral_key: Vec<Vec<u8>> = BORROWS
+    let first_collateral = BORROWS
         .prefix(owner)
         .keys(deps.storage, None, None, Order::Descending)
         .take(1)
-        .collect();
+        .collect::<Vec<StdResult<u64>>>();
 
-    return last_collateral_key
-        .get(0)
-        .map(|x| u64::from_be_bytes(x.clone().try_into().unwrap()));
+    if let Some(&Ok(collateral)) = first_collateral.first(){
+        Some(collateral)
+    }
+    else{
+        None
+    }
+        
 }
 
 pub fn get_total_interests(env: Env, borrow_info: &BorrowInfo) -> Uint128 {

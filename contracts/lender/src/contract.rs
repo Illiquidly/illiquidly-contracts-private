@@ -107,7 +107,7 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::ContratInfo {} => to_binary(&CONTRACT_INFO.load(deps.storage)?),
         QueryMsg::BorrowInfo { borrower, loan_id } => {
             let borrower = deps.api.addr_validate(&borrower)?;
-            to_binary(&BORROWS.load(deps.storage, (&borrower, loan_id.into()))?)
+            to_binary(&BORROWS.load(deps.storage, (&borrower, loan_id))?)
         }
         QueryMsg::BorrowZones { asset_info } => {
             let collateral_price = get_asset_price(deps, env, asset_info)?;
@@ -206,7 +206,7 @@ pub fn execute_repay_native_funds(
 pub mod tests {
     use super::*;
     use crate::contract::instantiate;
-    use crate::custom_mock_querier::mock_dependencies;
+    use crate::custom_mock_querier::tests::mock_dependencies;
     use crate::error::ContractError;
     use cosmwasm_std::testing::{mock_env, mock_info};
     use cosmwasm_std::{coins, Api, Coin, CosmosMsg, DepsMut, Uint128, WasmMsg};
@@ -402,7 +402,7 @@ pub mod tests {
         let borrower = deps.api.addr_validate("creator").unwrap();
         assert_eq!(
             BORROWS
-                .load(&deps.storage, (&borrower, 0u64.into()))
+                .load(&deps.storage, (&borrower, 0u64))
                 .unwrap()
                 .principle,
             Uint128::from(8742u128)
@@ -689,7 +689,7 @@ pub mod tests {
         let borrower = deps.api.addr_validate("creator").unwrap();
         assert_eq!(
             BORROWS
-                .load(&deps.storage, (&borrower, 0u64.into()))
+                .load(&deps.storage, (&borrower, 0u64))
                 .unwrap()
                 .principle,
             Uint128::from(51_000_000u128)

@@ -64,11 +64,9 @@
             },
             "start_after": {
               "type": [
-                "integer",
+                "string",
                 "null"
-              ],
-              "format": "uint32",
-              "minimum": 0.0
+              ]
             },
             "user": {
               "type": "string"

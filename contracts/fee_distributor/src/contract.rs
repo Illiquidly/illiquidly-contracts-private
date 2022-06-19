@@ -2,7 +2,7 @@ use cosmwasm_std::{
     coin, coins, entry_point, to_binary, BankMsg, Binary, Coin, Deps, DepsMut, Env, MessageInfo,
     Order, Response, StdError, StdResult, Uint128,
 };
-use cw_storage_plus::{Bound, PrimaryKey};
+use cw_storage_plus::{Bound};
 use itertools::Itertools;
 #[cfg(not(feature = "library"))]
 use std::convert::TryInto;
@@ -252,17 +252,16 @@ pub fn query_addresses(
     limit: Option<u32>,
 ) -> StdResult<Vec<String>> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
-    let start = maybe_addr(deps.api, start_after)?
+    let addr = maybe_addr(deps.api, start_after)?;
+    let start = addr
         .as_ref()
-        .map(|x| Bound::exclusive(x.joined_key()));
+        .map(Bound::exclusive);
 
     ALLOCATED_FUNDS
         .keys(deps.storage, start, None, Order::Ascending)
         .take(limit)
         .map(|x| {
-            std::str::from_utf8(&x)
-                .map(|x| x.to_string())
-                .map_err(|_| StdError::generic_err("Error while getting utf8 transcript of keys"))
+            x.map(|s| s.to_string())
         })
         .collect::<Result<Vec<String>, StdError>>()
 }
@@ -291,14 +290,14 @@ pub mod tests {
 
     #[test]
     fn test_init_sanity() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         let res = init_helper(deps.as_mut());
         assert_eq!(0, res.messages.len());
     }
 
     #[test]
     fn test_modify_info() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         init_helper(deps.as_mut());
 
         let info = mock_info("creator", &[]);
@@ -309,8 +308,8 @@ pub mod tests {
             env.clone(),
             info.clone(),
             ExecuteMsg::ModifyContractInfo {
-                owner: Some("memyselfandI".to_string()),
-                treasury: Some("new_treasury".to_string()),
+                owner: Some("memyselfandi".to_string()),
+                treasury: Some("newtreasury".to_string()),
                 projects_allocation: Some(Uint128::from(34u128)),
             },
         )
@@ -321,8 +320,8 @@ pub mod tests {
             env,
             info,
             ExecuteMsg::ModifyContractInfo {
-                owner: Some("memyselfandI".to_string()),
-                treasury: Some("new_treasury".to_string()),
+                owner: Some("memyselfandi".to_string()),
+                treasury: Some("newtreasury".to_string()),
                 projects_allocation: Some(Uint128::from(34u128)),
             },
         )
@@ -332,7 +331,7 @@ pub mod tests {
 
     #[test]
     fn test_deposit_funds() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         init_helper(deps.as_mut());
 
         let info = mock_info("creator", &coins(54u128, "uluna"));
@@ -379,7 +378,7 @@ pub mod tests {
 
     #[test]
     fn test_deposit_funds_before_and_after() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         init_helper(deps.as_mut());
 
         let info = mock_info("creator", &coins(54u128, "uluna"));
@@ -503,7 +502,7 @@ pub mod tests {
 
     #[test]
     fn test_multiple_addresses() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         init_helper(deps.as_mut());
 
         let info = mock_info("creator", &coins(54u128, "uluna"));

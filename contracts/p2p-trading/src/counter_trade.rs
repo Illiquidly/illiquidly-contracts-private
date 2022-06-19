@@ -57,13 +57,13 @@ pub fn suggest_counter_trade(
     if trade_info.state == TradeState::Published {
         trade_info.state = TradeState::Countered;
     }
-    TRADE_INFO.save(deps.storage, trade_id.into(), &trade_info)?;
+    TRADE_INFO.save(deps.storage, trade_id, &trade_info)?;
 
     let counter_id = trade_info.last_counter_id.unwrap(); // This is safe, as we just created a ast_counter_id` if it didn't exist.
 
     COUNTER_TRADE_INFO.update(
         deps.storage,
-        (trade_id.into(), counter_id.into()),
+        (trade_id, counter_id),
         |counter| match counter {
             // If the trade id already exists, the contract is faulty
             // Or an external error happened, or whatever...
@@ -139,22 +139,22 @@ pub fn add_asset_to_counter_trade(
     match asset.clone() {
         AssetInfo::Coin(coin) => COUNTER_TRADE_INFO.update(
             deps.storage,
-            (trade_id.into(), counter_id.into()),
+            (trade_id, counter_id),
             add_funds(coin, info.funds.clone()),
         ),
         AssetInfo::Cw20Coin(token) => COUNTER_TRADE_INFO.update(
             deps.storage,
-            (trade_id.into(), counter_id.into()),
+            (trade_id, counter_id),
             add_cw20_coin(token.address.clone(), token.amount),
         ),
         AssetInfo::Cw721Coin(token) => COUNTER_TRADE_INFO.update(
             deps.storage,
-            (trade_id.into(), counter_id.into()),
+            (trade_id, counter_id),
             add_cw721_coin(token.address.clone(), token.token_id),
         ),
         AssetInfo::Cw1155Coin(token) => COUNTER_TRADE_INFO.update(
             deps.storage,
-            (trade_id.into(), counter_id.into()),
+            (trade_id, counter_id),
             add_cw1155_coin(token.address.clone(), token.token_id.clone(), token.value),
         ),
     }?;
@@ -188,7 +188,7 @@ pub fn withdraw_counter_trade_assets_while_creating(
     _try_withdraw_assets_unsafe(&mut counter_info, &assets)?;
     COUNTER_TRADE_INFO.save(
         deps.storage,
-        (trade_id.into(), counter_id.into()),
+        (trade_id, counter_id),
         &counter_info,
     )?;
 
@@ -230,7 +230,7 @@ pub fn confirm_counter_trade(
     counter_info.state = TradeState::Published;
     COUNTER_TRADE_INFO.save(
         deps.storage,
-        (trade_id.into(), counter_id.into()),
+        (trade_id, counter_id),
         &counter_info,
     )?;
 
@@ -269,7 +269,7 @@ pub fn cancel_counter_trade(
     // We store the new trade status
     COUNTER_TRADE_INFO.save(
         deps.storage,
-        (trade_id.into(), counter_id.into()),
+        (trade_id, counter_id),
         &counter_info,
     )?;
 
@@ -310,7 +310,7 @@ pub fn withdraw_all_from_counter(
     counter_info.assets_withdrawn = true;
     COUNTER_TRADE_INFO.save(
         deps.storage,
-        (trade_id.into(), counter_id.into()),
+        (trade_id, counter_id),
         &counter_info,
     )?;
 
