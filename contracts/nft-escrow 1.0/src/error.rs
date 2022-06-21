@@ -14,4 +14,7 @@ pub enum ContractError {
 
     #[error("Token id provided doesn't match the message sent")]
     IncorrectTokenId {},
+
+    #[error("Token not deposited in the contract yet")]
+    TokenNotDeposited {},
 }

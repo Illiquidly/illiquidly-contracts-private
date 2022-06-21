@@ -15,18 +15,20 @@ pub struct ContractInfo {
 pub struct TokenInfo {
     pub token_id: String,
     pub depositor: String,
+    pub migrated: bool
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct TokenOwner {
     pub owner: Addr,
+    pub migrated: bool
 }
 
 
 pub struct TokenIndexes<'a>
 
 {
-    pub owner: MultiIndex<'a, Addr, TokenOwner, String>,
+    pub owner: MultiIndex<'a, (Addr, Vec<u8>), TokenOwner>,
 }
 
 impl<'a> IndexList<TokenOwner> for TokenIndexes<'a>

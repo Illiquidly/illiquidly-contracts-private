@@ -5,11 +5,11 @@ use cosmwasm_std::{
 };
 use cw_storage_plus::{Bound};
 
-use escrow_export::msg::{
+use escrow_export_classic::msg::{
     ContractInfoResponse, ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg, ReceiveMsg,
     TokenInfoResponse, TokensResponse,
 };
-use escrow_export::state::{ContractInfo, TokenInfo, TokenOwner};
+use escrow_export_classic::state::{ContractInfo, TokenInfo, TokenOwner};
 
 use crate::error::ContractError;
 use crate::state::{is_owner, CONTRACT_INFO, DepositNft};
@@ -46,6 +46,7 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> R
         } => execute_receive_nft(deps, env, info, sender, token_id, msg),
 
         ExecuteMsg::SetOwner { owner } => set_owner(deps, env, info, owner),
+        ExecuteMsg::Migrated { token_id } => set_migrated(deps, env, info, token_id),
     }
 }
 
@@ -93,20 +94,22 @@ pub fn user_tokens(
     start_after: Option<String>,
     limit: Option<u32>,
 ) -> StdResult<TokensResponse> {
-    let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
-    let start = start_after.map(Bound::exclusive);
+     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
+        let start = start_after.map(Bound::exclusive);
 
-    let owner_addr = deps.api.addr_validate(&owner)?;
-    let tokens: Vec<String> = DepositNft::default()
-        .nfts
-        .idx
-        .owner
-        .prefix(owner_addr)
-        .keys(deps.storage, start, None, Order::Ascending)
-        .take(limit)
-        .collect::<StdResult<Vec<_>>>()?;
+        let owner_addr = deps.api.addr_validate(&owner)?;
+        let pks: Vec<_> = DepositNft::default()
+            .nfts
+            .idx
+            .owner
+            .prefix(owner_addr)
+            .keys(deps.storage, start, None, Order::Ascending)
+            .take(limit)
+            .collect();
 
-    Ok(TokensResponse { tokens })
+        let res: Result<Vec<_>, _> = pks.iter().map(|v| String::from_utf8(v.to_vec())).collect();
+        let tokens = res.map_err(StdError::invalid_utf8)?;
+        Ok(TokensResponse { tokens })
 }
 
 pub fn registered_tokens(
@@ -115,16 +118,17 @@ pub fn registered_tokens(
     limit: Option<u32>,
 ) -> StdResult<TokenInfoResponse> {
 
-     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
-        let start = start_after.map(|s| Bound::ExclusiveRaw(s.into()));
+    let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
+    let start = start_after.map(Bound::exclusive);
 
         let tokens: StdResult<Vec<TokenInfo>> = DepositNft::default()
             .nfts
             .range(deps.storage, start, None, Order::Ascending)
             .take(limit)
             .map(|item| item.map(|(token_id, token_owner)| TokenInfo{
-                token_id,
+                token_id: String::from_utf8(token_id.to_vec()).unwrap(),
                 depositor: token_owner.owner.to_string(),
+                migrated: token_owner.migrated
             }))
             .collect();
 
@@ -138,7 +142,8 @@ pub fn depositor(deps: Deps, token_id: String) -> StdResult<TokenInfo> {
         .nfts.load(deps.storage, &token_id)?;
     Ok(TokenInfo{
         token_id,
-        depositor: depositor.owner.to_string()
+        depositor: depositor.owner.to_string(),
+        migrated: depositor.migrated
     })
 }
 
@@ -155,6 +160,32 @@ pub fn set_owner(deps: DepsMut, _env: Env, info: MessageInfo, owner: String) -> 
         .add_attribute("action", "parameter_update")
         .add_attribute("parameter", "owner")
         .add_attribute("value", owner))
+}
+
+pub fn set_migrated(deps: DepsMut, _env: Env, info: MessageInfo, token_id: String) -> Result<Response> {
+    is_owner(deps.as_ref(), info.sender)?;
+
+
+    let token_owner = DepositNft::default()
+        .nfts.update(deps.storage, &token_id, |x|{
+            match x{
+                Some(mut x) => {
+                    x.migrated = true;
+                    Ok(x)
+                },
+                None =>{
+                    Err(anyhow!(ContractError::TokenNotDeposited{}))
+                }
+            }
+
+
+
+        })?;
+
+    Ok(Response::new()
+        .add_attribute("action", "migrated")
+        .add_attribute("token_id", token_id)
+        .add_attribute("depositor", token_owner.owner))
 }
 
 pub fn execute_receive_nft(
@@ -183,7 +214,8 @@ pub fn execute_receive_nft(
 
             DepositNft::default()
         .nfts.save(deps.storage, &token_id, &TokenOwner{
-                owner: sender_addr
+                owner: sender_addr,
+                migrated: false
             })?;
 
             Ok(Response::new()
@@ -215,7 +247,7 @@ pub mod tests {
 
     #[test]
     fn test_init_sanity() {
-        let mut deps = mock_dependencies();
+        let mut deps = mock_dependencies(&[]);
         let res = init_helper(deps.as_mut());
         assert_eq!(0, res.messages.len());
     }
@@ -245,7 +277,7 @@ pub mod tests {
 
     #[test]
     fn test_deposit_nft() {
-        let mut deps = mock_dependencies();
+        let mut deps = mock_dependencies(&[]);
         init_helper(deps.as_mut());
 
         let err = deposit_helper(deps.as_mut(), "other_nft", "id", "id").unwrap_err();
@@ -268,13 +300,14 @@ pub mod tests {
         let deposit = DepositNft::default()
         .nfts.load(&deps.storage, "id").unwrap();
         assert_eq!(deposit, TokenOwner{
-            owner: addr
+            owner: addr,
+            migrated: false
         });
     }
 
     #[test]
     fn test_deposit_multiple_nft() {
-        let mut deps = mock_dependencies();
+        let mut deps = mock_dependencies(&[]);
         init_helper(deps.as_mut());
 
         deposit_helper(deps.as_mut(), "nft", "id", "id").unwrap();
@@ -289,34 +322,39 @@ pub mod tests {
         let deposit = DepositNft::default()
         .nfts.load(&deps.storage, "id").unwrap();
         assert_eq!(deposit, TokenOwner{
-            owner: addr.clone()
+            owner: addr.clone(),
+            migrated: false
         });
         let deposit = DepositNft::default()
         .nfts.load(&deps.storage, "id1").unwrap();
         assert_eq!(deposit, TokenOwner{
-            owner: addr.clone()
+            owner: addr.clone(),
+            migrated: false
         });
         let deposit = DepositNft::default()
         .nfts.load(&deps.storage, "id2").unwrap();
         assert_eq!(deposit, TokenOwner{
-            owner: addr.clone()
+            owner: addr.clone(),
+            migrated: false
         });
         let deposit = DepositNft::default()
         .nfts.load(&deps.storage, "id3").unwrap();
         assert_eq!(deposit, TokenOwner{
-            owner: addr.clone()
+            owner: addr.clone(),
+            migrated: false
         });
         let deposit = DepositNft::default()
         .nfts.load(&deps.storage, "id4").unwrap();
         assert_eq!(deposit, TokenOwner{
-            owner: addr
+            owner: addr,
+            migrated: false
         });
     }
 
     #[test]
     fn test_query_contract_info() {
         let env = mock_env();
-        let mut deps = mock_dependencies();
+        let mut deps = mock_dependencies(&[]);
         init_helper(deps.as_mut());
 
         let res = query(deps.as_ref(), env, QueryMsg::ContractInfo {}).unwrap();
@@ -333,7 +371,7 @@ pub mod tests {
     #[test]
     fn test_query_deposited_nft() {
         let env = mock_env();
-        let mut deps = mock_dependencies();
+        let mut deps = mock_dependencies(&[]);
         init_helper(deps.as_mut());
 
         deposit_helper(deps.as_mut(), "nft", "id", "id").unwrap();
@@ -355,15 +393,18 @@ pub mod tests {
                 tokens: vec![
                     TokenInfo {
                         depositor: "creator".to_string(),
-                        token_id: "id".to_string()
+                        token_id: "id".to_string(),
+                        migrated: false
                     },
                     TokenInfo {
                         depositor: "creator".to_string(),
-                        token_id: "id1".to_string()
+                        token_id: "id1".to_string(),
+                        migrated: false
                     },
                     TokenInfo {
                         depositor: "creator".to_string(),
-                        token_id: "id2".to_string()
+                        token_id: "id2".to_string(),
+                        migrated: false
                     }
                 ]
             }
@@ -384,11 +425,13 @@ pub mod tests {
                 tokens: vec![
                     TokenInfo {
                         depositor: "creator".to_string(),
-                        token_id: "id1".to_string()
+                        token_id: "id1".to_string(),
+                        migrated: false
                     },
                     TokenInfo {
                         depositor: "creator".to_string(),
-                        token_id: "id2".to_string()
+                        token_id: "id2".to_string(),
+                        migrated: false
                     }
                 ]
             }
@@ -408,7 +451,8 @@ pub mod tests {
             TokenInfoResponse {
                 tokens: vec![TokenInfo {
                     depositor: "creator".to_string(),
-                    token_id: "id1".to_string()
+                    token_id: "id1".to_string(),
+                    migrated: false
                 }]
             }
         );

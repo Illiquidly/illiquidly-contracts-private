@@ -3,7 +3,7 @@ use std::fs::create_dir_all;
 
 use cosmwasm_schema::{export_schema, remove_schemas, schema_for};
 
-use escrow_export::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, ReceiveMsg};
+use escrow_export_classic::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, ReceiveMsg};
 
 fn main() {
     let mut out_dir = current_dir().unwrap();

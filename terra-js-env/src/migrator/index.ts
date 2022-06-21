@@ -45,8 +45,9 @@ async function main() {
   
   // Then we test the flow
   
+  console.log("Send the nft to the escrow contract")
   // First we send the nft to the escrow contract
-  await nft1.execute.send_nft({
+  response = await nft1.execute.send_nft({
     contract: escrow.address,
     msg: btoa(JSON.stringify({
       deposit_nft: {
@@ -55,8 +56,9 @@ async function main() {
     })),
     token_id
   })
+  //console.log(response);
 
-
+  console.log("We query the new depositor")
   // Then we try to query if the NFT was actually deposited
   response = await escrow.query.depositor({
     token_id
@@ -68,6 +70,7 @@ async function main() {
   // If the NFT was actually deposited, we can transfer the token on Terra 2.0 to our depositor
   // We check the token id exists and belongs to the recipient
   response = await nft2.query.tokens({ owner: user.getAddress() });
+  console.log(response);
   if(!response.tokens.includes(token_id)){
     console.log("No such token_id, creating one for testing");
     await nft2_minter.execute.mint({

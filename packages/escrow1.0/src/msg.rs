@@ -2,7 +2,6 @@ use crate::state::TokenInfo;
 use cosmwasm_std::{Binary, StdError, StdResult};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use utils::msg::is_valid_name;
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
 pub struct MigrateMsg {}
@@ -12,6 +11,15 @@ pub struct InstantiateMsg {
     pub name: String,
     pub nft_address: String,
     pub owner: Option<String>,
+}
+
+
+pub fn is_valid_name(name: &str) -> bool {
+    let bytes = name.as_bytes();
+    if bytes.len() < 3 || bytes.len() > 50 {
+        return false;
+    }
+    true
 }
 
 impl InstantiateMsg {
@@ -37,6 +45,9 @@ pub enum ExecuteMsg {
     SetOwner {
         owner: String,
     },
+    Migrated {
+        token_id: String
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

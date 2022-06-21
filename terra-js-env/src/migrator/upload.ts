@@ -9,8 +9,9 @@ async function main() {
   console.log(handler.getAddress());
 
   // Uploading the contract code
+  
   let loan_codeId: string[] = await handler.uploadContract(
-    '../artifacts/nft_escrow.wasm'
+    '../artifacts/nft_escrow_classic.wasm'
   );
   console.log(handler.getAddress());
 
@@ -19,7 +20,7 @@ async function main() {
 
   // Initialize p2p contract
   let escrowInitMsg = {
-    name: 'P2PLoans',
+    name: 'NFTEscrow',
     nft_address: nfts[nfts_names[0]]
   };
   console.log(escrowInitMsg);

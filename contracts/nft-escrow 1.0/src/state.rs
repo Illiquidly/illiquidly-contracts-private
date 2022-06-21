@@ -1,12 +1,12 @@
 use crate::error::ContractError;
 use cosmwasm_std::{Addr, Deps};
 use cw_storage_plus::{Item, IndexedMap, MultiIndex};
-use escrow_export::state::{ContractInfo, TokenOwner, TokenIndexes};
+use escrow_export_classic::state::{ContractInfo, TokenOwner, TokenIndexes};
 
 pub const CONTRACT_INFO: Item<ContractInfo> = Item::new("contract_info");
 
-pub fn token_owner_idx(d: &TokenOwner) -> Addr {
-    d.owner.clone()
+pub fn token_owner_idx(d: &TokenOwner, k: Vec<u8>) -> (Addr, Vec<u8>) {
+    (d.owner.clone(), k)
 }
 
 pub struct DepositNft<'a> {
