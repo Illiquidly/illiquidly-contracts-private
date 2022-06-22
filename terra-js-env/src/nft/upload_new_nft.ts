@@ -14,10 +14,16 @@ async function main() {
     '../artifacts/cw721_base1.0.wasm'
   );
   */
-  let nft_codeId: string[] = await handler.uploadContract(
-    '../artifacts/cw721_base0.16.wasm'
-  );
-
+  let nft_codeId: string[];
+  if(env.type == "classic"){
+    nft_codeId = await handler.uploadContract(
+      '../artifacts/cw721_base0.16.wasm'
+    );
+  }else{
+    nft_codeId = await handler.uploadContract(
+      '../artifacts/cw721_base1.0.wasm'
+    );
+  }
 
   let codeName: string = 'NFT' + Math.ceil(Math.random() * 10000);
 

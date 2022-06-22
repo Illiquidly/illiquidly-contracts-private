@@ -7,7 +7,7 @@
     "build:dev": "tsc --watch --preserveWatchOutput",
     "build": "tsc --preserveWatchOutput",
     "start": "node dist/index.js",
-    "dev": "nodemon --watch dist -e js,ejs --exec npm start classic",
+    "dev": "nodemon --watch dist -e js,ejs --exec npm start staging",
     "prettier-format": "prettier --config .prettierrc 'src/**/*.ts' --write",
     "lint": "eslint . --ext .ts"
   },

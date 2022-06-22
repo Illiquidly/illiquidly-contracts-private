@@ -14,6 +14,7 @@ async function main() {
   let user = new Address(env['mnemonics'][1]);
   // Uploading the contract code
   let escrow = user.getContract(env.contracts.escrow);
+  let escrow_handler = handler.getContract(env.contracts.escrow);
 
 
   let cw721_tokens = env['cw721'];
@@ -57,7 +58,7 @@ async function main() {
     token_id
   })
   //console.log(response);
-
+  /*
   console.log("We query the new depositor")
   // Then we try to query if the NFT was actually deposited
   response = await escrow.query.depositor({
@@ -69,7 +70,7 @@ async function main() {
 
   // If the NFT was actually deposited, we can transfer the token on Terra 2.0 to our depositor
   // We check the token id exists and belongs to the recipient
-  response = await nft2.query.tokens({ owner: user.getAddress() });
+  response = await nft2.query.tokens({ owner: handler.getAddress() });
   console.log(response);
   if(!response.tokens.includes(token_id)){
     console.log("No such token_id, creating one for testing");
@@ -91,8 +92,11 @@ async function main() {
     owner: user.getAddress()
   }))
 
-
-
+  // We indicate the token has been migrated
+  await escrow_handler.execute.migrated({
+    token_id
+  })
+  */
 } 
 
 main()

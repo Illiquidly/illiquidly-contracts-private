@@ -10,7 +10,6 @@ import {
   MsgInstantiateContract
 } from '@terra-money/terra.js';
 import * as fs from 'fs';
-import { env } from './env_helper';
 
 // Wrapper for Query and Transaction objects (used to build a common Proxy on top of them)
 class LCDClientWrapper {
@@ -56,7 +55,10 @@ class Transaction extends LCDClientWrapper {
           `store code failed. code: ${response.code}, codespace: ${response.codespace}, raw_log: ${response.raw_log}`
         );
       } else {
-        console.log(response['response']['data']);
+        let response_data: any = response['response']['data']
+        throw new Error(
+          JSON.stringify(response_data)
+        );
       }
     });
     return response;
@@ -116,9 +118,11 @@ class Contract {
 export class Address {
   terra: LCDClient;
   wallet: Wallet;
+  env: any
 
-  constructor(mnemonic: string = '') {
-    this.terra = new LCDClient(env['chain']);
+  constructor(env: any, mnemonic: string = '') {
+    this.env = env;
+    this.terra = new LCDClient(this.env['chain']);
     const mk = new MnemonicKey({
       mnemonic: mnemonic
     });
@@ -172,7 +176,7 @@ export class Address {
         `instantiate failed. code: ${instantiateTxResult.code}, codespace: ${instantiateTxResult.codespace}, raw_log: ${instantiateTxResult.raw_log}`
       );
     }
-    if(env.type == "classic"){
+    if(this.env.type == "classic"){
       const {
         instantiate_contract: { contract_address }
       } = instantiateTxResult.logs[0].eventsByType;

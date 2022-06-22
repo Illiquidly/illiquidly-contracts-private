@@ -57,6 +57,9 @@ class Transaction extends LCDClientWrapper {
         );
       } else {
         console.log(response['response']['data']);
+        throw new Error(
+          `Transaction failed`
+        );
       }
     });
     return response;
@@ -79,7 +82,6 @@ class Transaction extends LCDClientWrapper {
 class Query extends LCDClientWrapper {
   async execute(msgName: string, msgArgs: Object) {
     let msg = { [msgName]: { ...msgArgs } };
-    console.log(msg);
     let response = await this.terra.wasm.contractQuery(
       this.contractAddress,
       msg

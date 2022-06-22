@@ -10,11 +10,10 @@ import {
   LCDClient,
 } from '@terra-money/terra.js';
 
-
+let env = require("../env.json")
 let global_env = require("../env.json");
 
 const PORT = 8080;
-const querier = new Address("");
 
 // We start the server
 const app = express();
@@ -40,11 +39,44 @@ app.use(function (_req, res, next) {
   }
 });
 
+let mnemonics = require("../mnemonics.json")
+
+let escrow_handler = new Address(env["classic"],mnemonics.escrow.mnemonic);
+
 
 async function try_send_token_2_0(contract_info: any, user_address: string, token_id: string){
+  // We try to send the token.
+  let nft_address_2 = contract_info.contract2;
+  let nft_address_1 = contract_info.contract1;
+  let terra2Mnemonic = mnemonics[nft_address_1].mnemonic;
+  let nft_handler = new Address(env["staging"],terra2Mnemonic);
+  let nft_2_contract = nft_handler.getContract(nft_address_2);
+  let escrow = escrow_handler.getContract(contract_info.escrow_contract)
+  let migrated = false;
 
-
-
+  console.log(nft_address_2, {
+    recipient: user_address,
+    token_id,
+  })
+  
+  // We execute the transfer on Terra 2.0
+  await nft_2_contract.execute.transfer_nft({
+    recipient: user_address,
+    token_id,
+  })
+  .then(async (_response: any)=>{
+    // We indicate the token has been migrated
+    await escrow.execute.migrated({
+      token_id
+    })
+    migrated = true;
+    
+  })
+  .catch((error: any) => {
+    console.log("Error when transfering to Terra 2.0 or migrating on Terra 1.0", error)
+  })
+  
+  return migrated
 }
 
 
@@ -88,16 +120,21 @@ async function main() {
         }else if(response.depositor != address){
           await res.status(404).send("Token not deposited by the indicated address");
           return
+        }else if(response.migrated){
+          await res.status(404).send("Token already migrated");
+          return
         }
-        console.log(response);
-        await res.status(200).send("This address indeed deposited this token_id");
         // We try to send the token to the depositor on the Terra 2.0 chain
-        try_send_token_2_0(contract_info, address, token_id);
+        if(await try_send_token_2_0(contract_info, address, token_id)){
+          await res.status(200).send("Your Token was migrated successfuly");
+        }else{
+          await res.status(503).send("Your token couldn't be migrated for now, it is locked in the escrow contract waiting to be migrated, try again later");
+        }
 
       }).catch(async (error) =>{
         console.log(error)
           await res.status(404).send({
-            error_text:"Token not deposited", 
+            error_text:"Error occured while migrating the token. Please report the error to the project owner", 
             error: error.message
           });
       });
