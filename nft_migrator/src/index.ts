@@ -12,7 +12,8 @@ import {
 
 let globalEnv = require("../env.json");
 
-const PORT = 8080;
+const PORT = 8081;
+const HTTPS_PORT = 8444;
 
 // We start the server
 const app = express();
@@ -78,8 +79,6 @@ async function trySendToken2_0(contractInfo: any, userAddress: string, tokenId: 
   return migrated
 }
 
-
-
 async function main() {
 
   app.get('/migrator/contract_list', async (_req: any, res: any) => {
@@ -141,7 +140,7 @@ async function main() {
       cert: fs.readFileSync('/home/illiquidly/identity/fullchain.pem'),
       key: fs.readFileSync('/home/illiquidly/identity/privkey.pem')
     };
-    https.createServer(options, app).listen(8443);
+    https.createServer(options, app).listen(HTTPS_PORT);
   }
 }
 main();
