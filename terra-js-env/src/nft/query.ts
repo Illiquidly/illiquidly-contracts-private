@@ -22,6 +22,12 @@ async function main() {
   });
   console.log(response);
 
+  let user_address = handler.getAddress();
+  response = await nft.query.tokens({
+    owner: user_address,
+  });
+  console.log(response);
+
 }
 
 main()

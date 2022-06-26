@@ -10,8 +10,7 @@ import {
   MsgInstantiateContract
 } from '@terra-money/terra.js';
 import * as fs from 'fs';
-import { env } from './env_helper';
-
+import { env, globalEnv} from './env_helper';
 // Wrapper for Query and Transaction objects (used to build a common Proxy on top of them)
 class LCDClientWrapper {
   terra: LCDClient;
@@ -119,8 +118,14 @@ export class Address {
   terra: LCDClient;
   wallet: Wallet;
 
-  constructor(mnemonic: string = '') {
-    this.terra = new LCDClient(env['chain']);
+  constructor(mnemonic: string = '', customEnv: string | undefined = undefined) {
+    let chosen_env
+    if(customEnv){
+      chosen_env = globalEnv[customEnv]
+    }else{
+      chosen_env = env;
+    }
+    this.terra = new LCDClient(chosen_env['chain']);
     const mk = new MnemonicKey({
       mnemonic: mnemonic
     });

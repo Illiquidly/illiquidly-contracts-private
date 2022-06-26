@@ -1,4 +1,4 @@
-let env = require('../env.json');
+let globalEnv = require('../env.json');
 const fs = require('fs');
 
 let env_name: string;
@@ -7,7 +7,7 @@ if (process.argv[2]) {
 } else {
   env_name = 'dev';
 }
-env = env[env_name];
+let env = globalEnv[env_name];
 
 function add_uploaded_token(codeName: string, address: string) {
   let current_env = require('../env.json');
@@ -42,4 +42,4 @@ function add_contract(contractName: string, address: string) {
   fs.writeFileSync('env.json', data);
 }
 
-export { env, add_uploaded_token, add_uploaded_nft, add_contract };
+export { env, globalEnv, add_uploaded_token, add_uploaded_nft, add_contract };

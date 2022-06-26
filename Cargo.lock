@@ -591,24 +591,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "escrow-export"
-version = "0.1.0"
-dependencies = [
- "cosmwasm-schema 1.0.0",
- "cosmwasm-std 1.0.0",
- "cw-storage-plus 0.13.4",
- "cw20 0.13.4",
- "cw20-base 0.13.4",
- "cw721 0.13.2",
- "schemars",
- "serde",
- "strum",
- "strum_macros",
- "thiserror",
- "utils",
-]
-
-[[package]]
 name = "escrow-export-classic"
 version = "0.0.1"
 dependencies = [
@@ -936,23 +918,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "abb12e687cfb44aa40f41fc3978ef76448f9b6038cad6aef4259d3c095a2382e"
 dependencies = [
  "cfg-if",
-]
-
-[[package]]
-name = "nft-escrow"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "cosmwasm-schema 0.16.7",
- "cosmwasm-std 1.0.0",
- "cw-storage-plus 0.13.4",
- "cw20-base 0.13.4",
- "escrow-export",
- "schemars",
- "serde",
- "terra-cosmwasm",
- "thiserror",
- "utils",
 ]
 
 [[package]]
