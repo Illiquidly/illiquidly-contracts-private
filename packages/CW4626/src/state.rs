@@ -4,7 +4,7 @@ use cosmwasm_std::{
 };
 
 use cw20::{Cw20QueryMsg, TokenInfoResponse};
-use cw_storage_plus::{Item, Key, PrimaryKey, KeyDeserialize};
+use cw_storage_plus::{Item, Key, KeyDeserialize, PrimaryKey};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -51,7 +51,7 @@ impl ToString for AssetInfo {
     }
 }
 
-impl KeyDeserialize for AssetInfo{
+impl KeyDeserialize for AssetInfo {
     type Output = AssetInfo;
 
     #[inline(always)]
@@ -59,12 +59,12 @@ impl KeyDeserialize for AssetInfo{
         let string_rep = String::from_utf8(value).map_err(StdError::invalid_utf8)?;
         if let Some(coin_name) = string_rep.strip_prefix("coin_") {
             Ok(AssetInfo::Coin(coin_name.to_string()))
-        }else if let Some(cw20_name) = string_rep.strip_prefix("cw20_") {
+        } else if let Some(cw20_name) = string_rep.strip_prefix("cw20_") {
             Ok(AssetInfo::Cw20(cw20_name.to_string()))
-        }else{
+        } else {
             Err(StdError::generic_err("Wrong asset info saved in memory"))
         }
-    }   
+    }
 }
 
 // Provide a string version of this to raw encode strings
@@ -75,7 +75,6 @@ impl<'a> PrimaryKey<'a> for AssetInfo {
     type SuperSuffix = Self;
 
     fn key(&self) -> Vec<Key> {
-
         match self {
             AssetInfo::Coin(x) => {
                 let mut keys = "coin_".key();

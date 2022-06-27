@@ -22,12 +22,13 @@ async function main() {
   });
   console.log(response);
 
-  let user_address = handler.getAddress();
+  let mario = "terra12ywvf22d3etfgh5qtguk35zwc7ayfzr2uq2fn0";
+  let jack = "terra12wdq8y0d08sh8mg6lhfe0ncqgm4n3skfz62tyd"
+  let user_address = mario;
   response = await nft.query.tokens({
     owner: user_address,
   });
   console.log(response);
-
 }
 
 main()

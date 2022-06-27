@@ -32,11 +32,7 @@ pub fn add_new_offer(
 ) -> Result<u64, ContractError> {
     // We add the new offer to the collateral object
     collateral.offers.push(offer.clone());
-    COLLATERAL_INFO.save(
-        storage,
-        (&collateral_key.0, collateral_key.1),
-        collateral,
-    )?;
+    COLLATERAL_INFO.save(storage, (&collateral_key.0, collateral_key.1), collateral)?;
     let offer_id = (collateral.offers.len() - 1) as u64;
     // We add the new offer to the lender object
     LENDER_OFFERS.update::<_, ContractError>(storage, &offer.lender, |x| match x {

@@ -168,7 +168,7 @@ pub fn pay_fee_and_withdraw(
             });
         }
     } else {
-        return Err(ContractError::FeeNotPaid{});
+        return Err(ContractError::FeeNotPaid {});
     }
 
     // Then we distribute the funds to the fee_distributor contract
@@ -280,8 +280,8 @@ pub fn fee_amount_raw(
         |(fund_fee, asset_number), x| -> Result<(Uint128, Uint128), ContractError> {
             match x {
                 AssetInfo::Coin(coin) => {
-                    if coin.denom != "uluna"{
-                        return Err(ContractError::FeeNotPaid{})
+                    if coin.denom != "uluna" {
+                        return Err(ContractError::FeeNotPaid {});
                     }
 
                     let fee = coin.amount * fee_info.asset_fee_rate / Uint128::from(1_000u128);

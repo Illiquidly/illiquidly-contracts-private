@@ -1,8 +1,8 @@
-use cosmwasm_std::{Api};
+use cosmwasm_std::Api;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::{Deps, Order, StdResult, Storage};
 
-use cw_storage_plus::{Bound};
+use cw_storage_plus::Bound;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -38,13 +38,11 @@ pub fn query_contract_info(deps: Deps) -> StdResult<ContractInfo> {
 }
 
 // parse trades to human readable format
-fn parse_trades(_: &dyn Api, item: StdResult<(u64,TradeInfo)>) -> StdResult<TradeResponse> {
-    item.map(|(trade_id, trade)| {
-        TradeResponse {
-            trade_id,
-            counter_id: None,
-            trade_info: Some(trade),
-        }
+fn parse_trades(_: &dyn Api, item: StdResult<(u64, TradeInfo)>) -> StdResult<TradeResponse> {
+    item.map(|(trade_id, trade)| TradeResponse {
+        trade_id,
+        counter_id: None,
+        trade_info: Some(trade),
     })
 }
 
@@ -52,7 +50,7 @@ fn parse_trades(_: &dyn Api, item: StdResult<(u64,TradeInfo)>) -> StdResult<Trad
 fn parse_all_counter_trades(
     _: &dyn Api,
     storage: &dyn Storage,
-    item: StdResult<((u64,u64),TradeInfo)>,
+    item: StdResult<((u64, u64), TradeInfo)>,
 ) -> StdResult<TradeResponse> {
     item.map(|((trade_id, counter_id), mut counter)| {
         // First two bytes define size [0,8] since we know it's u64 skip it.
@@ -69,7 +67,7 @@ fn parse_all_counter_trades(
 fn parse_counter_trades(
     _: &dyn Api,
     storage: &dyn Storage,
-    item: StdResult<(u64,TradeInfo)>,
+    item: StdResult<(u64, TradeInfo)>,
     trade_id: u64,
 ) -> StdResult<TradeResponse> {
     item.map(|(counter_id, mut counter)| {
@@ -211,8 +209,7 @@ pub fn query_all_trades_by_counterer(
 ) -> StdResult<AllTradesResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
 
-    let start =
-        start_after.map(|s| Bound::exclusive((s, 0)));
+    let start = start_after.map(|s| Bound::exclusive((s, 0)));
 
     let counter_filters = Some(QueryFilters {
         owner: Some(counterer),
@@ -228,12 +225,7 @@ pub fn query_all_trades_by_counterer(
         // Now we get back the trade_id and query the trade_info
         .map(|response| response.trade_id)
         .unique()
-        .map(|trade_id| {
-            Ok((
-                trade_id,
-                TRADE_INFO.load(deps.storage, trade_id)?,
-            ))
-        })
+        .map(|trade_id| Ok((trade_id, TRADE_INFO.load(deps.storage, trade_id)?)))
         .map(|kv_item| parse_trades(deps.api, kv_item))
         .filter(|response| trade_filter(deps.api, response, &filters))
         .take(limit)
@@ -247,12 +239,7 @@ pub fn query_all_trades_by_counterer(
             .filter_map(|response| response.ok())
             .map(|response| response.trade_id)
             .unique()
-            .map(|trade_id| {
-                Ok((
-                    trade_id,
-                    TRADE_INFO.load(deps.storage, trade_id)?,
-                ))
-            })
+            .map(|trade_id| Ok((trade_id, TRADE_INFO.load(deps.storage, trade_id)?)))
             .filter_map(|kv_item| parse_trades(deps.api, kv_item).ok())
             .last();
 
@@ -278,9 +265,7 @@ pub fn query_all_counter_trades(
 ) -> StdResult<AllCounterTradesResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
 
-    let start = start_after.map(|s| {
-        Bound::exclusive((s.trade_id, s.counter_id))
-    });
+    let start = start_after.map(|s| Bound::exclusive((s.trade_id, s.counter_id)));
 
     let mut counter_trades: Vec<TradeResponse> = COUNTER_TRADE_INFO
         .range(deps.storage, None, start.clone(), Order::Descending)

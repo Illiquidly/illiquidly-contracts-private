@@ -2,7 +2,7 @@ use cosmwasm_std::{
     coin, coins, entry_point, to_binary, BankMsg, Binary, Coin, Deps, DepsMut, Env, MessageInfo,
     Order, Response, StdError, StdResult, Uint128,
 };
-use cw_storage_plus::{Bound};
+use cw_storage_plus::Bound;
 use itertools::Itertools;
 #[cfg(not(feature = "library"))]
 use std::convert::TryInto;
@@ -253,16 +253,12 @@ pub fn query_addresses(
 ) -> StdResult<Vec<String>> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
     let addr = maybe_addr(deps.api, start_after)?;
-    let start = addr
-        .as_ref()
-        .map(Bound::exclusive);
+    let start = addr.as_ref().map(Bound::exclusive);
 
     ALLOCATED_FUNDS
         .keys(deps.storage, start, None, Order::Ascending)
         .take(limit)
-        .map(|x| {
-            x.map(|s| s.to_string())
-        })
+        .map(|x| x.map(|s| s.to_string()))
         .collect::<Result<Vec<String>, StdError>>()
 }
 

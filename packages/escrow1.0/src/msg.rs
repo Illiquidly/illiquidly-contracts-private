@@ -1,7 +1,7 @@
-use crate::state::TokenInfo;
-use cosmwasm_std::{Binary, StdError, StdResult};
+use cosmwasm_std::{Binary, StdError, StdResult, Timestamp};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use crate::state::TokenOwner;
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
 pub struct MigrateMsg {}
@@ -13,13 +13,31 @@ pub struct InstantiateMsg {
     pub owner: Option<String>,
 }
 
-
 pub fn is_valid_name(name: &str) -> bool {
     let bytes = name.as_bytes();
     if bytes.len() < 3 || bytes.len() > 50 {
         return false;
     }
     true
+}
+
+pub fn to_token_info(token_id: String, token_owner: TokenOwner) -> TokenInfo{
+    TokenInfo{
+        token_id,
+        depositor: token_owner.owner.to_string(),
+        migrated: token_owner.migrated,
+        deposit_time: token_owner.deposit_time,
+        migrate_time: token_owner.migrate_time,
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct TokenInfo{
+    pub token_id: String,
+    pub depositor: String,
+    pub migrated: bool,
+    pub deposit_time: Timestamp,
+    pub migrate_time: Timestamp
 }
 
 impl InstantiateMsg {
@@ -46,8 +64,8 @@ pub enum ExecuteMsg {
         owner: String,
     },
     Migrated {
-        token_id: String
-    }
+        token_id: String,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

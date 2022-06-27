@@ -107,13 +107,11 @@ pub fn get_last_collateral(deps: Deps, owner: &Addr) -> Option<u64> {
         .take(1)
         .collect::<Vec<StdResult<u64>>>();
 
-    if let Some(&Ok(collateral)) = first_collateral.first(){
+    if let Some(&Ok(collateral)) = first_collateral.first() {
         Some(collateral)
-    }
-    else{
+    } else {
         None
     }
-        
 }
 
 pub fn get_total_interests(env: Env, borrow_info: &BorrowInfo) -> Uint128 {

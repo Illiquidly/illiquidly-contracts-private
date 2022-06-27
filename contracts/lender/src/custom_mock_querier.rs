@@ -10,9 +10,9 @@ pub mod tests {
         SystemError, SystemResult, WasmQuery,
     };
 
-    use std::marker::PhantomData;
     use serde::de::DeserializeOwned;
     use std::collections::HashMap;
+    use std::marker::PhantomData;
 
     use cw_4626::query::QueryMsg as Cw4626QueryMsg;
     use cw_4626::state::AssetInfo;
@@ -112,9 +112,11 @@ pub mod tests {
                 QueryRequest::Staking(staking_query) => self.staking.query(staking_query),
                 QueryRequest::Wasm(msg) => self.wasm.query(msg),
                 #[cfg(feature = "stargate")]
-                QueryRequest::Stargate { .. } => SystemResult::Err(SystemError::UnsupportedRequest {
-                    kind: "Stargate".to_string(),
-                }),
+                QueryRequest::Stargate { .. } => {
+                    SystemResult::Err(SystemError::UnsupportedRequest {
+                        kind: "Stargate".to_string(),
+                    })
+                }
                 #[cfg(feature = "stargate")]
                 QueryRequest::Ibc(_) => SystemResult::Err(SystemError::UnsupportedRequest {
                     kind: "Ibc".to_string(),

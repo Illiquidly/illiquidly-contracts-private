@@ -42,11 +42,7 @@ pub fn review_counter_trade(
 
     // Then we need to change the trade status that we may have changed
     TRADE_INFO.save(deps.storage, trade_id, &trade_info)?;
-    COUNTER_TRADE_INFO.save(
-        deps.storage,
-        (trade_id, counter_id),
-        &counter_info,
-    )?;
+    COUNTER_TRADE_INFO.save(deps.storage, (trade_id, counter_id), &counter_info)?;
 
     Ok(Response::new()
         .add_attribute("action", "review_counter_trade")
@@ -72,11 +68,7 @@ pub fn set_comment(
     if let Some(counter_id) = counter_id {
         let mut counter_info = is_counter_trader(deps.storage, &info.sender, trade_id, counter_id)?;
         counter_info.additionnal_info.owner_comment = Some(comment);
-        COUNTER_TRADE_INFO.save(
-            deps.storage,
-            (trade_id, counter_id),
-            &counter_info,
-        )?;
+        COUNTER_TRADE_INFO.save(deps.storage, (trade_id, counter_id), &counter_info)?;
     } else {
         let mut trade_info = is_trader(deps.storage, &info.sender, trade_id)?;
         trade_info.additionnal_info.owner_comment = Some(comment);

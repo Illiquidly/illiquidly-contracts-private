@@ -25,7 +25,7 @@ async function main() {
 
   */
 
-  let to_mint = ['matio_the_best189925367','matio_the_best320579393'];
+  let to_mint = ['matio_the_best83583065'];
 
   let mint_to_address = handler.getAddress();
 

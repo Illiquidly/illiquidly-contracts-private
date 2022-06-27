@@ -374,11 +374,7 @@ pub fn withdraw_accepted_funds(
 
         trade_type = "counter";
         counter_info.assets_withdrawn = true;
-        COUNTER_TRADE_INFO.save(
-            deps.storage,
-            (trade_id, counter_id),
-            &counter_info,
-        )?;
+        COUNTER_TRADE_INFO.save(deps.storage, (trade_id, counter_id), &counter_info)?;
     } else if counter_info.owner == trader {
         // In case the counter_trader wants to withdraw the exchanged funds (from the trade_info object)
         res = check_and_create_withdraw_messages(env, &trader, &trade_info)?;

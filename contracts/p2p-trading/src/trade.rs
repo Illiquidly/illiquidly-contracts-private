@@ -205,11 +205,9 @@ pub fn add_asset_to_trade(
         prepare_trade_modification(deps.as_ref(), info.sender.clone(), trade_id)?;
 
     match asset.clone() {
-        AssetInfo::Coin(coin) => TRADE_INFO.update(
-            deps.storage,
-            trade_id,
-            add_funds(coin, info.funds.clone()),
-        ),
+        AssetInfo::Coin(coin) => {
+            TRADE_INFO.update(deps.storage, trade_id, add_funds(coin, info.funds.clone()))
+        }
         AssetInfo::Cw20Coin(token) => TRADE_INFO.update(
             deps.storage,
             trade_id,
@@ -680,11 +678,7 @@ pub fn accept_trade(
         comment,
     });
     counter_info.state = TradeState::Accepted;
-    COUNTER_TRADE_INFO.save(
-        deps.storage,
-        (trade_id, counter_id),
-        &counter_info,
-    )?;
+    COUNTER_TRADE_INFO.save(deps.storage, (trade_id, counter_id), &counter_info)?;
 
     Ok(Response::new()
         .add_attribute("action", "accept_counter_trade")
@@ -715,11 +709,7 @@ pub fn refuse_counter_trade(
         return Err(ContractError::TradeCancelled {});
     }
     counter_info.state = TradeState::Refused;
-    COUNTER_TRADE_INFO.save(
-        deps.storage,
-        (trade_id, counter_id),
-        &counter_info,
-    )?;
+    COUNTER_TRADE_INFO.save(deps.storage, (trade_id, counter_id), &counter_info)?;
 
     Ok(Response::new()
         .add_attribute("action", "refuse_counter_trade")

@@ -2,8 +2,8 @@
 use cosmwasm_std::{Deps, Env, StdResult, Uint128};
 use cw20_base::state::{TokenInfo, TOKEN_INFO};
 
-use cw_4626::state::{query_asset_balance, query_asset_liabilities, AssetInfo, STATE};
 use bignumber::{Decimal256, Uint256};
+use cw_4626::state::{query_asset_balance, query_asset_liabilities, AssetInfo, STATE};
 
 use cw20_base::contract::query_balance;
 pub fn query_asset(deps: Deps) -> StdResult<AssetInfo> {
@@ -30,7 +30,8 @@ pub fn compute_exchange_rate(
     let asset_balance =
         query_asset_balance(deps, env.clone())? - deposit_amount.unwrap_or_else(Uint128::zero);
     let liabilities = query_asset_liabilities(deps, env)?;
-    let total_assets = Decimal256::from_uint256(Uint256::from((asset_balance + liabilities).u128()));
+    let total_assets =
+        Decimal256::from_uint256(Uint256::from((asset_balance + liabilities).u128()));
     Ok(total_assets / Decimal256::from_uint256(Uint256::from(share_supply.u128())))
 }
 

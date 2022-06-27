@@ -19,30 +19,41 @@ async function main() {
   let cw721_token_names1 = Object.keys(cw721_tokens1);
   let nft1 = handler1.getContract(cw721_tokens1[cw721_token_names1[0]]);
 
-  let mint_to_address = handler1.getAddress();
-  let prefix = "mario_the_best";
+  let mario = "terra12ywvf22d3etfgh5qtguk35zwc7ayfzr2uq2fn0";
+  let jack = "terra12wdq8y0d08sh8mg6lhfe0ncqgm4n3skfz62tyd";
+
+  let mintToAddressTerra1 = mario;
+  let mintToAddressTerra2 = handler2.getAddress();
+  let prefix = "heres_some_test_token";
 
   let mintMsgs1 = [];
   let mintMsgs2 = [];
   for(var i=0;i<7;i++){
-    let msg = {
+    let tokenId = prefix + Math.floor(Math.random() * 434876823);
+    let msg1 = {
       mint:{
-        owner: mint_to_address,
-        token_id: prefix + Math.floor(Math.random() * 434876823),
+        owner: mintToAddressTerra1,
+        token_id: tokenId
       }
     };
     mintMsgs1.push(
       new MsgExecuteContract(
         handler1.getAddress(), // sender
         nft1.address, // contract address
-        { ...msg }, // handle msg,
+        { ...msg1 }, // handle msg,
       )
     );
+    let msg2 = {
+      mint:{
+        owner: mintToAddressTerra2,
+        token_id: tokenId
+      }
+    };
     mintMsgs2.push(
       new MsgExecuteContract(
         handler2.getAddress(), // sender
         nft2.address, // contract address
-        { ...msg }, // handle msg,
+        { ...msg2 }, // handle msg,
       )
     );
   }

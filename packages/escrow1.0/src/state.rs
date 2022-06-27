@@ -1,5 +1,5 @@
-use cw_storage_plus::{Index, MultiIndex, IndexList};
-use cosmwasm_std::Addr;
+use cosmwasm_std::{Addr, Timestamp};
+use cw_storage_plus::{Index, IndexList, MultiIndex};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -12,28 +12,19 @@ pub struct ContractInfo {
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
-pub struct TokenInfo {
-    pub token_id: String,
-    pub depositor: String,
-    pub migrated: bool
-}
-
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct TokenOwner {
     pub owner: Addr,
-    pub migrated: bool
+    pub migrated: bool,
+    pub deposit_time: Timestamp,
+    pub migrate_time: Timestamp
 }
 
-
-pub struct TokenIndexes<'a>
-
-{
+pub struct TokenIndexes<'a> {
     pub owner: MultiIndex<'a, (Addr, Vec<u8>), TokenOwner>,
+    pub migrated: MultiIndex<'a, (bool, Vec<u8>), TokenOwner>,
 }
 
-impl<'a> IndexList<TokenOwner> for TokenIndexes<'a>
-
-{
+impl<'a> IndexList<TokenOwner> for TokenIndexes<'a> {
     fn get_indexes(&'_ self) -> Box<dyn Iterator<Item = &'_ dyn Index<TokenOwner>> + '_> {
         let v: Vec<&dyn Index<TokenOwner>> = vec![&self.owner];
         Box::new(v.into_iter())

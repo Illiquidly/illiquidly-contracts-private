@@ -186,11 +186,7 @@ pub fn withdraw_counter_trade_assets_while_creating(
     _are_assets_in_trade(&counter_info, &assets)?;
 
     _try_withdraw_assets_unsafe(&mut counter_info, &assets)?;
-    COUNTER_TRADE_INFO.save(
-        deps.storage,
-        (trade_id, counter_id),
-        &counter_info,
-    )?;
+    COUNTER_TRADE_INFO.save(deps.storage, (trade_id, counter_id), &counter_info)?;
 
     let res = _create_withdraw_messages_unsafe(
         &env.contract.address,
@@ -228,11 +224,7 @@ pub fn confirm_counter_trade(
     }
     // We confirm the counter_trade
     counter_info.state = TradeState::Published;
-    COUNTER_TRADE_INFO.save(
-        deps.storage,
-        (trade_id, counter_id),
-        &counter_info,
-    )?;
+    COUNTER_TRADE_INFO.save(deps.storage, (trade_id, counter_id), &counter_info)?;
 
     // We load the trade_info for events
     let trade_info = load_trade(deps.storage, trade_id)?;
@@ -267,11 +259,7 @@ pub fn cancel_counter_trade(
     counter_info.state = TradeState::Cancelled;
 
     // We store the new trade status
-    COUNTER_TRADE_INFO.save(
-        deps.storage,
-        (trade_id, counter_id),
-        &counter_info,
-    )?;
+    COUNTER_TRADE_INFO.save(deps.storage, (trade_id, counter_id), &counter_info)?;
 
     // We load the trade_info for events
     let trade_info = load_trade(deps.storage, trade_id)?;
@@ -308,11 +296,7 @@ pub fn withdraw_all_from_counter(
     // We create withdraw messages to send the funds back to the counter trader
     let res = check_and_create_withdraw_messages(env, &info.sender, &counter_info)?;
     counter_info.assets_withdrawn = true;
-    COUNTER_TRADE_INFO.save(
-        deps.storage,
-        (trade_id, counter_id),
-        &counter_info,
-    )?;
+    COUNTER_TRADE_INFO.save(deps.storage, (trade_id, counter_id), &counter_info)?;
 
     // We load the trade_info for events
     let trade_info = load_trade(deps.storage, trade_id)?;

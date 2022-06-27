@@ -4,7 +4,7 @@ use cosmwasm_std::{
     coins, to_binary, Addr, BankMsg, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Order,
     Response, StdError, StdResult, Uint128,
 };
-use cw_storage_plus::{Bound};
+use cw_storage_plus::Bound;
 
 use crate::error::ContractError;
 
@@ -878,12 +878,10 @@ pub fn query_collaterals(
         .prefix(&borrower)
         .range(deps.storage, None, start, Order::Descending)
         .map(|result| {
-            result.map(|(loan_id, el)| {
-                CollateralResponse {
-                    borrower: borrower.to_string(),
-                    loan_id,
-                    collateral: el,
-                }
+            result.map(|(loan_id, el)| CollateralResponse {
+                borrower: borrower.to_string(),
+                loan_id,
+                collateral: el,
             })
         })
         .take(limit)

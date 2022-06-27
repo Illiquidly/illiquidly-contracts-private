@@ -1,5 +1,5 @@
 use cosmwasm_std::{to_binary, Binary, Coin, CosmosMsg, StdResult, WasmMsg};
-use serde::{ Serialize};
+use serde::Serialize;
 
 pub fn is_valid_name(name: &str) -> bool {
     let bytes = name.as_bytes();
