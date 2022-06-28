@@ -24,14 +24,23 @@ import Redlock from 'redlock';
 import axios from 'axios';
 
 
-
-
 type Nullable<T> = T | null;
 
-const UPDATE_DESPITE_LOCK_TIME = 120_000;
-const IDLE_UPDATE_INTERVAL = 20_000;
+// We defined some time constants for the api queries
+if(process.env.UPDATE_DESPITE_LOCK_TIME == undefined){
+  process.env.UPDATE_DESPITE_LOCK_TIME = "120000";
+}
+const UPDATE_DESPITE_LOCK_TIME = parseInt(process.env.UPDATE_DESPITE_LOCK_TIME);
+if(process.env.QUERY_TIMEOUT == undefined){
+  process.env.QUERY_TIMEOUT = "100000";
+}
+const QUERY_TIMEOUT = parseInt(process.env.QUERY_TIMEOUT);
+if(process.env.IDLE_UPDATE_INTERVAL == undefined){
+  process.env.IDLE_UPDATE_INTERVAL = "20000";
+}
+const IDLE_UPDATE_INTERVAL = parseInt(process.env.IDLE_UPDATE_INTERVAL);
+
 const PORT = 8080;
-const QUERY_TIMEOUT = 100_000;
 
 enum UpdateState {
   Full,
@@ -458,14 +467,15 @@ async function main() {
 
     // Here we want to update the database
     let lock = await canUpdate(db, redlock, dbKey);
-    /*
+    
     if (!lock){
       return;
     }
-    */
+    
 
     // We deal with timeouts and shit
     let hasTimedOut = { timeout: false };
+    console.log(QUERY_TIMEOUT);
     let timeout = setTimeout(async () => {
       hasTimedOut.timeout = true;
       console.log('has timed-out');

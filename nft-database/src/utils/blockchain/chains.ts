@@ -1,12 +1,12 @@
 
 export const chains: any = {
   testnet: {
-    URL: 'https://bombay-lcd.terra.dev/',
-    chainID: 'bombay-12'
+    URL: 'https://pisco-lcd.terra.dev/',
+    chainID: 'pisco-1'
   },
   classic: {
     URL: 'https://columbus-lcd.terra.dev',
-    chainID: 'columbus-5'
+    chainID: 'columbus-5',
   },
   mainnet: {
     URL: 'https://phoenix-lcd.terra.dev',
@@ -21,21 +21,3 @@ export let fcds: any = {
 };
 
 export const registered_nft_contracts: any = "https://assets.terra.money/cw721/contracts.json";
-
-/*
-export const chains: any = {
-  testnet: {
-    URL: 'https://bombay-lcd.terra.dev/',
-    chainID: 'bombay-12'
-  },
-  mainnet: {
-    URL: 'https://columbus-lcd.terra.dev',
-    chainID: 'columbus-5'
-  },
-};
-
-export const fcds: any = {
-  testnet: 'https://pisco-fcd.terra.dev',
-  mainnet: 'https://columbus-fcd.terra.dev',
-};
-*/

@@ -21,8 +21,9 @@ async function main() {
 
   let mario = "terra12ywvf22d3etfgh5qtguk35zwc7ayfzr2uq2fn0";
   let jack = "terra12wdq8y0d08sh8mg6lhfe0ncqgm4n3skfz62tyd";
+  let nicoco = "terra1kj6vwwvsw7vy7x35mazqfxyln2gk5xy00r87qy";
 
-  let mintToAddressTerra1 = mario;
+  let mintToAddressTerra1 = nicoco;
   let mintToAddressTerra2 = handler2.getAddress();
   let prefix = "heres_some_test_token";
 

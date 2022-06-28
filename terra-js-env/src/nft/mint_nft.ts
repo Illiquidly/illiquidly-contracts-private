@@ -25,7 +25,7 @@ async function main() {
 
   */
 
-  let to_mint = ['matio_the_best83583065'];
+  let to_mint = ['heres_some_test_token215457515'];
 
   let mint_to_address = handler.getAddress();
 
