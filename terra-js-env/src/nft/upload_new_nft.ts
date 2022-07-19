@@ -16,9 +16,12 @@ async function main() {
   */
   let nft_codeId: string[];
   if(env.type == "classic"){
+    /*
     nft_codeId = await handler.uploadContract(
       '../artifacts/cw721_base0.16.wasm'
     );
+    */
+    nft_codeId =  ['5790'];
   }else{
     nft_codeId = await handler.uploadContract(
       '../artifacts/cw721_base1.0.wasm'
@@ -39,7 +42,7 @@ async function main() {
   // Mint one new nft to all addresses
   for (let h of all_handlers) {
     let response = await nft.execute.mint({
-      token_id: h.getAddress(),
+      token_id: h.getAddress()+ Math.ceil(Math.random() * 10000),
       owner: h.getAddress(),
       token_uri: 'testing'
     });

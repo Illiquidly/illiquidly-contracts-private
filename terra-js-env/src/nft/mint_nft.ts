@@ -24,22 +24,26 @@ async function main() {
   console.log(response);
 
   */
-
-  let to_mint = ['heres_some_test_token215457515'];
-
-  let mint_to_address = handler.getAddress();
+  let mario = "terra12ywvf22d3etfgh5qtguk35zwc7ayfzr2uq2fn0";
+  let jack = "terra12wdq8y0d08sh8mg6lhfe0ncqgm4n3skfz62tyd";
+  let nicoco = "terra1kj6vwwvsw7vy7x35mazqfxyln2gk5xy00r87qy";
+  let mint_to_address = mario;
 
   let mintMsgs: MsgExecuteContract[] = []
-  /*  
+
+
   let prefix = "mario_the_best";
-  for(var i=0;i<7;i++){
+  for(var i=0;i<100;i++){
     mintMsgs.push(createMintMsg(handler.getAddress(),  prefix + Math.floor(Math.random() * 434876823), mint_to_address, nft.address))
   }
-  */
+  
 
+  /*
+  let to_mint = ['heres_some_test_token215457515'];
   to_mint.forEach((token: string)=>{
     mintMsgs.push(createMintMsg(handler.getAddress(), token, mint_to_address, nft.address))
   })
+  */
   let response = await handler.post(mintMsgs)
   console.log(response);
 
