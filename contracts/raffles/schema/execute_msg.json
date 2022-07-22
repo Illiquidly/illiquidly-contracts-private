@@ -5,347 +5,26 @@
     {
       "type": "object",
       "required": [
-        "create_trade"
+        "create_raffle"
       ],
       "properties": {
-        "create_trade": {
-          "type": "object",
-          "properties": {
-            "comment": {
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "whitelisted_users": {
-              "type": [
-                "array",
-                "null"
-              ],
-              "items": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
-        "add_asset"
-      ],
-      "properties": {
-        "add_asset": {
+        "create_raffle": {
           "type": "object",
           "required": [
-            "asset"
+            "asset",
+            "raffle_ticket_price"
           ],
           "properties": {
             "asset": {
               "$ref": "#/definitions/AssetInfo"
             },
-            "counter_id": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "uint64",
-              "minimum": 0.0
-            },
-            "to_last_counter": {
-              "type": [
-                "boolean",
-                "null"
-              ]
-            },
-            "to_last_trade": {
-              "type": [
-                "boolean",
-                "null"
-              ]
-            },
-            "trade_id": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
-        "remove_assets"
-      ],
-      "properties": {
-        "remove_assets": {
-          "type": "object",
-          "required": [
-            "assets",
-            "trade_id"
-          ],
-          "properties": {
-            "assets": {
-              "type": "array",
-              "items": {
-                "type": "array",
-                "items": [
-                  {
-                    "type": "integer",
-                    "format": "uint16",
-                    "minimum": 0.0
-                  },
-                  {
-                    "$ref": "#/definitions/AssetInfo"
-                  }
-                ],
-                "maxItems": 2,
-                "minItems": 2
-              }
-            },
-            "counter_id": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "uint64",
-              "minimum": 0.0
-            },
-            "trade_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
-        "add_whitelisted_users"
-      ],
-      "properties": {
-        "add_whitelisted_users": {
-          "type": "object",
-          "required": [
-            "trade_id",
-            "whitelisted_users"
-          ],
-          "properties": {
-            "trade_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            },
-            "whitelisted_users": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
-        "remove_whitelisted_users"
-      ],
-      "properties": {
-        "remove_whitelisted_users": {
-          "type": "object",
-          "required": [
-            "trade_id",
-            "whitelisted_users"
-          ],
-          "properties": {
-            "trade_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            },
-            "whitelisted_users": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
-        "set_comment"
-      ],
-      "properties": {
-        "set_comment": {
-          "type": "object",
-          "required": [
-            "comment",
-            "trade_id"
-          ],
-          "properties": {
-            "comment": {
-              "type": "string"
-            },
-            "counter_id": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "uint64",
-              "minimum": 0.0
-            },
-            "trade_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
-        "add_n_f_ts_wanted"
-      ],
-      "properties": {
-        "add_n_f_ts_wanted": {
-          "type": "object",
-          "required": [
-            "nfts_wanted"
-          ],
-          "properties": {
-            "nfts_wanted": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            "trade_id": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
-        "remove_n_f_ts_wanted"
-      ],
-      "properties": {
-        "remove_n_f_ts_wanted": {
-          "type": "object",
-          "required": [
-            "nfts_wanted",
-            "trade_id"
-          ],
-          "properties": {
-            "nfts_wanted": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            "trade_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "description": "Is used by the Trader to confirm they completed their end of the trade.",
-      "type": "object",
-      "required": [
-        "confirm_trade"
-      ],
-      "properties": {
-        "confirm_trade": {
-          "type": "object",
-          "properties": {
-            "trade_id": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "description": "Can be used to initiate Counter Trade, but also to add new tokens to it",
-      "type": "object",
-      "required": [
-        "suggest_counter_trade"
-      ],
-      "properties": {
-        "suggest_counter_trade": {
-          "type": "object",
-          "required": [
-            "trade_id"
-          ],
-          "properties": {
             "comment": {
               "type": [
                 "string",
                 "null"
               ]
             },
-            "trade_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "description": "Is used by the Client to confirm they completed their end of the trade.",
-      "type": "object",
-      "required": [
-        "confirm_counter_trade"
-      ],
-      "properties": {
-        "confirm_counter_trade": {
-          "type": "object",
-          "required": [
-            "trade_id"
-          ],
-          "properties": {
-            "counter_id": {
+            "max_participant_number": {
               "type": [
                 "integer",
                 "null"
@@ -353,8 +32,30 @@
               "format": "uint64",
               "minimum": 0.0
             },
-            "trade_id": {
-              "type": "integer",
+            "raffle_duration": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint64",
+              "minimum": 0.0
+            },
+            "raffle_start_timestamp": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint64",
+              "minimum": 0.0
+            },
+            "raffle_ticket_price": {
+              "$ref": "#/definitions/AssetInfo"
+            },
+            "raffle_timeout": {
+              "type": [
+                "integer",
+                "null"
+              ],
               "format": "uint64",
               "minimum": 0.0
             }
@@ -364,248 +65,118 @@
       "additionalProperties": false
     },
     {
-      "description": "Accept the Trade plain and simple, swap it up !",
       "type": "object",
       "required": [
-        "accept_trade"
+        "buy_ticket"
       ],
       "properties": {
-        "accept_trade": {
+        "buy_ticket": {
           "type": "object",
           "required": [
-            "counter_id",
-            "trade_id"
+            "raffle_id",
+            "sent_assets"
           ],
           "properties": {
-            "comment": {
+            "raffle_id": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            },
+            "sent_assets": {
+              "$ref": "#/definitions/AssetInfo"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "receive"
+      ],
+      "properties": {
+        "receive": {
+          "type": "object",
+          "required": [
+            "amount",
+            "msg",
+            "sender"
+          ],
+          "properties": {
+            "amount": {
+              "$ref": "#/definitions/Uint128"
+            },
+            "msg": {
+              "$ref": "#/definitions/Binary"
+            },
+            "sender": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "receive_nft"
+      ],
+      "properties": {
+        "receive_nft": {
+          "type": "object",
+          "required": [
+            "msg",
+            "sender",
+            "token_id"
+          ],
+          "properties": {
+            "msg": {
+              "$ref": "#/definitions/Binary"
+            },
+            "sender": {
+              "type": "string"
+            },
+            "token_id": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "cw1155_receive_msg"
+      ],
+      "properties": {
+        "cw1155_receive_msg": {
+          "type": "object",
+          "required": [
+            "amount",
+            "msg",
+            "operator",
+            "token_id"
+          ],
+          "properties": {
+            "amount": {
+              "$ref": "#/definitions/Uint128"
+            },
+            "from": {
               "type": [
                 "string",
                 "null"
               ]
             },
-            "counter_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
+            "msg": {
+              "$ref": "#/definitions/Binary"
             },
-            "trade_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "description": "Cancel the Trade :/ No luck there mate ?",
-      "type": "object",
-      "required": [
-        "cancel_trade"
-      ],
-      "properties": {
-        "cancel_trade": {
-          "type": "object",
-          "required": [
-            "trade_id"
-          ],
-          "properties": {
-            "trade_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "description": "Cancel the Counter Trade :/ No luck there mate ?",
-      "type": "object",
-      "required": [
-        "cancel_counter_trade"
-      ],
-      "properties": {
-        "cancel_counter_trade": {
-          "type": "object",
-          "required": [
-            "counter_id",
-            "trade_id"
-          ],
-          "properties": {
-            "counter_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            },
-            "trade_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "description": "Refuse the Trade plain and simple, no madam, I'm not interested in your tokens !",
-      "type": "object",
-      "required": [
-        "refuse_counter_trade"
-      ],
-      "properties": {
-        "refuse_counter_trade": {
-          "type": "object",
-          "required": [
-            "counter_id",
-            "trade_id"
-          ],
-          "properties": {
-            "counter_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            },
-            "trade_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "description": "Some parts of the traded tokens were interesting, but you can't accept the trade as is",
-      "type": "object",
-      "required": [
-        "review_counter_trade"
-      ],
-      "properties": {
-        "review_counter_trade": {
-          "type": "object",
-          "required": [
-            "counter_id",
-            "trade_id"
-          ],
-          "properties": {
-            "comment": {
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "counter_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            },
-            "trade_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "description": "The fee contract can Withdraw funds via this function only when the trade is accepted.",
-      "type": "object",
-      "required": [
-        "withdraw_pending_assets"
-      ],
-      "properties": {
-        "withdraw_pending_assets": {
-          "type": "object",
-          "required": [
-            "trade_id",
-            "trader"
-          ],
-          "properties": {
-            "trade_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            },
-            "trader": {
+            "operator": {
               "type": "string"
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "description": "You can Withdraw funds only at specific steps of the trade, but you're allowed to try anytime !",
-      "type": "object",
-      "required": [
-        "withdraw_all_from_trade"
-      ],
-      "properties": {
-        "withdraw_all_from_trade": {
-          "type": "object",
-          "required": [
-            "trade_id"
-          ],
-          "properties": {
-            "trade_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "description": "You can Withdraw funds when your counter trade is aborted (refused or cancelled) Or when you are creating the trade and you just want to cancel it all",
-      "type": "object",
-      "required": [
-        "withdraw_all_from_counter"
-      ],
-      "properties": {
-        "withdraw_all_from_counter": {
-          "type": "object",
-          "required": [
-            "counter_id",
-            "trade_id"
-          ],
-          "properties": {
-            "counter_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
             },
-            "trade_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
-        "set_new_owner"
-      ],
-      "properties": {
-        "set_new_owner": {
-          "type": "object",
-          "required": [
-            "owner"
-          ],
-          "properties": {
-            "owner": {
+            "token_id": {
               "type": "string"
             }
           }
@@ -616,19 +187,79 @@
     {
       "type": "object",
       "required": [
-        "set_new_fee_contract"
+        "claim_nft"
       ],
       "properties": {
-        "set_new_fee_contract": {
+        "claim_nft": {
           "type": "object",
           "required": [
-            "fee_contract"
+            "raffle_id"
           ],
           "properties": {
-            "fee_contract": {
-              "type": "string"
+            "raffle_id": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
             }
           }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "update_randomness"
+      ],
+      "properties": {
+        "update_randomness": {
+          "type": "object",
+          "required": [
+            "raffle_id",
+            "randomness"
+          ],
+          "properties": {
+            "raffle_id": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            },
+            "randomness": {
+              "$ref": "#/definitions/DrandRandomness"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "toggle_lock"
+      ],
+      "properties": {
+        "toggle_lock": {
+          "type": "object",
+          "required": [
+            "lock"
+          ],
+          "properties": {
+            "lock": {
+              "type": "boolean"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "renounce"
+      ],
+      "properties": {
+        "renounce": {
+          "type": "object"
         }
       },
       "additionalProperties": false
@@ -686,6 +317,10 @@
           "additionalProperties": false
         }
       ]
+    },
+    "Binary": {
+      "description": "Binary is a wrapper around Vec<u8> to add base64 de/serialization with serde. It also adds some helper methods to help encode inline.\n\nThis is only needed as serde-json-{core,wasm} has a horrible encoding for Vec<u8>",
+      "type": "string"
     },
     "Coin": {
       "type": "object",
@@ -748,6 +383,27 @@
         },
         "token_id": {
           "type": "string"
+        }
+      }
+    },
+    "DrandRandomness": {
+      "type": "object",
+      "required": [
+        "previous_signature",
+        "round",
+        "signature"
+      ],
+      "properties": {
+        "previous_signature": {
+          "$ref": "#/definitions/Binary"
+        },
+        "round": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "signature": {
+          "$ref": "#/definitions/Binary"
         }
       }
     },

@@ -1,5 +1,5 @@
 use cosmwasm_std::StdError;
-use raffles_export::state::{RaffleState, AssetInfo};
+use raffles_export::state::{AssetInfo, RaffleState};
 use thiserror::Error;
 
 #[derive(Error, Debug, PartialEq)]
@@ -13,6 +13,9 @@ pub enum ContractError {
     #[error("An unplanned bug just happened :/")]
     ContractBug {},
 
+    #[error("This action is not allowed, the contract is locked")]
+    ContractIsLocked {},
+
     #[error("Key already exists in RaffleInfo")]
     ExistsInRaffleInfo {},
 
@@ -20,101 +23,44 @@ pub enum ContractError {
     NotFoundInRaffleInfo {},
 
     #[error("You can't buy tickets on this raffle anymore")]
-    CantBuyTickets{},
+    CantBuyTickets {},
 
     #[error("A raffle can only be done with CW721 or CW1155 assets")]
-    WrongAssetType{},
+    WrongAssetType {},
+
+    #[error("Tickets to a raffle can only be bought with native assets or CW20 coins")]
+    WrongFundsType {},
 
     #[error("The sent asset doesn't match the asset in the message sent along with it")]
-    AssetMismatch{},
+    AssetMismatch {},
 
-    #[error("The sent assets ({asset_received:?}) don't match the required assets ({asset_wanted:?}) for this raffle")]
-    PaiementNotSufficient{
+    #[error("The sent assets ({assets_received:?}) don't match the required assets ({assets_wanted:?}) for this raffle")]
+    PaiementNotSufficient {
         assets_wanted: AssetInfo,
         assets_received: AssetInfo,
     },
 
     #[error("Too much tickets were already purchased for this raffle")]
-    TooMuchTickets{},
+    TooMuchTickets {},
 
+    #[error("The provided randomness is invalid current round : {round:?}")]
+    RandomnessNotAccepted { round: u64 },
 
+    #[error("This raffle is not ready to accept new randomness. Only Closed raffles can be decided upon. Current status : {status:?}")]
+    WrongStateForRandmness { status: RaffleState },
 
+    #[error("This raffle is not ready to be claimed.  Current status : {status:?}")]
+    WrongStateForClaim { status: RaffleState },
 
+    #[error("The public key you indicated is invalid")]
+    InvalidPubkey {},
 
-    #[error("Key does not exist in TradeInfo")]
-    NotFoundInTradeInfo {},
+    #[error("The randomness signatur is invalid")]
+    InvalidSignature {},
 
-    #[error(
-        "The trade_id field should be present when modifying the last counter_trade submitted"
-    )]
-    TradeIdMissing {},
+    #[error("Wrong Format for the verify response")]
+    ParseReplyError {},
 
-    #[error("Trader not creator of the trade")]
-    TraderNotCreator {},
-
-    #[error("Key already exists in CounterTradeInfo")]
-    ExistsInCounterTradeInfo {},
-
-    #[error("Key does not exist in CounterTradeInfo")]
-    NotFoundInCounterTradeInfo {},
-
-    #[error("Trader not creator of the CounterTrade")]
-    CounterTraderNotCreator {},
-
-    #[error("Trade cannot be countered, it is not ready or is already cancelled/terminated")]
-    NotCounterable {},
-
-    #[error("Wrong state of the trade for the current operation : {state:?}")]
-    WrongTradeState { state: TradeState },
-
-    #[error("Can change the state of the trade from {from:?} to {to:?}")]
-    CantChangeTradeState { from: TradeState, to: TradeState },
-
-    #[error("Sorry, you can't accept a counter trade that is not published yet")]
-    TradeAlreadyAccepted {},
-
-    #[error("Sorry, the trade is published, you can't modify it. You can cancel it if you're not satisfied")]
-    TradeAlreadyPublished {},
-
-    #[error("Sorry, this trade is not accepted yet")]
-    TradeNotAccepted {},
-
-    #[error("Sorry, this trade is cancelled")]
-    TradeCancelled {},
-
-    #[error("Sorry, this trade is not cancelled")]
-    TradeNotCancelled {},
-
-    #[error("Assets were already withdrawn, don't try to scam the platform please")]
-    TradeAlreadyWithdrawn {},
-
-    #[error("Can change the state of the counter-trade from {from:?} to {to:?}")]
-    CantChangeCounterTradeState { from: TradeState, to: TradeState },
-
-    #[error("Sorry, you can't accept a counter trade that is not published yet")]
-    CantAcceptNotPublishedCounter {},
-
-    #[error("Sorry, the counter trade is published, you can't modify it. You can cancel it if you're not satisfied")]
-    CounterTradeAlreadyPublished {},
-
-    #[error("Sorry, the trade has to be refused or cancelled to withdraw your funds")]
-    CounterTradeNotAborted {},
-
-    #[error("Only the trader or the counter-trader can withdraw assets, don't try to scam the platform please")]
-    NotWithdrawableByYou {},
-
-    #[error("This trade is only allowed to a selected few, sorry :/")]
-    AddressNotWhitelisted {},
-
-    #[error(
-        "Asset not found in your trade (wrong position or wrong asset specified or wrong token_id)"
-    )]
-    AssetNotFound { position: usize },
-
-    #[error("Asset found in your trade but you are trying to withdraw too much. address: {address:?}, wanted: {wanted:?}, available {available:?}")]
-    TooMuchWithdrawn {
-        address: String,
-        wanted: u128,
-        available: u128,
-    },
+    #[error("This parameter name was not found, you can't change it !")]
+    ParameterNotFound {},
 }

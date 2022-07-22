@@ -1,146 +1,52 @@
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use cw_storage_plus::{Item, Map};
 
-use cosmwasm_std::{Env, Addr, Coin, StdError, StdResult, Storage, Uint128};
+use cosmwasm_std::{
+    coins, Addr, BankMsg, CosmosMsg, Deps, Env, Response, StdError, Storage, SubMsg, Uint128,
+};
 
 use crate::error::ContractError;
-use raffles_export::state::{
-    AssetInfo, ContractInfo, Cw1155Coin, Cw20Coin, Cw721Coin, RaffleInfo, RaffleState,
-};
+use crate::rand::Prng;
+use raffles_export::msg::{into_cosmos_msg, DrandRandomness, VerifierExecuteMsg};
+use raffles_export::state::{AssetInfo, ContractInfo, RaffleInfo, RaffleState};
+
+use cw1155::Cw1155ExecuteMsg;
+use cw20::Cw20ExecuteMsg;
+use cw721::Cw721ExecuteMsg;
 
 pub const CONTRACT_INFO: Item<ContractInfo> = Item::new("contract_info");
 
 pub const RAFFLE_INFO: Map<u64, RaffleInfo> = Map::new("raffle_info");
 pub const USER_TICKETS: Map<(&Addr, u64), u64> = Map::new("uset_tickets");
 
-pub fn add_funds(
-    fund: Coin,
-    info_funds: Vec<Coin>,
-) -> impl FnOnce(Option<TradeInfo>) -> Result<TradeInfo, ContractError> {
-    move |d: Option<TradeInfo>| -> Result<TradeInfo, ContractError> {
-        match d {
-            Some(mut trade) => {
-                // We check the sent funds are with the right format
-                if info_funds.len() != 1 || fund != info_funds[0] {
-                    return Err(ContractError::Std(StdError::generic_err(
-                        "Funds sent do not match message AssetInfo",
-                    )));
-                }
-                let existing_denom = trade.associated_assets.iter_mut().find(|c| match c {
-                    AssetInfo::Coin(x) => x.denom == fund.denom,
-                    _ => false,
-                });
+// This function is largely inspired (and even directly copied) from https://github.com/confio/rand/.
+// Part of the randomness flow was inspired from https://github.com/scrtlabs/secret-raffle/ and https://github.com/LoTerra/terrand-contract-step1/
 
-                if let Some(existing_fund) = existing_denom {
-                    let current_amount = match existing_fund {
-                        AssetInfo::Coin(x) => x.amount,
-                        _ => Uint128::zero(),
-                    };
-                    *existing_fund = AssetInfo::Coin(Coin {
-                        denom: fund.denom,
-                        amount: current_amount + fund.amount,
-                    });
-                } else {
-                    trade.associated_assets.push(AssetInfo::Coin(fund));
-                }
-                Ok(trade)
-            }
-            //TARPAULIN : Unreachable in current code state
-            None => Err(ContractError::NotFoundInTradeInfo {}),
-        }
+pub fn assert_randomness_origin_and_order(
+    deps: Deps,
+    owner: Addr,
+    raffle_id: u64,
+    randomness: DrandRandomness,
+) -> Result<Response> {
+    let raffle_info = load_raffle(deps.storage, raffle_id)?;
+    let contract_info = CONTRACT_INFO.load(deps.storage)?;
+
+    if randomness.round <= raffle_info.randomness_round {
+        return Err(anyhow!(ContractError::RandomnessNotAccepted {
+            round: randomness.round
+        }));
     }
-}
 
-pub fn add_cw20_coin(
-    address: String,
-    sent_amount: Uint128,
-) -> impl FnOnce(Option<TradeInfo>) -> Result<TradeInfo, ContractError> {
-    move |d: Option<TradeInfo>| -> Result<TradeInfo, ContractError> {
-        match d {
-            Some(mut trade) => {
-                let existing_token = trade.associated_assets.iter_mut().find(|c| match c {
-                    AssetInfo::Cw20Coin(x) => x.address == address,
-                    _ => false,
-                });
-                if let Some(existing_token) = existing_token {
-                    let current_amount = match existing_token {
-                        AssetInfo::Cw20Coin(x) => x.amount,
-                        _ => Uint128::zero(),
-                    };
-                    *existing_token = AssetInfo::Cw20Coin(Cw20Coin {
-                        address,
-                        amount: current_amount + sent_amount,
-                    })
-                } else {
-                    trade.associated_assets.push(AssetInfo::Cw20Coin(Cw20Coin {
-                        address,
-                        amount: sent_amount,
-                    }))
-                }
+    let msg = VerifierExecuteMsg::Verify {
+        randomness,
+        pubkey: contract_info.random_pubkey,
+        raffle_id,
+        owner: owner.to_string(),
+    };
+    let res = into_cosmos_msg(msg, contract_info.verify_signature_contract.to_string())?;
 
-                Ok(trade)
-            }
-            //TARPAULIN : Unreachable in current code state
-            None => Err(ContractError::NotFoundInTradeInfo {}),
-        }
-    }
-}
-
-pub fn add_cw721_coin(
-    address: String,
-    token_id: String,
-) -> impl FnOnce(Option<TradeInfo>) -> Result<TradeInfo, ContractError> {
-    move |d: Option<TradeInfo>| -> Result<TradeInfo, ContractError> {
-        match d {
-            Some(mut one) => {
-                one.associated_assets
-                    .push(AssetInfo::Cw721Coin(Cw721Coin { address, token_id }));
-                Ok(one)
-            }
-            //TARPAULIN : Unreachable in current code state
-            None => Err(ContractError::NotFoundInTradeInfo {}),
-        }
-    }
-}
-
-pub fn add_cw1155_coin(
-    address: String,
-    token_id: String,
-    value: Uint128,
-) -> impl FnOnce(Option<TradeInfo>) -> Result<TradeInfo, ContractError> {
-    move |d: Option<TradeInfo>| -> Result<TradeInfo, ContractError> {
-        match d {
-            Some(mut trade) => {
-                let existing_token = trade.associated_assets.iter_mut().find(|c| match c {
-                    AssetInfo::Cw1155Coin(x) => x.address == address && x.token_id == token_id,
-                    _ => false,
-                });
-                if let Some(existing_token) = existing_token {
-                    let current_value = match existing_token {
-                        AssetInfo::Cw1155Coin(x) => x.value,
-                        _ => Uint128::zero(),
-                    };
-                    *existing_token = AssetInfo::Cw1155Coin(Cw1155Coin {
-                        address,
-                        token_id,
-                        value: current_value + value,
-                    })
-                } else {
-                    trade
-                        .associated_assets
-                        .push(AssetInfo::Cw1155Coin(Cw1155Coin {
-                            address,
-                            token_id,
-                            value,
-                        }))
-                }
-
-                Ok(trade)
-            }
-            //TARPAULIN : Unreachable in current code state
-            None => Err(ContractError::NotFoundInTradeInfo {}),
-        }
-    }
+    let msg = SubMsg::reply_on_success(res, 0);
+    Ok(Response::new().add_submessage(msg))
 }
 
 pub fn is_owner(storage: &dyn Storage, sender: Addr) -> Result<ContractInfo, ContractError> {
@@ -152,52 +58,182 @@ pub fn is_owner(storage: &dyn Storage, sender: Addr) -> Result<ContractInfo, Con
     }
 }
 
-pub fn get_raffle_state(
-    storage: &dyn Storage,
-    env: Env,
-    raffle_info: RaffleInfo,
-) -> Result<RaffleState> {
-    let state = 
-    if env.block.time < raffle_info.raffle_start_timestamp{
-        RaffleState::Created
-    }else if env.block.time < raffle_info.raffle_start_timestamp.plus_seconds(raffle_info.raffle_duration){
-        RaffleState::Started
-    }else if env.block.time < raffle_info.raffle_start_timestamp.plus_seconds(raffle_info.raffle_duration).plus_seconds(raffle_info.raffle_timeout){
-        RaffleState::Closed
-    }else{
-        RaffleState::Finished
-    };
-    Ok(state)
+pub fn get_raffle_winner(raffle_info: RaffleInfo) -> Result<Addr> {
+    // We initiate the random number generator
+    let mut rng: Prng = Prng::new(&raffle_info.randomness);
+
+    // We pick a winner id
+    let winner_id = rng.random_between(0u32, raffle_info.tickets.len() as u32);
+    let winner = raffle_info.tickets[winner_id as usize].clone();
+
+    Ok(winner)
 }
 
-pub fn load_ticket_number(
-    storage: &dyn Storage,
-    raffle_id: u64,
-    owner: Addr,
-) -> Result<u64> {
+pub fn get_raffle_state(env: Env, raffle_info: RaffleInfo) -> RaffleState {
+    if env.block.time < raffle_info.raffle_start_timestamp {
+        RaffleState::Created
+    } else if env.block.time
+        < raffle_info
+            .raffle_start_timestamp
+            .plus_seconds(raffle_info.raffle_duration)
+    {
+        RaffleState::Started
+    } else if env.block.time
+        < raffle_info
+            .raffle_start_timestamp
+            .plus_seconds(raffle_info.raffle_duration)
+            .plus_seconds(raffle_info.raffle_timeout)
+        || raffle_info.randomness_owner.is_none()
+    {
+        RaffleState::Closed
+    } else if raffle_info.winner.is_none() {
+        RaffleState::Finished
+    } else {
+        RaffleState::Claimed
+    }
+}
+
+pub fn load_ticket_number(storage: &dyn Storage, raffle_id: u64, owner: Addr) -> Result<u64> {
     let raffle_info = RAFFLE_INFO
         .load(storage, raffle_id)
         .map_err(|_| ContractError::NotFoundInRaffleInfo {})?;
 
-    Ok(raffle_info.tickets.iter().filter(|&ticket_owner| *ticket_owner == owner).count() as u64)
+    Ok(raffle_info
+        .tickets
+        .iter()
+        .filter(|&ticket_owner| *ticket_owner == owner)
+        .count() as u64)
 }
 
-pub fn load_raffle(storage: &dyn Storage, raffle_id: u64) -> Result<RaffleInfo, ContractError> {
+pub fn load_raffle(storage: &dyn Storage, raffle_id: u64) -> Result<RaffleInfo> {
     RAFFLE_INFO
         .load(storage, raffle_id)
-        .map_err(|_| ContractError::NotFoundInTradeInfo {})
+        .map_err(|_| anyhow!(ContractError::NotFoundInRaffleInfo {}))
 }
 
-pub fn can_buy_ticket(
-    storage: &dyn Storage,
-    raffle_info: RaffleInfo,
-    env: Env,
-) -> Result<()> {
-
-    if get_raffle_state(storage, env, raffle_info)? == RaffleState::Started{
+pub fn can_buy_ticket(env: Env, raffle_info: RaffleInfo) -> Result<()> {
+    if get_raffle_state(env, raffle_info) == RaffleState::Started {
         Ok(())
-    }else{
+    } else {
         Err(anyhow!(ContractError::CantBuyTickets {}))
     }
 }
 
+pub fn get_asset_amount(asset: AssetInfo) -> Result<Uint128> {
+    match asset {
+        AssetInfo::Cw20Coin(coin) => Ok(coin.amount),
+        AssetInfo::Coin(coin) => Ok(coin.amount),
+        _ => Err(anyhow!(ContractError::WrongFundsType {})),
+    }
+}
+
+pub fn get_raffle_winner_message(env: Env, raffle_info: RaffleInfo) -> Result<CosmosMsg> {
+    match raffle_info.asset {
+        AssetInfo::Cw721Coin(nft) => {
+            let message = Cw721ExecuteMsg::TransferNft {
+                recipient: raffle_info.winner.unwrap().to_string(),
+                token_id: nft.token_id.clone(),
+            };
+            into_cosmos_msg(message, nft.address)
+        }
+        AssetInfo::Cw1155Coin(cw1155) => {
+            let message = Cw1155ExecuteMsg::SendFrom {
+                from: env.contract.address.to_string(),
+                to: raffle_info.winner.unwrap().to_string(),
+                token_id: cw1155.token_id.clone(),
+                value: cw1155.value,
+                msg: None,
+            };
+            into_cosmos_msg(message, cw1155.address)
+        }
+        _ => Err(anyhow!(StdError::generic_err(
+            "Unreachable, wrong asset type raffled"
+        ))),
+    }
+}
+
+pub fn get_raffle_owner_finished_messages(
+    storage: &dyn Storage,
+    _env: Env,
+    raffle_info: RaffleInfo,
+) -> Result<Vec<CosmosMsg>> {
+    let contract_info = CONTRACT_INFO.load(storage)?;
+    match raffle_info.accumulated_ticket_fee {
+        AssetInfo::Cw20Coin(coin) => {
+            // We start by splitting the fees between owner, treasury and radomness provider
+            let rand_amount = coin.amount * contract_info.rand_fee / Uint128::from(10_000u128);
+            let treasury_amount =
+                coin.amount * contract_info.raffle_fee / Uint128::from(10_000u128);
+            let owner_amount = coin.amount - rand_amount - treasury_amount;
+
+            let mut messages: Vec<CosmosMsg> = vec![];
+            if rand_amount != Uint128::zero() {
+                messages.push(into_cosmos_msg(
+                    Cw20ExecuteMsg::Transfer {
+                        recipient: raffle_info.randomness_owner.unwrap().to_string(),
+                        amount: rand_amount,
+                    },
+                    coin.address.clone(),
+                )?);
+            };
+            if treasury_amount != Uint128::zero() {
+                messages.push(into_cosmos_msg(
+                    Cw20ExecuteMsg::Transfer {
+                        recipient: contract_info.fee_addr.to_string(),
+                        amount: treasury_amount,
+                    },
+                    coin.address.clone(),
+                )?);
+            };
+            if owner_amount != Uint128::zero() {
+                messages.push(into_cosmos_msg(
+                    Cw20ExecuteMsg::Transfer {
+                        recipient: raffle_info.owner.to_string(),
+                        amount: owner_amount,
+                    },
+                    coin.address,
+                )?);
+            };
+            Ok(messages)
+        }
+        AssetInfo::Coin(coin) => {
+            // We start by splitting the fees between owner, treasury and radomness provider
+            let rand_amount = coin.amount * contract_info.rand_fee / Uint128::from(10_000u128);
+            let treasury_amount =
+                coin.amount * contract_info.raffle_fee / Uint128::from(10_000u128);
+            let owner_amount = coin.amount - rand_amount - treasury_amount;
+
+            let mut messages: Vec<CosmosMsg> = vec![];
+            if rand_amount != Uint128::zero() {
+                messages.push(
+                    BankMsg::Send {
+                        to_address: raffle_info.randomness_owner.unwrap().to_string(),
+                        amount: coins(rand_amount.u128(), coin.denom.clone()),
+                    }
+                    .into(),
+                );
+            };
+            if treasury_amount != Uint128::zero() {
+                messages.push(
+                    BankMsg::Send {
+                        to_address: contract_info.fee_addr.to_string(),
+                        amount: coins(treasury_amount.u128(), coin.denom.clone()),
+                    }
+                    .into(),
+                );
+            };
+            if owner_amount != Uint128::zero() {
+                messages.push(
+                    BankMsg::Send {
+                        to_address: raffle_info.owner.to_string(),
+                        amount: coins(owner_amount.u128(), coin.denom),
+                    }
+                    .into(),
+                );
+            };
+
+            Ok(messages)
+        }
+        _ => Err(anyhow!(ContractError::WrongFundsType {})),
+    }
+}
