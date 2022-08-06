@@ -3,7 +3,13 @@
         
     },
     "classic":{
-
+    	"terra14j9q7ffhmdgl4sgl8ej95z442500hcg058t4qr": {
+    		"contract":"terra14j9q7ffhmdgl4sgl8ej95z442500hcg058t4qr",
+        	"name": "Terra Meta Royals: Golden Tickets",
+			"symbol": "GLODEN",
+			"icon": "https://i0.wp.com/terrametaroyals.io/wp-content/uploads/2022/01/main_nft-removebg-preview.png?resize=150%2C150&ssl=1",
+			"homepage": "https://linktr.ee/terrametaroyals"
+    	}
     },
     "testnet": {
 	   	"terra19hasymrgld7794e3xg4uddp9lnmvlldhyj09es":{
