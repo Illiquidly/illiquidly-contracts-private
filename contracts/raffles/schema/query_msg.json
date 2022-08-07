@@ -75,6 +75,32 @@
         }
       },
       "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "ticket_number"
+      ],
+      "properties": {
+        "ticket_number": {
+          "type": "object",
+          "required": [
+            "owner",
+            "raffle_id"
+          ],
+          "properties": {
+            "owner": {
+              "$ref": "#/definitions/Addr"
+            },
+            "raffle_id": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        }
+      },
+      "additionalProperties": false
     }
   ],
   "definitions": {

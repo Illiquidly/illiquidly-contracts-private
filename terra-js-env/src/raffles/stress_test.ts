@@ -1,6 +1,6 @@
 import { Address } from '../terra_utils';
 import { env, add_uploaded_token, add_contract } from '../env_helper';
-import { Numeric } from '@terra-money/terra.js';
+import { Numeric, MsgExecuteContract } from '@terra-money/terra.js';
 function getContractLog(response: any) {
   return response.logs[0].eventsByType.from_contract;
 }
@@ -12,7 +12,7 @@ async function main() {
   console.log(handler.getAddress())
   let raffle_contract = handler.getContract(env.contracts.raffle);
 
-  // we prepare the nft contract : 
+  // First we create a raffle
 
   let cw721_tokens = env['cw721'];
   let cw721_token_names = Object.keys(cw721_tokens);
@@ -37,14 +37,54 @@ async function main() {
     raffle_ticket_price: {
       coin:{
         denom: "uluna",
-        amount: "476"
+        amount: "1000000"
       }
     },
     raffle_duration: 120,
+    raffle_timeout: 30,
     max_participant_number: 4000
 
   })
-  console.log(response)
+  let raffle_id = parseInt(response.logs[0].eventsByType.wasm.raffle_id[0]);
+
+  response = await raffle_contract.query.raffle_info({
+     raffle_id,
+   })
+  console.log(response);
+
+
+  let buyTicketMsgs: MsgExecuteContract[] = []
+
+  for(var i=0;i<1;i++){
+    let msg = {
+      buy_ticket: {
+         raffle_id,
+         sent_assets:{
+          coin:{
+            denom: "uluna",
+            amount: "1000000"
+          }
+        }
+      }
+    }
+
+    let executeMsg = new MsgExecuteContract(
+      handler.getAddress(),// sender
+      raffle_contract.address, // contract address
+      { ...msg }, // handle msg,
+      "1000000uluna"
+    );
+    buyTicketMsgs.push(executeMsg);
+  }
+  for(let i = 0; i < 20; i++) { 
+    let fee = await raffle_contract.execute.estimateFee(buyTicketMsgs)
+    console.log(fee.gas_limit, fee.amount._coins.uluna);
+    let response = await handler.post(buyTicketMsgs)
+    console.log(i);
+  }
+
+
+
 }
 
 main()

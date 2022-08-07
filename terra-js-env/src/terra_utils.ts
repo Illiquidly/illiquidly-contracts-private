@@ -7,10 +7,13 @@ import {
   MsgExecuteContract,
   isTxError,
   MsgStoreCode,
-  MsgInstantiateContract
+  MsgInstantiateContract,
+  CreateTxOptions
 } from '@terra-money/terra.js';
 import * as fs from 'fs';
 import { env, globalEnv} from './env_helper';
+import Axios from 'axios';
+
 // Wrapper for Query and Transaction objects (used to build a common Proxy on top of them)
 class LCDClientWrapper {
   terra: LCDClient;
@@ -34,6 +37,33 @@ class Transaction extends LCDClientWrapper {
 
     const tx = await this.wallet.createAndSignTx(post_msg);
     return await this.terra.tx.broadcast(tx);
+  }
+
+  async estimateFee(msgs: any[]) {
+
+    const { data: gasPrices } = await Axios.get(
+      'https://phoenix-fcd.terra.dev/v1/txs/gas_prices'
+    );
+    const txOptions: CreateTxOptions = {
+      msgs,
+      memo: "",
+      gasPrices,
+      gasAdjustment: 1.75,
+    };
+    const accountInfo = await this.terra.auth.accountInfo(
+      this.wallet.key.accAddress,
+    );
+  // Test raw estimate fee function with specified gas
+  const rawFee = await this.terra.tx.estimateFee(
+    [
+      {
+        sequenceNumber: accountInfo.getSequenceNumber(),
+        publicKey: accountInfo.getPublicKey(),
+      },
+    ],
+    txOptions
+  );
+    return rawFee
   }
 
 

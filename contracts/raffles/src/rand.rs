@@ -2,7 +2,6 @@
 
 use rand_chacha::ChaChaRng;
 use rand_core::{RngCore, SeedableRng};
-
 use sha2::{Digest, Sha256};
 
 pub struct Prng {

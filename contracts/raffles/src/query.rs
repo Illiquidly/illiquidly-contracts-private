@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::{Addr, Api, Deps, Env, Order, StdResult};
 
@@ -6,22 +6,24 @@ use cw_storage_plus::Bound;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::state::{get_raffle_state, CONTRACT_INFO, RAFFLE_INFO};
+use crate::error::ContractError;
+use crate::state::{get_raffle_state, load_raffle, CONTRACT_INFO, RAFFLE_INFO, USER_TICKETS};
 use raffles_export::msg::QueryFilters;
-use raffles_export::state::{AssetInfo, ContractInfo, RaffleInfo};
+use raffles_export::state::{AssetInfo, ContractInfo, RaffleInfo, RaffleState};
 
 // settings for pagination
 const MAX_LIMIT: u32 = 30;
 const DEFAULT_LIMIT: u32 = 10;
 const BASE_LIMIT: usize = 100;
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug, Default)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct RaffleResponse {
     pub raffle_id: u64,
+    pub raffle_state: RaffleState,
     pub raffle_info: Option<RaffleInfo>,
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug, Default)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct AllRafflesResponse {
     pub raffles: Vec<RaffleResponse>,
 }
@@ -30,30 +32,22 @@ pub fn query_contract_info(deps: Deps) -> StdResult<ContractInfo> {
     CONTRACT_INFO.load(deps.storage)
 }
 
-/*
-
-         QueryMsg::GetTickets {
-            raffle_id,
-            start_after,
-            limit,
-            filters,
-        } => query_tickets(deps, env, raffle_id, start_after, limit, filters),
-         QueryMsg::GetAllTickets {
-            start_after,
-            limit,
-            filters,
-        } => query_all_tickets(deps, env, start_after, limit, filters),
-
-*/
-
 // parse raffles to human readable format
-fn parse_raffles(_: &dyn Api, item: StdResult<(u64, RaffleInfo)>) -> StdResult<RaffleResponse> {
+fn parse_raffles(
+    _: &dyn Api,
+    env: Env,
+    item: StdResult<(u64, RaffleInfo)>,
+) -> StdResult<RaffleResponse> {
     item.map(|(raffle_id, raffle)| RaffleResponse {
         raffle_id,
+        raffle_state: get_raffle_state(env, raffle.clone()),
         raffle_info: Some(raffle),
     })
 }
-
+/// Filters the raffles results according to any of the indicated filters
+/// State : only select raffles that are in a special state (multiple states possible)
+/// Owner: only select raffles that are owned by a specific address
+/// Contains_token : only selevty raffles that have a specific asset in them
 pub fn raffle_filter(
     _api: &dyn Api,
     env: Env,
@@ -70,14 +64,6 @@ pub fn raffle_filter(
         } && match &filters.owner {
             Some(owner) => raffle.raffle_info.as_ref().unwrap().owner == owner.clone(),
             None => true,
-        } && match &filters.ticket_depositor {
-            Some(ticket_depositor) => raffle
-                .raffle_info
-                .as_ref()
-                .unwrap()
-                .tickets
-                .contains(ticket_depositor),
-            None => true,
         } && match &filters.contains_token {
             Some(token) => match raffle.raffle_info.clone().unwrap().asset {
                 AssetInfo::Coin(x) => x.denom == token.as_ref(),
@@ -92,33 +78,98 @@ pub fn raffle_filter(
     }
 }
 
+/// Query the number of tickets a ticket_depositor bought in a specific raffle, designated by a raffle_id
 pub fn query_ticket_number(
     deps: Deps,
     _env: Env,
     raffle_id: u64,
     ticket_depositor: Addr,
-) -> Result<u64> {
-    let raffle_info = RAFFLE_INFO.load(deps.storage, raffle_id)?;
-    Ok(raffle_info
-        .tickets
-        .iter()
-        .filter(|&t| *t == ticket_depositor)
-        .count() as u64)
+) -> Result<u32> {
+    Ok(USER_TICKETS.load(deps.storage, (&ticket_depositor, raffle_id))?)
 }
+
+/// Query all raffles using ALL filters 
 pub fn query_all_raffles(
     deps: Deps,
     env: Env,
     start_after: Option<u64>,
     limit: Option<u32>,
     filters: Option<QueryFilters>,
-) -> StdResult<AllRafflesResponse> {
+) -> Result<AllRafflesResponse> {
+    if filters.is_some() && filters.clone().unwrap().ticket_depositor.is_some() {
+        query_all_raffles_by_depositor(deps, env, start_after, limit, filters)
+    } else {
+        query_all_raffles_raw(deps, env, start_after, limit, filters)
+    }
+}
+
+/// Query all raffles in which a depositor bought a ticket
+/// Returns an empty raffle_info if none where found in the BASE_LIMIT first results
+pub fn query_all_raffles_by_depositor(
+    deps: Deps,
+    env: Env,
+    start_after: Option<u64>,
+    limit: Option<u32>,
+    filters: Option<QueryFilters>,
+) -> Result<AllRafflesResponse> {
+    let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
+
+    let start = start_after.map(Bound::exclusive);
+
+    let ticket_depositor = filters
+        .clone()
+        .ok_or_else(|| anyhow!(ContractError::Unauthorized {}))?
+        .ticket_depositor
+        .ok_or_else(|| anyhow!(ContractError::Unauthorized {}))?;
+
+    let mut raffles = USER_TICKETS
+        .prefix(&ticket_depositor)
+        .keys(deps.storage, None, start.clone(), Order::Descending)
+        .take(BASE_LIMIT)
+        .filter_map(|response| response.ok())
+        .map(|raffle_id| Ok((raffle_id, load_raffle(deps.storage, raffle_id).unwrap()))) // This unwrap is safe if the data structure was respected
+        .map(|kv_item| parse_raffles(deps.api, env.clone(), kv_item))
+        .filter(|response| raffle_filter(deps.api, env.clone(), response, &filters))
+        .take(limit)
+        .collect::<StdResult<Vec<RaffleResponse>>>()?;
+
+    if raffles.is_empty() {
+        let last_raffle_id = USER_TICKETS
+            .prefix(&ticket_depositor)
+            .keys(deps.storage, None, start.clone(), Order::Descending)
+            .take(BASE_LIMIT)
+            .filter_map(|response| response.ok())
+            .last();
+        if let Some(raffle_id) = last_raffle_id {
+            if raffle_id != 0 {
+                raffles = vec![RaffleResponse {
+                    raffle_id,
+                    raffle_state: RaffleState::Claimed,
+                    raffle_info: None,
+                }]
+            }
+        }
+    }
+
+    Ok(AllRafflesResponse { raffles })
+}
+
+/// Query all raffles without ticket_depositor filters 
+/// Returns an empty raffle_info if none where found in the BASE_LIMIT first results
+pub fn query_all_raffles_raw(
+    deps: Deps,
+    env: Env,
+    start_after: Option<u64>,
+    limit: Option<u32>,
+    filters: Option<QueryFilters>,
+) -> Result<AllRafflesResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
     let start = start_after.map(Bound::exclusive);
 
     let mut raffles: Vec<RaffleResponse> = RAFFLE_INFO
         .range(deps.storage, None, start.clone(), Order::Descending)
         .take(BASE_LIMIT)
-        .map(|kv_item| parse_raffles(deps.api, kv_item))
+        .map(|kv_item| parse_raffles(deps.api, env.clone(), kv_item))
         .filter(|response| raffle_filter(deps.api, env.clone(), response, &filters))
         .take(limit)
         .collect::<StdResult<Vec<RaffleResponse>>>()?;
@@ -133,6 +184,7 @@ pub fn query_all_raffles(
             if raffle_id != 0 {
                 raffles = vec![RaffleResponse {
                     raffle_id,
+                    raffle_state: RaffleState::Claimed,
                     raffle_info: None,
                 }]
             }

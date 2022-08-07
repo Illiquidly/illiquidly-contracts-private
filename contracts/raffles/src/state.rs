@@ -15,9 +15,11 @@ use cw20::Cw20ExecuteMsg;
 use cw721::Cw721ExecuteMsg;
 
 pub const CONTRACT_INFO: Item<ContractInfo> = Item::new("contract_info");
-
 pub const RAFFLE_INFO: Map<u64, RaffleInfo> = Map::new("raffle_info");
-pub const USER_TICKETS: Map<(&Addr, u64), u64> = Map::new("uset_tickets");
+pub const RAFFLE_TICKETS: Map<(u64, u32), Addr> = Map::new("raffle_tickets");
+pub const USER_TICKETS: Map<(&Addr, u64), u32> = Map::new("user_tickets");
+
+// We use the same structure as nft token_ids that allows to have a bi-directional storage facility
 
 // This function is largely inspired (and even directly copied) from https://github.com/confio/rand/.
 // Part of the randomness flow was inspired from https://github.com/scrtlabs/secret-raffle/ and https://github.com/LoTerra/terrand-contract-step1/
@@ -31,10 +33,12 @@ pub fn assert_randomness_origin_and_order(
     let raffle_info = load_raffle(deps.storage, raffle_id)?;
     let contract_info = CONTRACT_INFO.load(deps.storage)?;
 
-    if randomness.round <= raffle_info.randomness_round {
-        return Err(anyhow!(ContractError::RandomnessNotAccepted {
-            round: randomness.round
-        }));
+    if let Some(local_randomness) = raffle_info.randomness {
+        if randomness.round <= local_randomness.randomness_round {
+            return Err(anyhow!(ContractError::RandomnessNotAccepted {
+                round: randomness.round
+            }));
+        }
     }
 
     let msg = VerifierExecuteMsg::Verify {
@@ -58,32 +62,35 @@ pub fn is_owner(storage: &dyn Storage, sender: Addr) -> Result<ContractInfo, Con
     }
 }
 
-pub fn get_raffle_winner(raffle_info: RaffleInfo) -> Result<Addr> {
+pub fn get_raffle_winner(deps: Deps, env: Env, raffle_id: u64, raffle_info: RaffleInfo) -> Result<Addr> {
     // We initiate the random number generator
-    let mut rng: Prng = Prng::new(&raffle_info.randomness);
+    if raffle_info.randomness.is_none(){
+        return Err(anyhow!(ContractError::WrongStateForClaim{status: get_raffle_state(env, raffle_info)}));
+    }
+    let mut rng: Prng = Prng::new(&raffle_info.randomness.unwrap().randomness);
 
     // We pick a winner id
-    let winner_id = rng.random_between(0u32, raffle_info.tickets.len() as u32);
-    let winner = raffle_info.tickets[winner_id as usize].clone();
+    let winner_id = rng.random_between(0u32, raffle_info.number_of_tickets);
+    let winner = RAFFLE_TICKETS.load(deps.storage, (raffle_id, winner_id))?;
 
     Ok(winner)
 }
 
 pub fn get_raffle_state(env: Env, raffle_info: RaffleInfo) -> RaffleState {
-    if env.block.time < raffle_info.raffle_start_timestamp {
+    if env.block.time < raffle_info.raffle_options.raffle_start_timestamp {
         RaffleState::Created
     } else if env.block.time
         < raffle_info
-            .raffle_start_timestamp
-            .plus_seconds(raffle_info.raffle_duration)
+            .raffle_options.raffle_start_timestamp
+            .plus_seconds(raffle_info.raffle_options.raffle_duration)
     {
         RaffleState::Started
     } else if env.block.time
         < raffle_info
-            .raffle_start_timestamp
-            .plus_seconds(raffle_info.raffle_duration)
-            .plus_seconds(raffle_info.raffle_timeout)
-        || raffle_info.randomness_owner.is_none()
+            .raffle_options.raffle_start_timestamp
+            .plus_seconds(raffle_info.raffle_options.raffle_duration)
+            .plus_seconds(raffle_info.raffle_options.raffle_timeout)
+        || raffle_info.randomness.is_none()
     {
         RaffleState::Closed
     } else if raffle_info.winner.is_none() {
@@ -91,18 +98,6 @@ pub fn get_raffle_state(env: Env, raffle_info: RaffleInfo) -> RaffleState {
     } else {
         RaffleState::Claimed
     }
-}
-
-pub fn load_ticket_number(storage: &dyn Storage, raffle_id: u64, owner: Addr) -> Result<u64> {
-    let raffle_info = RAFFLE_INFO
-        .load(storage, raffle_id)
-        .map_err(|_| ContractError::NotFoundInRaffleInfo {})?;
-
-    Ok(raffle_info
-        .tickets
-        .iter()
-        .filter(|&ticket_owner| *ticket_owner == owner)
-        .count() as u64)
 }
 
 pub fn load_raffle(storage: &dyn Storage, raffle_id: u64) -> Result<RaffleInfo> {
@@ -170,7 +165,7 @@ pub fn get_raffle_owner_finished_messages(
             if rand_amount != Uint128::zero() {
                 messages.push(into_cosmos_msg(
                     Cw20ExecuteMsg::Transfer {
-                        recipient: raffle_info.randomness_owner.unwrap().to_string(),
+                        recipient: raffle_info.randomness.unwrap().randomness_owner.to_string(),
                         amount: rand_amount,
                     },
                     coin.address.clone(),
@@ -207,7 +202,7 @@ pub fn get_raffle_owner_finished_messages(
             if rand_amount != Uint128::zero() {
                 messages.push(
                     BankMsg::Send {
-                        to_address: raffle_info.randomness_owner.unwrap().to_string(),
+                        to_address: raffle_info.randomness.unwrap().randomness_owner.to_string(),
                         amount: coins(rand_amount.u128(), coin.denom.clone()),
                     }
                     .into(),

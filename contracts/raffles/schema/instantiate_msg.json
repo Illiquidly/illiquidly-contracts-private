@@ -3,14 +3,16 @@
   "title": "InstantiateMsg",
   "type": "object",
   "required": [
-    "chain_hash",
     "name",
     "random_pubkey",
     "verify_signature_contract"
   ],
   "properties": {
-    "chain_hash": {
-      "type": "string"
+    "drand_url": {
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "fee_addr": {
       "type": [
@@ -18,12 +20,12 @@
         "null"
       ]
     },
-    "last_raffle_id": {
+    "max_participant_number": {
       "type": [
         "integer",
         "null"
       ],
-      "format": "uint64",
+      "format": "uint32",
       "minimum": 0.0
     },
     "minimum_raffle_duration": {

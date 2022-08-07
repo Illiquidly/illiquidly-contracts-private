@@ -1,4 +1,4 @@
-use crate::state::AssetInfo;
+use crate::state::{AssetInfo, RaffleOptionsMsg};
 use anyhow::Result;
 use cosmwasm_std::{to_binary, Addr, Binary, CosmosMsg, StdError, StdResult, Uint128, WasmMsg};
 use schemars::JsonSchema;
@@ -36,6 +36,7 @@ pub struct InstantiateMsg {
     pub fee_addr: Option<String>,
     pub minimum_raffle_duration: Option<u64>,
     pub minimum_raffle_timeout: Option<u64>,
+    pub max_participant_number: Option<u32>,
     pub raffle_fee: Option<Uint128>, // in 10_000
     pub rand_fee: Option<Uint128>,   // in 10_000
     pub drand_url: Option<String>,
@@ -69,13 +70,10 @@ pub struct DrandRandomness {
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
     CreateRaffle {
+        owner: Option<Addr>,
         asset: AssetInfo,
-        raffle_start_timestamp: Option<u64>, // If not specified, starts immediately
-        raffle_duration: Option<u64>,
-        raffle_timeout: Option<u64>,
-        comment: Option<String>,
+        raffle_options: RaffleOptionsMsg,
         raffle_ticket_price: AssetInfo,
-        max_participant_number: Option<u64>,
     },
     BuyTicket {
         raffle_id: u64,
@@ -137,6 +135,10 @@ pub enum QueryMsg {
         start_after: Option<u64>,
         limit: Option<u32>,
         filters: Option<QueryFilters>,
+    },
+    TicketNumber {
+        owner: Addr,
+        raffle_id: u64,
     },
 }
 

@@ -15,8 +15,11 @@ async function main() {
   // First we approve the contract for the NFT
 
   let response = await raffle_contract.query.raffle_info({
-   raffle_id: 0,
+   raffle_id: 8,
  })
+  console.log(response)
+
+  response = await raffle_contract.query.contract_info();
   console.log(response)
 }
 

@@ -18,6 +18,7 @@ async function main() {
     random_pubkey: Buffer.from(hexPubkey, 'hex').toString('base64'),
     chain_hash,
     verify_signature_contract : env.contracts.raffle_verifier,
+    max_participant_number: 5000
   };
   console.log(initMsg)
 

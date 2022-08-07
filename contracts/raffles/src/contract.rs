@@ -1,8 +1,8 @@
 use anyhow::{anyhow, Result};
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    from_binary, to_binary, Addr, Binary, Coin, Deps, DepsMut, Env, Event, MessageInfo, Reply,
-    Response, StdError, StdResult, SubMsgResult, Timestamp, Uint128,
+    to_binary, Binary, Deps, DepsMut, Env, Event, MessageInfo, Reply, Response, StdError,
+    SubMsgResult, Uint128,
 };
 #[cfg(not(feature = "library"))]
 use std::convert::TryInto;
@@ -11,24 +11,18 @@ use cw2::set_contract_version;
 
 use crate::error::ContractError;
 
-use crate::state::{
-    assert_randomness_origin_and_order, can_buy_ticket, get_asset_amount,
-    get_raffle_owner_finished_messages, get_raffle_state, get_raffle_winner,
-    get_raffle_winner_message, is_owner, load_raffle, CONTRACT_INFO, RAFFLE_INFO,
-};
-use raffles_export::msg::{
-    into_cosmos_msg, DrandRandomness, ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg,
-};
+use crate::state::{get_raffle_state, is_owner, load_raffle, CONTRACT_INFO, RAFFLE_INFO};
+use raffles_export::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
 use raffles_export::state::{
-    AssetInfo, ContractInfo, Cw1155Coin, Cw20Coin, Cw721Coin, RaffleInfo, RaffleState,
-    MAXIMUM_PARTICIPANT_NUMBER, MINIMUM_RAFFLE_DURATION, MINIMUM_RAFFLE_TIMEOUT, MINIMUM_RAND_FEE,
+    ContractInfo, MINIMUM_RAFFLE_DURATION, MINIMUM_RAFFLE_TIMEOUT,
+    MINIMUM_RAND_FEE, Randomness
 };
 
-use cw1155::Cw1155ExecuteMsg;
-use cw20::Cw20ExecuteMsg;
-use cw721::Cw721ExecuteMsg;
-
-use crate::query::{query_all_raffles, query_contract_info};
+use crate::execute::{
+    execute_buy_ticket, execute_claim, execute_create_raffle, execute_receive,
+    execute_receive_1155, execute_receive_nft, execute_update_randomness,
+};
+use crate::query::{query_all_raffles, query_contract_info, query_ticket_number, RaffleResponse};
 
 const CONTRACT_NAME: &str = "illiquidlabs.io:raffles";
 const CONTRACT_VERSION: &str = "0.1.0";
@@ -85,24 +79,18 @@ pub fn instantiate(
 pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> Result<Response> {
     match msg {
         ExecuteMsg::CreateRaffle {
+            owner,
             asset,
-            raffle_start_timestamp,
-            raffle_duration,
-            raffle_timeout,
-            comment,
             raffle_ticket_price,
-            max_participant_number,
+            raffle_options
         } => execute_create_raffle(
             deps,
             env,
             info,
+            owner,
             asset,
-            raffle_start_timestamp,
-            raffle_duration,
-            raffle_timeout,
-            comment,
             raffle_ticket_price,
-            max_participant_number,
+            raffle_options
         ),
         ExecuteMsg::BuyTicket {
             raffle_id,
@@ -159,7 +147,13 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary> {
     match msg {
         QueryMsg::ContractInfo {} => to_binary(&query_contract_info(deps)?).map_err(|x| anyhow!(x)),
         QueryMsg::RaffleInfo { raffle_id } => {
-            to_binary(&load_raffle(deps.storage, raffle_id)?).map_err(|x| anyhow!(x))
+            let raffle_info = load_raffle(deps.storage, raffle_id)?;
+            to_binary(&RaffleResponse {
+                raffle_id,
+                raffle_state: get_raffle_state(env, raffle_info.clone()),
+                raffle_info: Some(raffle_info),
+            })
+            .map_err(|x| anyhow!(x))
         }
 
         QueryMsg::GetAllRaffles {
@@ -168,6 +162,10 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary> {
             filters,
         } => to_binary(&query_all_raffles(deps, env, start_after, limit, filters)?)
             .map_err(|x| anyhow!(x)),
+
+        QueryMsg::TicketNumber { owner, raffle_id } => {
+            to_binary(&query_ticket_number(deps, env, raffle_id, owner)?).map_err(|x| anyhow!(x))
+        }
     }
 }
 
@@ -276,441 +274,6 @@ pub fn execute_change_parameter(
         .add_attribute("value", value))
 }
 
-/// Create a new raffle by depositing assets
-#[allow(clippy::too_many_arguments)]
-pub fn execute_create_raffle(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    asset: AssetInfo,
-    raffle_start_timestamp: Option<u64>,
-    raffle_duration: Option<u64>,
-    raffle_timeout: Option<u64>,
-    comment: Option<String>,
-    raffle_ticket_price: AssetInfo,
-    max_participant_number: Option<u64>,
-) -> Result<Response> {
-    let contract_info = CONTRACT_INFO.load(deps.storage)?;
-
-    if contract_info.lock {
-        return Err(anyhow!(ContractError::ContractIsLocked {}));
-    }
-
-    // First we physcially transfer the AssetInfo
-    let transfer_message = match &asset {
-        AssetInfo::Cw721Coin(token) => {
-            let message = Cw721ExecuteMsg::TransferNft {
-                recipient: env.contract.address.clone().into(),
-                token_id: token.token_id.clone(),
-            };
-
-            into_cosmos_msg(message, token.address.clone())?
-        }
-        AssetInfo::Cw1155Coin(token) => {
-            let message = Cw1155ExecuteMsg::SendFrom {
-                from: info.sender.to_string(),
-                to: env.contract.address.clone().into(),
-                token_id: token.token_id.clone(),
-                value: token.value,
-                msg: None,
-            };
-
-            into_cosmos_msg(message, token.address.clone())?
-        }
-        _ => return Err(anyhow!(ContractError::WrongAssetType {})),
-    };
-    // Then we create the internal raffle structure
-    let raffle_id = _create_raffle(
-        deps,
-        env,
-        info.sender.clone(),
-        asset,
-        raffle_start_timestamp,
-        raffle_duration,
-        raffle_timeout,
-        comment,
-        raffle_ticket_price,
-        max_participant_number,
-    )?;
-
-    Ok(Response::new()
-        .add_message(transfer_message)
-        .add_attribute("action", "create_raffle")
-        .add_attribute("raffle_id", raffle_id.to_string())
-        .add_attribute("owner", info.sender))
-}
-
-/// Create a new raffle by depositing assets
-pub fn execute_receive_nft(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    sender: String,
-    token_id: String,
-    msg: Binary,
-) -> Result<Response> {
-    let sender = deps.api.addr_validate(&sender)?;
-    match from_binary(&msg)? {
-        ExecuteMsg::CreateRaffle {
-            asset,
-            raffle_start_timestamp,
-            raffle_duration,
-            raffle_timeout,
-            comment,
-            raffle_ticket_price,
-            max_participant_number,
-        } => {
-            // First we make sure the received NFT is the one specified in the message
-
-            match asset.clone() {
-                AssetInfo::Cw721Coin(Cw721Coin {
-                    address: address_received,
-                    token_id: token_id_received,
-                }) => {
-                    if deps.api.addr_validate(&address_received)? == info.sender
-                        && token_id_received == token_id
-                    {
-                        // The asset is a match, we can create the raffle object and return
-                        let raffle_id = _create_raffle(
-                            deps,
-                            env,
-                            sender,
-                            asset,
-                            raffle_start_timestamp,
-                            raffle_duration,
-                            raffle_timeout,
-                            comment,
-                            raffle_ticket_price,
-                            max_participant_number,
-                        )?;
-
-                        Ok(Response::new()
-                            .add_attribute("action", "create_raffle")
-                            .add_attribute("raffle_id", raffle_id.to_string())
-                            .add_attribute("owner", info.sender))
-                    } else {
-                        Err(anyhow!(ContractError::AssetMismatch {}))
-                    }
-                }
-                _ => Err(anyhow!(ContractError::AssetMismatch {})),
-            }
-        }
-        _ => Err(anyhow!(ContractError::Unauthorized {})),
-    }
-}
-
-/// Create a new raffle by depositing assets
-pub fn execute_receive_1155(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    from: String,
-    token_id: String,
-    amount: Uint128,
-    msg: Binary,
-) -> Result<Response> {
-    let sender = deps.api.addr_validate(&from)?;
-    match from_binary(&msg)? {
-        ExecuteMsg::CreateRaffle {
-            asset,
-            raffle_start_timestamp,
-            raffle_duration,
-            raffle_timeout,
-            comment,
-            raffle_ticket_price,
-            max_participant_number,
-        } => {
-            // First we make sure the received NFT is the one specified in the message
-            match asset.clone() {
-                AssetInfo::Cw1155Coin(Cw1155Coin {
-                    address: address_received,
-                    token_id: token_id_received,
-                    value: value_received,
-                }) => {
-                    if deps.api.addr_validate(&address_received)? == info.sender
-                        && token_id_received == token_id
-                        && value_received == amount
-                    {
-                        // The asset is a match, we can create the raffle object and return
-                        let raffle_id = _create_raffle(
-                            deps,
-                            env,
-                            sender,
-                            asset,
-                            raffle_start_timestamp,
-                            raffle_duration,
-                            raffle_timeout,
-                            comment,
-                            raffle_ticket_price,
-                            max_participant_number,
-                        )?;
-
-                        Ok(Response::new()
-                            .add_attribute("action", "create_raffle")
-                            .add_attribute("raffle_id", raffle_id.to_string())
-                            .add_attribute("owner", info.sender))
-                    } else {
-                        Err(anyhow!(ContractError::AssetMismatch {}))
-                    }
-                }
-                _ => Err(anyhow!(ContractError::AssetMismatch {})),
-            }
-        }
-        _ => Err(anyhow!(ContractError::Unauthorized {})),
-    }
-}
-
-/// Create a new raffle and assign it a unique id
-#[allow(clippy::too_many_arguments)]
-pub fn _create_raffle(
-    deps: DepsMut,
-    env: Env,
-    owner: Addr,
-    asset: AssetInfo,
-    raffle_start_timestamp: Option<u64>,
-    raffle_duration: Option<u64>,
-    raffle_timeout: Option<u64>,
-    comment: Option<String>,
-    raffle_ticket_price: AssetInfo,
-    max_participant_number: Option<u64>,
-) -> Result<u64> {
-    let contract_info = CONTRACT_INFO.load(deps.storage)?;
-
-    // We start by creating a new trade_id (simply incremented from the last id)
-    let raffle_id: u64 = CONTRACT_INFO
-        .update(deps.storage, |mut c| -> StdResult<_> {
-            c.last_raffle_id = c.last_raffle_id.map_or(Some(0), |id| Some(id + 1));
-            Ok(c)
-        })?
-        .last_raffle_id
-        .unwrap(); // This is safe because of the function architecture just there
-
-    RAFFLE_INFO.update(deps.storage, raffle_id, |trade| match trade {
-        // If the trade id already exists, the contract is faulty
-        // Or an external error happened, or whatever...
-        // In that case, we emit an error
-        // The priority is : We do not want to overwrite existing data
-        Some(_) => Err(ContractError::ExistsInRaffleInfo {}),
-        None => Ok(RaffleInfo {
-            owner,
-            asset,
-            raffle_start_timestamp: raffle_start_timestamp
-                .map(Timestamp::from_seconds)
-                .unwrap_or(env.block.time),
-            raffle_duration: raffle_duration
-                .unwrap_or(contract_info.minimum_raffle_duration)
-                .max(contract_info.minimum_raffle_duration),
-            raffle_timeout: raffle_timeout
-                .unwrap_or(contract_info.minimum_raffle_timeout)
-                .max(contract_info.minimum_raffle_timeout),
-            comment,
-            raffle_ticket_price: raffle_ticket_price.clone(),
-            accumulated_ticket_fee: match raffle_ticket_price {
-                AssetInfo::Cw20Coin(coin) => AssetInfo::Cw20Coin(Cw20Coin {
-                    address: coin.address,
-                    amount: Uint128::zero(),
-                }),
-                AssetInfo::Coin(coin) => AssetInfo::Coin(Coin {
-                    denom: coin.denom,
-                    amount: Uint128::zero(),
-                }),
-                _ => return Err(ContractError::WrongFundsType {}),
-            },
-            tickets: vec![],
-            randomness_owner: None,
-            randomness: <[u8; 32]>::default(),
-            randomness_round: 0,
-            max_participant_number: max_participant_number
-                .unwrap_or(MAXIMUM_PARTICIPANT_NUMBER)
-                .min(MAXIMUM_PARTICIPANT_NUMBER),
-            winner: None,
-        }),
-    })?;
-    Ok(raffle_id)
-}
-
-pub fn execute_buy_ticket(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    raffle_id: u64,
-    assets: AssetInfo,
-) -> Result<Response> {
-    // First we physcially transfer the AssetInfo
-    let transfer_messages = match &assets {
-        AssetInfo::Cw20Coin(token) => {
-            let message = Cw20ExecuteMsg::Transfer {
-                recipient: env.contract.address.clone().into(),
-                amount: token.amount,
-            };
-
-            vec![into_cosmos_msg(message, token.address.clone())?]
-        }
-        // or verify the sent coins match the message coins
-        AssetInfo::Coin(coin) => {
-            if info.funds.len() != 1 {
-                return Err(anyhow!(ContractError::AssetMismatch {}));
-            }
-            if info.funds[0].denom != coin.denom || info.funds[0].amount != coin.amount {
-                return Err(anyhow!(ContractError::AssetMismatch {}));
-            }
-            vec![]
-        }
-        _ => return Err(anyhow!(ContractError::WrongAssetType {})),
-    };
-    // Then we verify the funds sent match the raffle conditions and we save the ticket that was bought
-    _buy_ticket(deps, env, info.sender.clone(), raffle_id, assets)?;
-
-    Ok(Response::new()
-        .add_messages(transfer_messages)
-        .add_attribute("action", "buy_ticket")
-        .add_attribute("raffle_id", raffle_id.to_string())
-        .add_attribute("owner", info.sender))
-}
-/// Create a new raffle by depositing assets
-pub fn execute_receive(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    sender: String,
-    amount: Uint128,
-    msg: Binary,
-) -> Result<Response> {
-    let sender = deps.api.addr_validate(&sender)?;
-    match from_binary(&msg)? {
-        ExecuteMsg::BuyTicket {
-            raffle_id,
-            sent_assets,
-        } => {
-            // First we make sure the received Assets is the one specified in the message
-            match sent_assets.clone() {
-                AssetInfo::Cw20Coin(Cw20Coin {
-                    address: address_received,
-                    amount: amount_received,
-                }) => {
-                    if deps.api.addr_validate(&address_received)? == info.sender
-                        && amount_received == amount
-                    {
-                        // The asset is a match, we can create the raffle object and return
-                        _buy_ticket(deps, env, sender, raffle_id, sent_assets)?;
-
-                        Ok(Response::new()
-                            .add_attribute("action", "create_raffle")
-                            .add_attribute("raffle_id", raffle_id.to_string())
-                            .add_attribute("owner", info.sender))
-                    } else {
-                        Err(anyhow!(ContractError::AssetMismatch {}))
-                    }
-                }
-                _ => Err(anyhow!(ContractError::AssetMismatch {})),
-            }
-        }
-        _ => Err(anyhow!(ContractError::Unauthorized {})),
-    }
-}
-
-pub fn _buy_ticket(
-    deps: DepsMut,
-    env: Env,
-    owner: Addr,
-    raffle_id: u64,
-    assets: AssetInfo,
-) -> Result<()> {
-    let mut raffle_info = RAFFLE_INFO.load(deps.storage, raffle_id)?;
-
-    // We first check the raffle is in the right state
-    can_buy_ticket(env, raffle_info.clone())?;
-
-    // We then check the sent assets match the raffle assets
-    if raffle_info.raffle_ticket_price != assets {
-        return Err(anyhow!(ContractError::PaiementNotSufficient {
-            assets_wanted: raffle_info.raffle_ticket_price,
-            assets_received: assets
-        }));
-    }
-
-    // Then we save the sender to the bought tickets
-    if raffle_info.tickets.len() >= raffle_info.max_participant_number as usize {
-        return Err(anyhow!(ContractError::TooMuchTickets {}));
-    }
-    raffle_info.tickets.push(owner);
-    let ticket_amount = get_asset_amount(raffle_info.raffle_ticket_price.clone())?;
-    let accumulated_amount = get_asset_amount(raffle_info.accumulated_ticket_fee)?;
-    raffle_info.accumulated_ticket_fee = match raffle_info.raffle_ticket_price.clone() {
-        AssetInfo::Cw20Coin(coin) => AssetInfo::Cw20Coin(Cw20Coin {
-            address: coin.address,
-            amount: accumulated_amount + ticket_amount,
-        }),
-        AssetInfo::Coin(coin) => AssetInfo::Coin(Coin {
-            denom: coin.denom,
-            amount: accumulated_amount + ticket_amount,
-        }),
-        _ => return Err(anyhow!(ContractError::WrongFundsType {})),
-    };
-    RAFFLE_INFO.save(deps.storage, raffle_id, &raffle_info)?;
-
-    Ok(())
-}
-
-pub fn execute_update_randomness(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    raffle_id: u64,
-    randomness: DrandRandomness,
-) -> Result<Response> {
-    let raffle_info = RAFFLE_INFO.load(deps.storage, raffle_id)?;
-    let raffle_state = get_raffle_state(env, raffle_info);
-    if raffle_state != RaffleState::Closed {
-        return Err(anyhow!(ContractError::WrongStateForRandmness {
-            status: raffle_state
-        }));
-    }
-
-    // We assert the randomness is correct
-    assert_randomness_origin_and_order(deps.as_ref(), info.sender, raffle_id, randomness)
-}
-
-pub fn execute_claim(
-    deps: DepsMut,
-    env: Env,
-    _info: MessageInfo,
-    raffle_id: u64,
-) -> Result<Response> {
-    // Loading the raffle object
-    let mut raffle_info = RAFFLE_INFO.load(deps.storage, raffle_id)?;
-
-    // We make sure the raffle is ended
-    let raffle_state = get_raffle_state(env.clone(), raffle_info.clone());
-    if raffle_state != RaffleState::Finished {
-        return Err(anyhow!(ContractError::WrongStateForClaim {
-            status: raffle_state
-        }));
-    }
-
-    // If there was no participant, the winner is the raffle owner and we pay no fees whatsoever
-    if raffle_info.tickets.is_empty() {
-        raffle_info.winner = Some(raffle_info.owner.clone());
-    } else {
-        // We get the winner of the raffle and save it to the contract. The raffle is now claimed !
-        let winner = get_raffle_winner(raffle_info.clone())?;
-        raffle_info.winner = Some(winner);
-    }
-    RAFFLE_INFO.save(deps.storage, raffle_id, &raffle_info)?;
-
-    // We send the asset to the winner
-    let winner_transfer_message = get_raffle_winner_message(env.clone(), raffle_info.clone())?;
-    let funds_transfer_messages =
-        get_raffle_owner_finished_messages(deps.storage, env, raffle_info.clone())?;
-    // We distribute the ticket prices to the owner and in part to the treasury
-    Ok(Response::new()
-        .add_message(winner_transfer_message)
-        .add_messages(funds_transfer_messages)
-        .add_attribute("action", "claim")
-        .add_attribute("raffle_id", raffle_id.to_string())
-        .add_attribute("winner", raffle_info.winner.unwrap()))
-}
-
 // Messages triggered after random generation
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractError> {
@@ -770,12 +333,15 @@ pub fn verify(deps: DepsMut, _env: Env, msg: SubMsgResult) -> Result<Response, S
 
             let mut raffle_info = RAFFLE_INFO.load(deps.storage, raffle_id)?;
             println!("{:?}", Binary::from_base64(&randomness)?);
-            raffle_info.randomness = Binary::from_base64(&randomness)?
+            raffle_info.randomness = Some(Randomness{
+                randomness: Binary::from_base64(&randomness)?
                 .as_slice()
                 .try_into()
-                .map_err(|_| StdError::generic_err("randomness parse err"))?;
-            raffle_info.randomness_round = round;
-            raffle_info.randomness_owner = Some(owner.clone());
+                .map_err(|_| StdError::generic_err("randomness parse err"))?,
+                randomness_round: round,
+                randomness_owner: owner.clone()
+            });
+            
             RAFFLE_INFO.save(deps.storage, raffle_id, &raffle_info)?;
 
             Ok(Response::new()
@@ -790,19 +356,32 @@ pub fn verify(deps: DepsMut, _env: Env, msg: SubMsgResult) -> Result<Response, S
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use base64;
     use cosmwasm_std::{
-        coin, coins,
+        coin, coins, from_binary,
         testing::{mock_dependencies, mock_env, mock_info, MOCK_CONTRACT_ADDR},
         Api, BankMsg, Coin, SubMsg, SubMsgResponse,
     };
-    use raffles_export::msg::VerifierExecuteMsg;
+    use raffles_export::msg::{into_cosmos_msg, DrandRandomness, QueryFilters, VerifierExecuteMsg};
+    use raffles_export::state::{AssetInfo, Cw721Coin, RaffleInfo, RaffleState, RaffleOptions, RaffleOptionsMsg};
+    extern crate rustc_serialize as serialize;
+    use crate::query::AllRafflesResponse;
+    use serialize::base64::{self, ToBase64};
+    use serialize::hex::FromHex;
+    
+    use cw20::Cw20ExecuteMsg;
+    use cw721::Cw721ExecuteMsg;
+    use cw1155::Cw1155ExecuteMsg;
+
     const HEX_PUBKEY: &str = "868f005eb8e6e4ca0a47c8a77ceaa5309a47978a7c71bc5cce96366b5d7a569937c529eeda66c7293784a9402801af31";
+
     fn init_helper(deps: DepsMut) {
         let instantiate_msg = InstantiateMsg {
             name: "nft-raffle".to_string(),
             owner: None,
-            random_pubkey: Binary::from_base64(&base64::encode(HEX_PUBKEY)).unwrap(),
+            random_pubkey: Binary::from_base64(
+                &HEX_PUBKEY.from_hex().unwrap().to_base64(base64::STANDARD),
+            )
+            .unwrap(),
             drand_url: None,
             verify_signature_contract: "verifier".to_string(),
             fee_addr: None,
@@ -810,6 +389,7 @@ pub mod tests {
             minimum_raffle_duration: None,
             raffle_fee: Some(Uint128::from(2u128)),
             rand_fee: None,
+            max_participant_number: None,
         };
         let info = mock_info("creator", &[]);
         let env = mock_env();
@@ -826,16 +406,37 @@ pub mod tests {
             env,
             info,
             ExecuteMsg::CreateRaffle {
+                owner: None,
                 asset: AssetInfo::Cw721Coin(Cw721Coin {
                     address: "nft".to_string(),
                     token_id: "token_id".to_string(),
                 }),
-                raffle_start_timestamp: None,
-                raffle_duration: None,
-                raffle_timeout: None,
-                comment: None,
-                raffle_ticket_price: AssetInfo::Coin(coin(10000u128, "uluna")),
-                max_participant_number: None,
+                raffle_options: RaffleOptionsMsg::default(),
+                raffle_ticket_price: AssetInfo::coin(10000u128, "uluna")
+            },
+        )
+    }
+
+    fn create_raffle_comment(deps: DepsMut, comment: &str) -> Result<Response> {
+        let info = mock_info("creator", &[]);
+        let env = mock_env();
+
+        execute(
+            deps,
+            env,
+            info,
+            ExecuteMsg::CreateRaffle {
+                owner: None,
+                asset: AssetInfo::Cw721Coin(Cw721Coin {
+                    address: "nft".to_string(),
+                    token_id: "token_id".to_string(),
+                }),
+                raffle_options: RaffleOptionsMsg{
+                    comment: Some(comment.to_string()),
+                    ..Default::default()
+                },
+                
+                raffle_ticket_price: AssetInfo::coin(10000u128, "uluna"),
             },
         )
     }
@@ -849,19 +450,10 @@ pub mod tests {
             env,
             info,
             ExecuteMsg::CreateRaffle {
-                asset: AssetInfo::Cw721Coin(Cw721Coin {
-                    address: "nft".to_string(),
-                    token_id: "token_id".to_string(),
-                }),
-                raffle_start_timestamp: None,
-                raffle_duration: None,
-                raffle_timeout: None,
-                comment: None,
-                raffle_ticket_price: AssetInfo::Cw20Coin(Cw20Coin {
-                    address: "address".to_string(),
-                    amount: Uint128::from(10000u128),
-                }),
-                max_participant_number: None,
+                owner: None,
+                asset: AssetInfo::cw721("nft", "token_id"),
+                raffle_options: RaffleOptionsMsg::default(),
+                raffle_ticket_price: AssetInfo::cw20(10000u128, "address"),
             },
         )
     }
@@ -875,17 +467,10 @@ pub mod tests {
             env,
             info,
             ExecuteMsg::CreateRaffle {
-                asset: AssetInfo::Cw1155Coin(Cw1155Coin {
-                    address: "nft".to_string(),
-                    token_id: "token_id".to_string(),
-                    value: Uint128::from(675u128),
-                }),
-                raffle_start_timestamp: None,
-                raffle_duration: None,
-                raffle_timeout: None,
-                comment: None,
-                raffle_ticket_price: AssetInfo::Coin(coin(10000u128, "uluna")),
-                max_participant_number: None,
+                owner: None,
+                asset: AssetInfo::cw1155("nft", "token_id", 675u128),
+                raffle_options: RaffleOptionsMsg::default(),
+                raffle_ticket_price: AssetInfo::coin(10000u128, "uluna"),
             },
         )
     }
@@ -928,10 +513,7 @@ pub mod tests {
             info,
             ExecuteMsg::BuyTicket {
                 raffle_id,
-                sent_assets: AssetInfo::Cw20Coin(Cw20Coin {
-                    address: address.to_string(),
-                    amount: Uint128::from(amount),
-                }),
+                sent_assets: AssetInfo::cw20(amount, address),
             },
         )
     }
@@ -985,9 +567,11 @@ pub mod tests {
             randomness.as_mut_slice(),
         )
         .unwrap();
-        raffle_info.randomness = randomness;
-        raffle_info.randomness_round = 2098475u64;
-        raffle_info.randomness_owner = Some(deps.api.addr_validate("rand_provider").unwrap());
+        raffle_info.randomness = Some(Randomness{
+            randomness,
+            randomness_round:  2098475u64,
+            randomness_owner: deps.api.addr_validate("rand_provider").unwrap()
+        });
         RAFFLE_INFO
             .save(deps.as_mut().storage, 0, &raffle_info)
             .unwrap();
@@ -1019,9 +603,11 @@ pub mod tests {
             randomness.as_mut_slice(),
         )
         .unwrap();
-        raffle_info.randomness = randomness;
-        raffle_info.randomness_round = 2098475u64;
-        raffle_info.randomness_owner = Some(deps.api.addr_validate("rand_provider").unwrap());
+        raffle_info.randomness = Some(Randomness{
+            randomness,
+            randomness_round:  2098475u64,
+            randomness_owner: deps.api.addr_validate("rand_provider").unwrap()
+        });
         RAFFLE_INFO
             .save(deps.as_mut().storage, 0, &raffle_info)
             .unwrap();
@@ -1060,7 +646,6 @@ pub mod tests {
         buy_ticket_coin(deps.as_mut(), 0, "first", coin(10000, "uluna"), 100u64).unwrap_err();
         buy_ticket_coin(deps.as_mut(), 0, "first", coin(10000, "uluna"), 1000u64).unwrap_err();
     }
-
 
     #[test]
     fn test_ticket_and_claim_raffle_cw20() {
@@ -1103,9 +688,11 @@ pub mod tests {
             randomness.as_mut_slice(),
         )
         .unwrap();
-        raffle_info.randomness = randomness;
-        raffle_info.randomness_round = 2098475u64;
-        raffle_info.randomness_owner = Some(deps.api.addr_validate("rand_provider").unwrap());
+        raffle_info.randomness = Some(Randomness{
+            randomness,
+            randomness_round:  2098475u64,
+            randomness_owner: deps.api.addr_validate("rand_provider").unwrap()
+        });
         RAFFLE_INFO
             .save(deps.as_mut().storage, 0, &raffle_info)
             .unwrap();
@@ -1125,18 +712,36 @@ pub mod tests {
                     )
                     .unwrap()
                 ),
-                SubMsg::new(into_cosmos_msg(Cw20ExecuteMsg::Transfer {
-                    recipient: "rand_provider".to_string(),
-                    amount: Uint128::from(5u128)
-                }, "address".to_string()).unwrap()),
-                SubMsg::new(into_cosmos_msg(Cw20ExecuteMsg::Transfer {
-                    recipient: "creator".to_string(),
-                    amount: Uint128::from(10u128)
-                }, "address".to_string()).unwrap()),
-                SubMsg::new(into_cosmos_msg(Cw20ExecuteMsg::Transfer {
-                    recipient: "creator".to_string(),
-                    amount: Uint128::from(49985u128)
-                }, "address".to_string()).unwrap()),
+                SubMsg::new(
+                    into_cosmos_msg(
+                        Cw20ExecuteMsg::Transfer {
+                            recipient: "rand_provider".to_string(),
+                            amount: Uint128::from(5u128)
+                        },
+                        "address".to_string()
+                    )
+                    .unwrap()
+                ),
+                SubMsg::new(
+                    into_cosmos_msg(
+                        Cw20ExecuteMsg::Transfer {
+                            recipient: "creator".to_string(),
+                            amount: Uint128::from(10u128)
+                        },
+                        "address".to_string()
+                    )
+                    .unwrap()
+                ),
+                SubMsg::new(
+                    into_cosmos_msg(
+                        Cw20ExecuteMsg::Transfer {
+                            recipient: "creator".to_string(),
+                            amount: Uint128::from(49985u128)
+                        },
+                        "address".to_string()
+                    )
+                    .unwrap()
+                ),
             ]
         );
 
@@ -1185,9 +790,11 @@ pub mod tests {
             randomness.as_mut_slice(),
         )
         .unwrap();
-        raffle_info.randomness = randomness;
-        raffle_info.randomness_round = 2098475u64;
-        raffle_info.randomness_owner = Some(deps.api.addr_validate("rand_provider").unwrap());
+        raffle_info.randomness = Some(Randomness{
+            randomness,
+            randomness_round:  2098475u64,
+            randomness_owner: deps.api.addr_validate("rand_provider").unwrap()
+        });
         RAFFLE_INFO
             .save(deps.as_mut().storage, 0, &raffle_info)
             .unwrap();
@@ -1255,7 +862,10 @@ pub mod tests {
         .unwrap();
         let msg = VerifierExecuteMsg::Verify {
             randomness: randomness.clone(),
-            pubkey: Binary::from_base64(&base64::encode(HEX_PUBKEY)).unwrap(),
+            pubkey: Binary::from_base64(
+                &HEX_PUBKEY.from_hex().unwrap().to_base64(base64::STANDARD),
+            )
+            .unwrap(),
             raffle_id: 0,
             owner: "anyone".to_string(),
         };
@@ -1412,5 +1022,272 @@ pub mod tests {
                 .to_string(),
             "any"
         );
+    }
+
+    // Query tests
+
+    #[test]
+    fn test_query_contract_info() {
+        let mut deps = mock_dependencies();
+        init_helper(deps.as_mut());
+        let env = mock_env();
+        let response = query(deps.as_ref(), env, QueryMsg::ContractInfo {}).unwrap();
+        assert_eq!(
+            from_binary::<ContractInfo>(&response).unwrap(),
+            ContractInfo {
+                name: "nft-raffle".to_string(),
+                owner: deps.api.addr_validate("creator").unwrap(),
+                fee_addr: deps.api.addr_validate("creator").unwrap(),
+                last_raffle_id: None,
+                minimum_raffle_duration: 1u64,
+                minimum_raffle_timeout: 120u64,
+                raffle_fee: Uint128::from(2u128), // in 10_000
+                rand_fee: Uint128::from(1u64),    // in 10_000
+                lock: false,
+                drand_url: "https://api.drand.sh/".to_string(),
+                verify_signature_contract: deps.api.addr_validate("verifier").unwrap(),
+                random_pubkey: Binary::from_base64(
+                    &HEX_PUBKEY.from_hex().unwrap().to_base64(base64::STANDARD)
+                )
+                .unwrap()
+            }
+        );
+    }
+
+    #[test]
+    fn test_query_raffle_info() {
+        let mut deps = mock_dependencies();
+        init_helper(deps.as_mut());
+
+        create_raffle(deps.as_mut()).unwrap();
+        create_raffle_comment(deps.as_mut(), "random things my dude").unwrap();
+
+        let env = mock_env();
+        let response = query(
+            deps.as_ref(),
+            env.clone(),
+            QueryMsg::RaffleInfo { raffle_id: 1 },
+        )
+        .unwrap();
+
+        assert_eq!(
+            from_binary::<RaffleResponse>(&response).unwrap(),
+            RaffleResponse {
+                raffle_id: 1,
+                raffle_state: RaffleState::Started,
+                raffle_info: Some(RaffleInfo {
+                    owner: deps.api.addr_validate("creator").unwrap(),
+                    asset: AssetInfo::cw721("nft", "token_id"),
+                    raffle_options: RaffleOptions{
+                        raffle_start_timestamp: env.block.time,
+                        raffle_duration: 1u64,
+                        raffle_timeout: 120u64,
+                        comment: Some("random things my dude".to_string()),
+                        max_participant_number: None,
+                        max_ticket_per_address: None, 
+                    },
+                    raffle_ticket_price: AssetInfo::coin(10000u128, "uluna"),
+                    accumulated_ticket_fee: AssetInfo::coin(0u128, "uluna"),
+                    number_of_tickets: 0u32,
+                    randomness: None,
+                    winner: None
+                })
+            }
+        );
+    }
+
+    #[test]
+    fn test_query_all_raffle_info() {
+        let mut deps = mock_dependencies();
+        init_helper(deps.as_mut());
+
+        create_raffle(deps.as_mut()).unwrap();
+        create_raffle_comment(deps.as_mut(), "random things my dude").unwrap();
+
+        let env = mock_env();
+        // Testing the general function
+        let response = query(
+            deps.as_ref(),
+            env.clone(),
+            QueryMsg::GetAllRaffles {
+                start_after: None,
+                limit: None,
+                filters: None,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            from_binary::<AllRafflesResponse>(&response)
+                .unwrap()
+                .raffles,
+            vec![
+                RaffleResponse {
+                    raffle_id: 1,
+                    raffle_state: RaffleState::Started,
+                    raffle_info: Some(RaffleInfo {
+                        owner: deps.api.addr_validate("creator").unwrap(),
+                        asset: AssetInfo::cw721("nft", "token_id"),
+                        raffle_options: RaffleOptions{
+                            raffle_start_timestamp: env.block.time,
+                            raffle_duration: 1u64,
+                            raffle_timeout: 120u64,
+                            comment: Some("random things my dude".to_string()),
+                            max_participant_number: None,
+                            max_ticket_per_address: None
+                        },
+                        raffle_ticket_price: AssetInfo::coin(10000u128, "uluna"),
+                        accumulated_ticket_fee: AssetInfo::coin(0u128, "uluna"),
+                        number_of_tickets: 0u32,
+                        randomness: None,
+                        winner: None
+                    })
+                },
+                RaffleResponse {
+                    raffle_id: 0,
+                    raffle_state: RaffleState::Started,
+                    raffle_info: Some(RaffleInfo {
+                        owner: deps.api.addr_validate("creator").unwrap(),
+                        asset: AssetInfo::cw721("nft", "token_id"),
+                        raffle_options: RaffleOptions{
+                            raffle_start_timestamp: env.block.time,
+                            raffle_duration: 1u64,
+                            raffle_timeout: 120u64,
+                            comment: None,
+                            max_participant_number: None,
+                            max_ticket_per_address: None
+                        },
+                        raffle_ticket_price: AssetInfo::coin(10000u128, "uluna"),
+                        accumulated_ticket_fee: AssetInfo::coin(0u128, "uluna"),
+                        number_of_tickets: 0u32,
+                        randomness: None,
+                        winner: None
+                    })
+                }
+            ]
+        );
+
+        // Testing the limit parameter
+        let response = query(
+            deps.as_ref(),
+            env.clone(),
+            QueryMsg::GetAllRaffles {
+                start_after: None,
+                limit: Some(1u32),
+                filters: None,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            from_binary::<AllRafflesResponse>(&response)
+                .unwrap()
+                .raffles,
+            vec![RaffleResponse {
+                raffle_id: 1,
+                raffle_state: RaffleState::Started,
+                raffle_info: Some(RaffleInfo {
+                    owner: deps.api.addr_validate("creator").unwrap(),
+                    asset: AssetInfo::cw721("nft", "token_id"),
+                    raffle_options: RaffleOptions{
+                        raffle_start_timestamp: env.block.time,
+                        raffle_duration: 1u64,
+                        raffle_timeout: 120u64,
+                        comment: Some("random things my dude".to_string()),
+                        max_participant_number: None,
+                        max_ticket_per_address: None
+                    },
+                    raffle_ticket_price: AssetInfo::coin(10000u128, "uluna"),
+                    accumulated_ticket_fee: AssetInfo::coin(0u128, "uluna"),
+                    number_of_tickets: 0u32,
+                    randomness: None,
+                    winner: None
+                })
+            }]
+        );
+
+        // Testing the start_after parameter
+        let response = query(
+            deps.as_ref(),
+            env.clone(),
+            QueryMsg::GetAllRaffles {
+                start_after: Some(1u64),
+                limit: None,
+                filters: None,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            from_binary::<AllRafflesResponse>(&response)
+                .unwrap()
+                .raffles,
+            vec![RaffleResponse {
+                raffle_id: 0,
+                raffle_state: RaffleState::Started,
+                raffle_info: Some(RaffleInfo {
+                    owner: deps.api.addr_validate("creator").unwrap(),
+                    asset: AssetInfo::cw721("nft", "token_id"),
+                    raffle_options: RaffleOptions{
+                        raffle_start_timestamp: env.block.time,
+                        raffle_duration: 1u64,
+                        raffle_timeout: 120u64,
+                        comment: None,
+                        max_participant_number: None,
+                        max_ticket_per_address: None
+                    },
+                    raffle_ticket_price: AssetInfo::coin(10000u128, "uluna"),
+                    accumulated_ticket_fee: AssetInfo::coin(0u128, "uluna"),
+                    number_of_tickets: 0u32,
+                    randomness: None,
+                    winner: None
+                })
+            }]
+        );
+
+        // Testing the filter parameter
+        buy_ticket_coin(deps.as_mut(), 1, "actor", coin(10000, "uluna"), 0u64).unwrap();
+        let response = query(
+            deps.as_ref(),
+            env.clone(),
+            QueryMsg::GetAllRaffles {
+                start_after: None,
+                limit: None,
+                filters: Some(QueryFilters {
+                    states: None,
+                    owner: None,
+                    ticket_depositor: Some(deps.api.addr_validate("actor").unwrap()),
+                    contains_token: None,
+                }),
+            },
+        )
+        .unwrap();
+        let raffles = from_binary::<AllRafflesResponse>(&response)
+            .unwrap()
+            .raffles;
+        assert_eq!(raffles.len(), 1);
+        assert_eq!(raffles[0].raffle_id, 1);
+
+        buy_ticket_coin(deps.as_mut(), 0, "actor", coin(10000, "uluna"), 0u64).unwrap();
+        buy_ticket_coin(deps.as_mut(), 0, "actor1", coin(10000, "uluna"), 0u64).unwrap();
+        let response = query(
+            deps.as_ref(),
+            env,
+            QueryMsg::GetAllRaffles {
+                start_after: None,
+                limit: None,
+                filters: Some(QueryFilters {
+                    states: None,
+                    owner: None,
+                    ticket_depositor: Some(deps.api.addr_validate("actor").unwrap()),
+                    contains_token: None,
+                }),
+            },
+        )
+        .unwrap();
+        let raffles = from_binary::<AllRafflesResponse>(&response)
+            .unwrap()
+            .raffles;
+        assert_eq!(raffles.len(), 2);
     }
 }
