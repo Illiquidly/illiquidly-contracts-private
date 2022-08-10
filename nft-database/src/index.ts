@@ -15,16 +15,23 @@ import {
 } from "./utils/blockchain/chains.js";
 
 
+const local_nft_list = require("../nft_list.json");
 
 async function registeredNFTs(network: string): Promise<string[]>{
+let nft_list_to_return: string[] = [];
+  if(local_nft_list[network]){
+        nft_list_to_return = Object.keys(local_nft_list[network])
+  }
+
   let nft_list = await axios
       .get(registered_nft_contracts);
   if(nft_list?.data[network]){
-    return Object.keys(nft_list.data[network])
+    return [...nft_list_to_return, ...Object.keys(nft_list.data[network])]
   }else{
-    return []
+    return nft_list_to_return
   }
 }
+
 
 function addFromWasmEvents(tx: any, nftsInteracted: any, chain_type: string) {
 
@@ -147,6 +154,8 @@ export async function updateInteractedNfts(
       if(start == null && stop == null){
         let registered = await registeredNFTs(network)
         registered.forEach((nft) => newNfts.add(nft));
+        console.log("quidddd", registered);
+
       }
 
       if (lastTxId != 0) {

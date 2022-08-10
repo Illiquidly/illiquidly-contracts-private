@@ -9,7 +9,15 @@
 			"symbol": "GLODEN",
 			"icon": "https://i0.wp.com/terrametaroyals.io/wp-content/uploads/2022/01/main_nft-removebg-preview.png?resize=150%2C150&ssl=1",
 			"homepage": "https://linktr.ee/terrametaroyals"
-    	}
+    	},
+    	"terra1ycp3azjymqckrdlzpp88zfyk6x09m658c2c63d":{
+                "contract": "terra1ycp3azjymqckrdlzpp88zfyk6x09m658c2c63d",
+                "name": "Space Toadz",
+                "symbol":"TOAD",
+                "icon":"https://spacetoadzterra.com/favicon.ico",
+                "homepage":"https://spacetoadzterra.com/"
+        }
+
     },
     "testnet": {
 	   	"terra19hasymrgld7794e3xg4uddp9lnmvlldhyj09es":{
