@@ -118,7 +118,7 @@ pub fn trade_filter(
                 .trade_info
                 .as_ref()
                 .unwrap()
-                .additionnal_info
+                .additional_info
                 .nfts_wanted
                 .contains(&api.addr_validate(wanted_nft).unwrap()),
             None => true,

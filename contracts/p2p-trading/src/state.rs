@@ -13,6 +13,11 @@ pub const TRADE_INFO: Map<u64, TradeInfo> = Map::new("trade_info");
 
 pub const COUNTER_TRADE_INFO: Map<(u64, u64), TradeInfo> = Map::new("counter_trade_info");
 
+pub const LAST_USER_TRADE: Map<&Addr, u64> = Map::new("last_user_trade");
+
+pub const LAST_USER_COUNTER_TRADE: Map<(&Addr, u64), u64> = Map::new("last_user_counter_trade");
+
+
 pub fn add_funds(
     fund: Coin,
     info_funds: Vec<Coin>,

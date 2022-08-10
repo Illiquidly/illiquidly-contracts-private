@@ -1,14 +1,12 @@
 use cosmwasm_std::{Addr, Deps, DepsMut, Env, MessageInfo, Response};
 
-use p2p_trading_export::msg::QueryFilters;
-use p2p_trading_export::state::{AdditionnalTradeInfo, AssetInfo, TradeInfo, TradeState};
+use p2p_trading_export::state::{AdditionalTradeInfo, AssetInfo, TradeInfo, TradeState};
 
 use crate::error::ContractError;
 use crate::messages::set_comment;
-use crate::query::query_counter_trades;
 use crate::state::{
     add_cw1155_coin, add_cw20_coin, add_cw721_coin, add_funds, can_suggest_counter_trade,
-    is_counter_trader, load_trade, COUNTER_TRADE_INFO, TRADE_INFO,
+    is_counter_trader, load_trade, COUNTER_TRADE_INFO, TRADE_INFO, LAST_USER_COUNTER_TRADE
 };
 use crate::trade::{
     _are_assets_in_trade, _create_receive_asset_messages, _create_withdraw_messages_unsafe,
@@ -23,21 +21,14 @@ pub fn get_last_counter_id_created(
     by: String,
     trade_id: u64,
 ) -> Result<u64, ContractError> {
-    let counter_trade = &query_counter_trades(
-        deps,
-        trade_id,
-        None,
-        Some(1),
-        Some(QueryFilters {
-            owner: Some(by),
-            ..QueryFilters::default()
-        }),
-    )?
-    .counter_trades[0];
-    Ok(counter_trade.counter_id.unwrap())
+    let owner = deps.api.addr_validate(&by)?;
+    LAST_USER_COUNTER_TRADE.load(deps.storage, (&owner, trade_id)).map_err(|_|ContractError::NotFoundInCounterTradeInfo {})
+
+
 }
 
 /// Create a new counter_trade and assign it a unique id for the specified `trade_id`
+/// Saves this counter_trade as the last one in the trade created by the user
 pub fn suggest_counter_trade(
     deps: DepsMut,
     env: Env,
@@ -72,7 +63,7 @@ pub fn suggest_counter_trade(
             Some(_) => Err(ContractError::ExistsInCounterTradeInfo {}),
             None => Ok(TradeInfo {
                 owner: info.sender.clone(),
-                additionnal_info: AdditionnalTradeInfo {
+                additional_info: AdditionalTradeInfo {
                     time: env.block.time,
                     ..Default::default()
                 },
@@ -80,6 +71,11 @@ pub fn suggest_counter_trade(
             }),
         },
     )?;
+
+    // We also set the last trade_id created to this id
+    LAST_USER_COUNTER_TRADE.save(deps.storage, (&info.sender, trade_id), &counter_id)?;
+
+    // And the eventual comment sent along with the transaction
     if let Some(comment) = comment {
         set_comment(deps, env, info.clone(), trade_id, Some(counter_id), comment)?;
     }
@@ -170,7 +166,7 @@ pub fn add_asset_to_counter_trade(
         .add_attribute("counter_trader", info.sender))
 }
 
-/// Allows to withdraw assets while creating a counter_trade, Refer to the `trade.rs`file for more information (similar mecanism)
+/// Allows to withdraw assets while creating a counter_trade, Refer to the `trade.rs`file for more information (similar mechanism)
 pub fn withdraw_counter_trade_assets_while_creating(
     deps: DepsMut,
     env: Env,
@@ -238,7 +234,7 @@ pub fn confirm_counter_trade(
 }
 
 /// Cancel a counter_trade
-/// The counter_trade isn't modifiable, but the funds are withdrawnable after this call.
+/// The counter_trade isn't modifiable, but the funds are withdrawable after this call.
 pub fn cancel_counter_trade(
     deps: DepsMut,
     _env: Env,

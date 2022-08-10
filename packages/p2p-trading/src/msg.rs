@@ -49,6 +49,26 @@ impl InstantiateMsg {
     }
 }
 
+
+
+
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AddAssetAction{
+    ToLastTrade{},
+    ToLastCounterTrade{
+        trade_id: u64
+    },
+    ToTrade{
+        trade_id: u64,
+    },
+    ToCounterTrade{
+        trade_id: u64,
+        counter_id: u64
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
@@ -57,10 +77,7 @@ pub enum ExecuteMsg {
         comment: Option<String>,
     },
     AddAsset {
-        trade_id: Option<u64>,
-        counter_id: Option<u64>,
-        to_last_trade: Option<bool>,
-        to_last_counter: Option<bool>,
+        action: AddAssetAction,
         asset: AssetInfo,
     },
     RemoveAssets {

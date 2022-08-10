@@ -9,37 +9,28 @@ use cw1155::Cw1155ExecuteMsg;
 use cw20::Cw20ExecuteMsg;
 use cw721::Cw721ExecuteMsg;
 
-use p2p_trading_export::msg::{into_cosmos_msg, QueryFilters};
+use p2p_trading_export::msg::{into_cosmos_msg};
 use p2p_trading_export::state::{
-    AdditionnalTradeInfo, AssetInfo, Comment, CounterTradeInfo, TradeInfo, TradeState,
+    AdditionalTradeInfo, AssetInfo, Comment, CounterTradeInfo, TradeInfo, TradeState,
 };
 
 use crate::error::ContractError;
 use crate::messages::set_comment;
-use crate::query::query_all_trades;
 use crate::state::{
     add_cw1155_coin, add_cw20_coin, add_cw721_coin, add_funds, is_trader, load_counter_trade,
-    CONTRACT_INFO, COUNTER_TRADE_INFO, TRADE_INFO,
+    CONTRACT_INFO, COUNTER_TRADE_INFO, TRADE_INFO, LAST_USER_TRADE
 };
 
 /// Query the last trade created by the owner.
 /// This should only be used in the same transaction as the trade creation.
 /// Otherwise, specify the trade_id directly in the transaction
 pub fn get_last_trade_id_created(deps: Deps, by: String) -> Result<u64, ContractError> {
-    Ok(query_all_trades(
-        deps,
-        None,
-        Some(1),
-        Some(QueryFilters {
-            owner: Some(by),
-            ..QueryFilters::default()
-        }),
-    )?
-    .trades[0]
-        .trade_id)
+    let owner = deps.api.addr_validate(&by)?;
+    LAST_USER_TRADE.load(deps.storage, &owner).map_err(|_|ContractError::NotFoundInTradeInfo {})
 }
 
-/// Create a new trade and assign it a unique id
+/// Create a new trade and assign it a unique id. 
+/// Saves this trade as the last one created by a user
 pub fn create_trade(
     deps: DepsMut,
     env: Env,
@@ -64,7 +55,7 @@ pub fn create_trade(
         Some(_) => Err(ContractError::ExistsInTradeInfo {}),
         None => Ok(TradeInfo {
             owner: info.sender.clone(),
-            additionnal_info: AdditionnalTradeInfo {
+            additional_info: AdditionalTradeInfo {
                 time: env.block.time,
                 ..Default::default()
             },
@@ -72,7 +63,7 @@ pub fn create_trade(
         }),
     })?;
 
-    // We add withlisted addresses
+    // We add whitelisted addresses
     if let Some(whitelist) = whitelisted_users {
         add_whitelisted_users(
             deps.storage,
@@ -83,6 +74,9 @@ pub fn create_trade(
             whitelist,
         )?;
     }
+
+    // We also set the last trade_id created to this id
+    LAST_USER_TRADE.save(deps.storage, &info.sender, &trade_id)?;
 
     // And the eventual comment sent along with the transaction
     if let Some(comment) = comment {
@@ -249,6 +243,8 @@ pub fn withdraw_trade_assets_while_creating(
     if trade_info.state != TradeState::Created {
         return Err(ContractError::TradeAlreadyPublished {});
     }
+
+    // We verify the assets the users want to withdraw are indeed in the transaction
     _are_assets_in_trade(&trade_info, &assets)?;
 
     // We withdraw the assets
@@ -369,13 +365,13 @@ pub fn _try_withdraw_assets_unsafe(
             AssetInfo::Coin(mut fund_info) => {
                 if let AssetInfo::Coin(fund) = asset {
                     // If everything is in order, we remove the coin from the trade
-                    fund_info.amount -= fund.amount;
+                    fund_info.amount = fund_info.amount.checked_sub(fund.amount).map_err(ContractError::Overflow)?;
                     trade_info.associated_assets[position] = AssetInfo::Coin(fund_info);
                 }
             }
             AssetInfo::Cw20Coin(mut token_info) => {
                 if let AssetInfo::Cw20Coin(token) = asset {
-                    token_info.amount -= token.amount;
+                    token_info.amount = token_info.amount.checked_sub(token.amount).map_err(ContractError::Overflow)?;
                     trade_info.associated_assets[position] = AssetInfo::Cw20Coin(token_info);
                 }
             }
@@ -387,7 +383,7 @@ pub fn _try_withdraw_assets_unsafe(
             }
             AssetInfo::Cw1155Coin(mut cw1155_info) => {
                 if let AssetInfo::Cw1155Coin(cw1155) = asset {
-                    cw1155_info.value -= cw1155.value;
+                    cw1155_info.value = cw1155_info.value.checked_sub(cw1155.value).map_err(ContractError::Overflow)?;
                     trade_info.associated_assets[position] = AssetInfo::Cw1155Coin(cw1155_info);
                 }
             }
@@ -565,8 +561,8 @@ pub fn add_nfts_wanted(
         prepare_trade_modification(deps.as_ref(), info.sender.clone(), trade_id)?;
     // We modify the nfts wanted
     let hash_set: HashSet<Addr> = HashSet::from_iter(validate_addresses(deps.api, &nfts_wanted)?);
-    trade_info.additionnal_info.nfts_wanted = trade_info
-        .additionnal_info
+    trade_info.additional_info.nfts_wanted = trade_info
+        .additional_info
         .nfts_wanted
         .union(&hash_set)
         .cloned()
@@ -596,7 +592,7 @@ pub fn remove_nfts_wanted(
     // We modify the whitelist
     let valid_nfts_wanted = validate_addresses(deps.api, &nfts_wanted)?;
     for nft in &valid_nfts_wanted {
-        trade_info.additionnal_info.nfts_wanted.remove(nft);
+        trade_info.additional_info.nfts_wanted.remove(nft);
     }
     TRADE_INFO.save(deps.storage, trade_id, &trade_info)?;
 
@@ -616,15 +612,18 @@ pub fn confirm_trade(
     info: MessageInfo,
     trade_id: Option<u64>,
 ) -> Result<Response, ContractError> {
-    // We verify the trade can ve published
+    // We verify the trade can be published
     let trade_id = trade_id_or_last(deps.as_ref(), info.sender.clone(), trade_id)?;
     let mut trade_info = is_trader(deps.storage, &info.sender, trade_id)?;
+
+    // We ensure the current trade state allows confirmation
     if trade_info.state != TradeState::Created {
         return Err(ContractError::CantChangeTradeState {
             from: trade_info.state,
             to: TradeState::Published,
         });
     }
+
     // We set the state as published
     trade_info.state = TradeState::Published;
     TRADE_INFO.save(deps.storage, trade_id, &trade_info)?;
@@ -672,8 +671,8 @@ pub fn accept_trade(
     trade_info.accepted_info = Some(accepted_info);
     TRADE_INFO.save(deps.storage, trade_id, &trade_info)?;
 
-    // We update the coounter info comment and state
-    counter_info.additionnal_info.trader_comment = comment.map(|comment| Comment {
+    // We update the counter info comment and state
+    counter_info.additional_info.trader_comment = comment.map(|comment| Comment {
         time: env.block.time,
         comment,
     });
@@ -763,7 +762,7 @@ pub fn withdraw_all_from_trade(
     if trade_info.state == TradeState::Created {
         trade_info.state = TradeState::Cancelled;
     }
-    // This funtion is only callable if the trade is cancelled
+    // This function is only callable if the trade is cancelled
     if trade_info.state != TradeState::Cancelled {
         return Err(ContractError::TradeNotCancelled {});
     }

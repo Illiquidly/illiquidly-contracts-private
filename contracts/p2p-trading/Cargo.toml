@@ -17,6 +17,9 @@ backtraces = ["cosmwasm-std/backtraces"]
 # use library feature to disable all instantiate/execute/query exports
 library = []
 
+[profile.release]
+overflow-checks = true
+
 [dependencies]
 # CosmWasm
 cw2 = "0.13.0"

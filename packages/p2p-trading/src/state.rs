@@ -66,7 +66,7 @@ pub struct CounterTradeInfo {
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug, Default)]
 #[serde(rename_all = "snake_case")]
-pub struct AdditionnalTradeInfo {
+pub struct AdditionalTradeInfo {
     pub time: Timestamp,
     pub owner_comment: Option<Comment>,
     pub trader_comment: Option<Comment>,
@@ -88,7 +88,7 @@ pub struct TradeInfo {
     pub state: TradeState,
     pub last_counter_id: Option<u64>,
     pub whitelisted_users: HashSet<Addr>,
-    pub additionnal_info: AdditionnalTradeInfo,
+    pub additional_info: AdditionalTradeInfo,
     pub accepted_info: Option<CounterTradeInfo>,
     pub assets_withdrawn: bool,
 }
@@ -101,7 +101,7 @@ impl Default for TradeInfo {
             state: TradeState::Created,
             last_counter_id: None,
             whitelisted_users: HashSet::new(),
-            additionnal_info: AdditionnalTradeInfo::default(),
+            additional_info: AdditionalTradeInfo::default(),
             accepted_info: None,
             assets_withdrawn: false,
         }
