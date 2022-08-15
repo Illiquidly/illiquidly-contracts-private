@@ -276,7 +276,6 @@ async function updateAddress(
     if (!network || !address || !currentData) {
       return;
     }
-    console.log(newContracts);
     currentData = await updateOwnedTokensAndSave(
       network,
       address,

@@ -18,11 +18,12 @@ import {
 const local_nft_list = require("../nft_list.json");
 
 async function registeredNFTs(network: string): Promise<string[]>{
-let nft_list_to_return: string[] = [];
+  let nft_list_to_return: string[] = [];
+  
   if(local_nft_list[network]){
         nft_list_to_return = Object.keys(local_nft_list[network])
   }
-
+  
   let nft_list = await axios
       .get(registered_nft_contracts);
   if(nft_list?.data[network]){
@@ -31,7 +32,6 @@ let nft_list_to_return: string[] = [];
     return nft_list_to_return
   }
 }
-
 
 function addFromWasmEvents(tx: any, nftsInteracted: any, chain_type: string) {
 
@@ -43,6 +43,9 @@ function addFromWasmEvents(tx: any, nftsInteracted: any, chain_type: string) {
         let from_contract = parsedLog.eventsByType.from_contract;
         if (from_contract) {
           if (from_contract.action) {
+            if(from_contract.contract_address.includes("terra1ycp3azjymqckrdlzpp88zfyk6x09m658c2c63d")){
+              console.log("ha")
+            }
             if (
               from_contract.action.includes('transfer_nft') ||
               from_contract.action.includes('send_nft') ||
@@ -143,7 +146,6 @@ export async function updateInteractedNfts(
         clearTimeout(axiosTimeout);
         return response;
       });
-    console.log('New fcd query done', offset);
     if (tx_data == null) {
       query_next = false;
     } else {
@@ -154,8 +156,6 @@ export async function updateInteractedNfts(
       if(start == null && stop == null){
         let registered = await registeredNFTs(network)
         registered.forEach((nft) => newNfts.add(nft));
-        console.log("quidddd", registered);
-
       }
 
       if (lastTxId != 0) {

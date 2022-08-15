@@ -1,7 +1,10 @@
 
+import {settenProject, settenKey } from "./setten-env.json";
+
 export const chains: any = {
   testnet: {
-    URL: 'https://pisco-lcd.terra.dev/',
+    //URL: 'https://pisco-lcd.terra.dev/',
+    URL: `https://lcd.pisco.terra.setten.io/${settenProject}?key=${settenKey}`,
     chainID: 'pisco-1'
   },
   classic: {
@@ -9,7 +12,8 @@ export const chains: any = {
     chainID: 'columbus-5',
   },
   mainnet: {
-    URL: 'https://phoenix-lcd.terra.dev',
+    //URL: 'https://phoenix-lcd.terra.dev',
+    URL: `https://lcd.phoenix.terra.setten.io/${settenProject}?key=${settenKey}`,
     chainID: 'phoenix-1'
   }
 };
