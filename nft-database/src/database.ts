@@ -10,7 +10,7 @@ import {
   parseCW20Set,
 } from "./CW20-querier.js";
 
-
+import _ from "lodash";
 import {
   chains 
 } from "./utils/blockchain/chains.js";
@@ -22,6 +22,8 @@ import toobusy from 'toobusy-js';
 import Redis from 'ioredis';
 import Redlock from 'redlock';
 import axios from 'axios';
+import { initNFTDB, quitNFTDB } from './mysql_db_access.js';
+import { getContractAddress } from '@terra-money/terra.js';
 
 
 type Nullable<T> = T | null;
@@ -59,14 +61,30 @@ interface TxQueried {
 
 interface ContractsInteracted {
   interactedContracts: Set<string>;
-  ownedTokens: any;
+  ownedCollections?: NFTInteracted[];
+  ownedTokens: TokenInteracted[];  
   state: UpdateState;
   txs: TxQueried;
 }
 
+export interface TokenInteracted{
+  tokenId: string;
+  collectionName: string;
+  contractAddress: string;
+  imageUrl: string;
+  nftInfo?: any
+}
+
+interface NFTInteracted{
+  name: string;
+  contract: string;
+}
+
+
 interface SerializableContractsInteracted {
-  interacted_contracts: string[];
-  ownedTokens: any;
+  interactedContracts: string[];
+  ownedCollections?: NFTInteracted[];
+  ownedTokens: TokenInteracted[];  
   state: UpdateState;
   txs: TxQueried;
 }
@@ -167,7 +185,8 @@ async function getDb(db: any, key: string): Promise<ContractsInteracted> {
 function defaultContractsApiStructure(): ContractsInteracted {
   return {
     interactedContracts: new Set(),
-    ownedTokens: {},
+    ownedCollections:[],
+    ownedTokens: [],
     state: UpdateState.Full,
     txs: {
       external: {
@@ -227,7 +246,7 @@ async function updateOwnedTokensAndSave(
   newContracts: Set<string>,
   currentData: ContractsInteracted,
   newTxs: TxInterval,
-  parseTokenSet: (n:string, c: Set<string>, a: string) => any
+  parseTokenSet: (n:string, c: Set<string>, a: string) => Promise<TokenInteracted[]>
 ) {
 
   // We start by updating the NFT object
@@ -241,10 +260,26 @@ async function updateOwnedTokensAndSave(
     currentData.interactedContracts = contracts;
     // We query what tokens are actually owned by the address
 
-    const ownedTokens: any = await parseTokenSet(network, newContracts, address);
-    Object.keys(ownedTokens).forEach((token) => {
-      currentData.ownedTokens[token] = ownedTokens[token];
+    const ownedTokens: TokenInteracted[] = await parseTokenSet(network, newContracts, address);
+
+    // We update the owned tokens
+    ownedTokens.forEach((token: TokenInteracted) => {
+      // First we find if the token data already exists in the array
+      let existingIndex = currentData.ownedTokens.findIndex(element => element.tokenId == token.tokenId && element.contractAddress == token.contractAddress);
+      if(existingIndex == -1){
+        currentData.ownedTokens.push(token)
+      }else{
+        currentData.ownedTokens[existingIndex] = token
+      }
     });
+
+    // We update the owned Contracts
+    currentData.ownedCollections = _.uniq(
+      currentData.ownedTokens.map((token)=>({
+        name: token.collectionName,
+        contract: token.contractAddress
+      }))
+    )
   }
 
   // Then we update the transactions we've already seen
@@ -486,6 +521,8 @@ async function main() {
     if (action == 'force_update') {
       currentData = defaultContractsApiStructure();
     }
+
+    await initNFTDB();
     currentData = await updateAddress(
       db,
       dbKey,
@@ -496,6 +533,7 @@ async function main() {
       updateInteractedNfts,
       parseNFTSet
     );
+    await quitNFTDB();
     clearTimeout(timeout);
 
     // We save the updated object to db and release the Lock on the database
@@ -518,6 +556,11 @@ async function main() {
     }
   });
 
+
+/* TODO outdated API, will have to update to conform to the NFT logic */
+
+
+/*
   // Query the current NFT database state and trigger update if necessary
   app.get('/cw20/query/:network/:address', async (req: any, res: any) => {
     const address = req.params.address;
@@ -575,7 +618,7 @@ async function main() {
     await releaseUpdateLock(lock);
     console.log('Released lock');
   });
-
+*/
   if (process.env.EXECUTION == 'PRODUCTION') {
     const options = {
       cert: fs.readFileSync('/home/illiquidly/identity/fullchain.pem'),

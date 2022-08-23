@@ -1,6 +1,8 @@
 import { LCDClient, TxLog } from '@terra-money/terra.js';
 import axios from 'axios';
 import pLimit from 'p-limit';
+import { TokenInteracted } from './database.js';
+import { addNftInfo, getNftInfo} from './mysql_db_access.js';
 const fs = require("fs");
 var cloudscraper = require('cloudscraper');
 
@@ -13,9 +15,12 @@ const AXIOS_TIMEOUT = 10_000;
 import {
   chains, fcds, registered_nft_contracts
 } from "./utils/blockchain/chains.js";
+import { asyncAction } from './utils/js/asyncAction.js';
 
 
 const local_nft_list = require("../nft_list.json");
+
+
 
 async function registeredNFTs(network: string): Promise<string[]>{
   let nft_list_to_return: string[] = [];
@@ -34,64 +39,48 @@ async function registeredNFTs(network: string): Promise<string[]>{
 }
 
 function addFromWasmEvents(tx: any, nftsInteracted: any, chain_type: string) {
-
-
-  if (tx.logs) {
-    for (let log of tx.logs) {
+    for (let log of tx?.logs) {
       if(chain_type == "classic"){
         let parsedLog = new TxLog(log.msg_index, log.log, log.events);
         let from_contract = parsedLog.eventsByType.from_contract;
-        if (from_contract) {
-          if (from_contract.action) {
-            if(from_contract.contract_address.includes("terra1ycp3azjymqckrdlzpp88zfyk6x09m658c2c63d")){
-              console.log("ha")
-            }
-            if (
-              from_contract.action.includes('transfer_nft') ||
-              from_contract.action.includes('send_nft') ||
-              from_contract.action.includes('mint')
-            ) {
-              from_contract.contract_address.forEach(
-                nftsInteracted.add,
-                nftsInteracted
-              );
-            }
+        if (from_contract?.action) {
+          if (
+            from_contract.action.includes('transfer_nft') ||
+            from_contract.action.includes('send_nft') ||
+            from_contract.action.includes('mint')
+          ) {
+            from_contract.contract_address.forEach(
+              nftsInteracted.add,
+              nftsInteracted
+            );
           }
         }
       }else{
         let parsedLog = new TxLog(log.msg_index, log.log, log.events);
         let from_contract = parsedLog.eventsByType.wasm;
-        if (from_contract) {
-            if (from_contract.action) {
-            if (
-              from_contract.action.includes('transfer_nft') ||
-              from_contract.action.includes('send_nft') ||
-              from_contract.action.includes('mint')
-            ) {
-              from_contract._contract_address.forEach(
-                nftsInteracted.add,
-                nftsInteracted
-              );
-            }
+        if (from_contract?.action) {
+          if (
+            from_contract.action.includes('transfer_nft') ||
+            from_contract.action.includes('send_nft') ||
+            from_contract.action.includes('mint')
+          ) {
+            from_contract._contract_address.forEach(
+              nftsInteracted.add,
+              nftsInteracted
+            );
           }
         }
       }
-    }
   }
   return nftsInteracted;
 }
 
-function getNftsFromTxList(tx_data: any, chain_type: string): [Set<string>, number, number] {
+function getNftsFromTxList(txData: any, chain_type: string): [Set<string>, number, number] {
   var nftsInteracted: Set<string> = new Set();
   let lastTxIdSeen = 0;
   let newestTxIdSeen = 0;
   // In case we are using cloudscraper to get rid of cloudflare
-  if(tx_data.data == undefined){
-    tx_data = {
-      data: JSON.parse(tx_data)
-    }
-  }
-  for (let tx of tx_data.data.txs) {
+  for (let tx of txData) {
     // We add NFTS interacted with
     nftsInteracted = addFromWasmEvents(tx, nftsInteracted, chain_type);
 
@@ -114,7 +103,6 @@ export async function updateInteractedNfts(
   callback: any,
   hasTimedOut: any = { timeout: false }
 ) {
-  let nftsInteracted: Set<string> = new Set();
   let query_next: boolean = true;
   let limit = 100;
   let offset;
@@ -133,55 +121,59 @@ export async function updateInteractedNfts(
     const axiosTimeout = setTimeout(() => {
       source.cancel();
     }, AXIOS_TIMEOUT);
-    let tx_data = await cloudscraper
+
+    let [error, tx_data] = await asyncAction(cloudscraper
       .get(
         `${fcds[network]}/v1/txs?offset=${offset}&limit=${limit}&account=${address}`,
         { cancelToken: source.token }
       )
-      .catch((_error: any) => {
-        console.log(_error);
-        return null;
-      })
-      .then((response: any) => {
-        clearTimeout(axiosTimeout);
-        return response;
-      });
-    if (tx_data == null) {
-      query_next = false;
+    )
+    clearTimeout(axiosTimeout);
+    if(error){
+      console.log(error.toJSON())
+    }
+    if(tx_data == null) {
+      break;
+    } 
+    let responseData = JSON.parse(tx_data);
+    
+    let txToAnalyse = responseData.txs;
+
+    // We analyse those transactions
+    // We query the NFTs from the transaction result and messages
+    let [newNfts, lastTxId, newestTxId] = getNftsFromTxList(txToAnalyse, network);
+
+    // If it's the first time we query the fcd, we need to add recognized NFTs 
+    // This step is done because some minted NFTs don't get recognized in mint, the receiver address is not recorded in the events
+    if(start == null && stop == null){
+      let registered = await registeredNFTs(network)
+      registered.forEach((nft) => newNfts.add(nft));
+    }
+
+    // We add the new interacted NFTs to the list of contracts interacted with. 
+    // We call the callback function to use those new nfts.
+    if (newNfts && callback) {
+        await callback(newNfts, {
+          newest: newestTxIdSeen,
+          oldest: lastTxIdSeen
+        });
+    }
+
+    // Finally we update the internal transaction logic, used to come back when there is an error or timeout
+    if (lastTxId != 0) {
+      offset = lastTxId;
     } else {
-      // We query the NFTs from the transaction result and messages
-      let [newNfts, lastTxId, newestTxId] = getNftsFromTxList(tx_data, network);
-
-      // If it's the first time we query the fcd, we need to add recognized NFTs (because some minted NFTs don't get recognized in mint)
-      if(start == null && stop == null){
-        let registered = await registeredNFTs(network)
-        registered.forEach((nft) => newNfts.add(nft));
-      }
-
-      if (lastTxId != 0) {
-        offset = lastTxId;
-      } else {
-        query_next = false;
-      }
-      if (newestTxIdSeen == null || newestTxId > newestTxIdSeen) {
-        newestTxIdSeen = newestTxId;
-      }
-      if (lastTxIdSeen == null || lastTxId < lastTxIdSeen) {
-        lastTxIdSeen = lastTxId;
-      }
-      // Stopping tests
-      if (stop != null && stop > lastTxIdSeen) {
-        query_next = false;
-      }
-      if (newNfts) {
-        newNfts.forEach((nft) => nftsInteracted.add(nft));
-        if (callback) {
-          await callback(newNfts, {
-            newest: newestTxIdSeen,
-            oldest: lastTxIdSeen
-          });
-        }
-      }
+      query_next = false;
+    }
+    if (newestTxIdSeen == null || newestTxId > newestTxIdSeen) {
+      newestTxIdSeen = newestTxId;
+    }
+    if (lastTxIdSeen == null || lastTxId < lastTxIdSeen) {
+      lastTxIdSeen = lastTxId;
+    }
+    // Stopping tests
+    if (stop != null && stop > lastTxIdSeen) {
+      query_next = false;
     }
   }
 
@@ -189,61 +181,59 @@ export async function updateInteractedNfts(
 }
 
 async function getOneTokenBatchFromNFT(
-  lcdClient: LCDClient,
+  network: string,
   address: string,
   nft: string,
   start_after: string | undefined = undefined
 ) {
-  return lcdClient.wasm
+  let lcdClient = new LCDClient(chains[network]);
+
+  let [error, tokenBatch] = await asyncAction(lcdClient.wasm
     .contractQuery(nft, {
       tokens: {
         owner: address,
         start_after: start_after,
-      	limit: 100,
+        limit: 100,
       }
-    })
-    .then((tokenId: any) => {
-      if (tokenId && tokenId.tokens) {
-        return Promise.all(
-          tokenId.tokens.map((id: string) =>
-            limitToken(() => getOneTokenInfo(lcdClient, nft, id))
-          )
-        ).catch(() =>
-          tokenId.tokens.map((token_id: any) => ({
-            tokenId: token_id,
-            nftInfo: {}
-          }))
-        );
-      }
-    })
-    .catch((_error) => {
-        //console.log(_error);
-    });
+  }))
+
+  if (tokenBatch?.tokens) {
+    let [infoError, tokenInfos] = await asyncAction(Promise.all(
+      tokenBatch.tokens.map((id: string) =>
+        limitToken(() => getOneTokenInfo(network, nft, id))
+      )
+    ))
+    if(infoError){
+      console.log(infoError)
+      return tokenBatch.tokens.map((token_id: any) => ({
+        tokenId: token_id,
+        nftInfo: {}
+      }))
+    }
+    return tokenInfos
+  }
+
 }
 
 async function parseTokensFromOneNft(
-  lcdClient: LCDClient,
+  network: string,
   address: string,
   nft: string
 ) {
   let tokens: any;
   let start_after: string | undefined = undefined;
   let last_tokens: any;
-  let allTokens: any = {};
+  let allTokens: any = [];
   do {
     tokens = await getOneTokenBatchFromNFT(
-      lcdClient,
+      network,
       address,
       nft,
       start_after
     );
     if (tokens && tokens.length > 0) {
       start_after = tokens[tokens.length - 1].tokenId;
-      let tokenExport = Object.assign(
-        {},
-        ...tokens.map((token: any) => ({ [token.tokenId]: token }))
-      );
-      allTokens = { ...allTokens, ...tokenExport };
+      allTokens = [ ...allTokens, ...tokens ];
     }
     if (_.isEqual(last_tokens, tokens) && tokens) {
       // If we have the same response twice, we stop, it's not right
@@ -253,33 +243,60 @@ async function parseTokensFromOneNft(
   } while (tokens && tokens.length > 0);
 
   if (Object.keys(allTokens).length === 0) {
-    return {
-      [nft]: {
-        contract: nft,
-        tokens: {}
-      }
-    };
+    return []
   } else {
-    return {
-      [nft]: {
-        contract: nft,
-        tokens: allTokens
-      }
-    };
+    return allTokens
   }
 }
 
-async function getOneTokenInfo(lcdClient: LCDClient, nft: string, id: string) {
-  return lcdClient.wasm
+async function getCachedNFTInfo(network: string, nft: string){
+  let [err, cachedInfo] = await asyncAction(getNftInfo(network, nft));  
+
+  if(cachedInfo?.[0]?.name){
+    return {
+      name: cachedInfo[0]?.name,
+      symbol: cachedInfo[0]?.symbol
+    }
+  }
+  // If there is no cached info, we get the distant info
+  let [lcdErr, newInfo] = await asyncAction(getDistantNftInfo(network, nft))
+
+  if(newInfo){
+    await addNftInfo([{
+      network: network, 
+      nftAddress: nft,
+      name: newInfo.name,
+      symbol: newInfo.symbol,
+    }])
+  }
+  return newInfo
+}
+
+async function getDistantNftInfo(network: string, nft: string) {
+
+  let lcdClient = new LCDClient(chains[network]);
+  let [error, nftInfo] = await asyncAction(lcdClient.wasm
+    .contractQuery(nft, {
+      contract_info: { }
+    }));
+  return {
+    name: nftInfo.name,
+    symbol: nftInfo.symbol
+  };
+}
+
+async function getOneTokenInfo(network: string, nft: string, id: string) {
+
+  let lcdClient = new LCDClient(chains[network]);
+  let [error, tokenInfo] = await asyncAction(lcdClient.wasm
     .contractQuery(nft, {
       nft_info: { token_id: id }
-    })
-    .then((nftInfo: any) => {
-      return {
-        tokenId: id,
-        nftInfo: nftInfo
-      };
-    });
+    }));
+
+  return {
+    tokenId: id,
+    nftInfo: tokenInfo
+  };
 }
 
 // We limit the request concurrency to 10 elements
@@ -287,52 +304,24 @@ export async function parseNFTSet(
   network: string,
   nfts: Set<string> | string[],
   address: string
-) {
-  let lcdClient: LCDClient;
-  lcdClient = new LCDClient(chains[network]);
+): Promise<TokenInteracted []> {
 
-  let promiseArray = Array.from(nfts).map(async (nft) => {
-    return limitNFT(() => parseTokensFromOneNft(lcdClient, address, nft));
-  });
+  let nftsArray = Array.from(nfts)
+  let [error, nftsOwned] = await asyncAction(Promise.all(nftsArray.map(async (nft) => {
+    return limitNFT(() => parseTokensFromOneNft(network, address, nft));
+  })));
 
-  return await Promise.all(promiseArray).then((response: any) => {
-    let owned_nfts = {};
-    response.forEach((response: any) => {
-      if (response) {
-        owned_nfts = { ...owned_nfts, ...response };
-      }
-    });
-    return owned_nfts;
-  });
+  let [infoError, nftsInfo] = await asyncAction(Promise.all(nftsArray.map(async (nft) => {
+    return limitNFT(() => getCachedNFTInfo(network, nft));
+  })));
+
+  return nftsOwned.map((nftContract: any[], i: number)=>{
+    return nftContract.map((token: any)=>({
+      tokenId: token.tokenId,
+      contractAddress: nftsArray[i],
+      collectionName: nftsInfo?.[i]?.name,
+      imageUrl: token.nftInfo?.extension?.image,
+      nftInfo: token.nftInfo,
+    }))
+  }).flat()
 }
-
-export async function main() {
-  let testnet = 'testnet';
-  let testnet_address = 'terra17lmam6zguazs5q5u6z5mmx76uj63gldnse2pdp';
-  testnet_address = 'terra17lmam6zguazs5q5u6z5mmx76uj63gldnse2pdp';
-
-  let owned_nfts = await parseNFTSet(
-    testnet,
-    new Set(['terra1q30g8fvancxm4v5te07r2zprh2mqpuy3a0k8mj']),
-    testnet_address
-  );
-  console.log(owned_nfts);
-
-  let test = await updateInteractedNfts(
-    testnet,
-    testnet_address,
-    null,
-    null,
-    null
-  );
-  console.log(test);
-
-  owned_nfts = await parseNFTSet(
-    testnet,
-    new Set(['terra1q30g8fvancxm4v5te07r2zprh2mqpuy3a0k8mj']),
-    testnet_address
-  );
-  console.log(owned_nfts);
-}
-
-//main()
