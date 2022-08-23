@@ -42,6 +42,7 @@ async function createNFTInfoDB(){
 }
 
 async function flushDB() {
+  await knexDB.schema.dropTable('token_info').catch(() => {});
   await knexDB.schema.dropTable('nft_info').catch(() => {});
 }
 
@@ -69,7 +70,7 @@ async function getNftInfo(network: string, nft_address: string){
       nftAddress: info.nft_address,
       name: info.name,
       symbol: info.symbol
-    })
+    }))
 }
 
 async function getNftInfoByName(network: string, nft_name: string){
@@ -80,7 +81,7 @@ async function getNftInfoByName(network: string, nft_name: string){
       nftAddress: info.nft_address,
       name: info.name,
       symbol: info.symbol
-    })
+    }))
 }
 
 
