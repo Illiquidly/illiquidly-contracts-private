@@ -42,7 +42,7 @@ if(process.env.IDLE_UPDATE_INTERVAL == undefined){
 }
 const IDLE_UPDATE_INTERVAL = parseInt(process.env.IDLE_UPDATE_INTERVAL);
 
-const PORT = 8080;
+const PORT = process.env.PORT
 
 enum UpdateState {
   Full,
@@ -133,7 +133,7 @@ function fillEmpty(currentData: Nullable<ContractsInteracted>): ContractsInterac
 }
 
 async function acquireUpdateLock(lock: any, key: string) {
-  return await lock.acquire([key + 'updateLock'], UPDATE_DESPITE_LOCK_TIME);
+  return await lock.acquire([`${key}_updateLock_${process.env.DB_VERSION!}`], UPDATE_DESPITE_LOCK_TIME);
 }
 
 async function releaseUpdateLock(lock: any) {
@@ -141,12 +141,12 @@ async function releaseUpdateLock(lock: any) {
 }
 
 async function lastUpdateStartTime(db: any, key: string): Promise<number> {
-  let updateTime = await db.get(key + '_updateStartTime');
+  let updateTime = await db.get(`${key}_updateStartTime${process.env.DB_VERSION!}`);
   return parseInt(updateTime);
 }
 
 async function setLastUpdateStartTime(db: any, key: string, time: number) {
-  await db.set(key + '_updateStartTime', time);
+  await db.set(`${key}_updateStartTime${process.env.DB_VERSION!}`, time);
 }
 
 function serialise(currentData: ContractsInteracted): SerializableContractsInteracted {
@@ -372,11 +372,11 @@ async function updateAddress(
 }
 
 function toTokenKey(network: string, address: string) {
-  return `token:${address}@${network}`;
+  return `token:${address}@${network}_${process.env.DB_VERSION!}`;
 }
 
 function toNFTKey(network: string, address: string) {
-  return `nft:${address}@${network}`;
+  return `nft:${address}@${network}_${process.env.DB_VERSION!}`;
 }
 
 const acceptedActions = [undefined, "plain_db", "update","force_update"]
@@ -624,7 +624,7 @@ async function main() {
       cert: fs.readFileSync('/home/illiquidly/identity/fullchain.pem'),
       key: fs.readFileSync('/home/illiquidly/identity/privkey.pem')
     };
-    https.createServer(options, app).listen(8443);
+    https.createServer(options, app).listen(process.env.HTTPS_PORT);
   }
 }
 main();
