@@ -2,6 +2,10 @@
 import {settenProject, settenKey } from "./setten-env.json";
 
 export const chains: any = {
+  devnet: {
+    URL: 'http://localhost:1317',
+    chainId: 'localterra'
+  },
   testnet: {
     //URL: 'https://pisco-lcd.terra.dev/',
     URL: `https://lcd.pisco.terra.setten.io/${settenProject}?key=${settenKey}`,

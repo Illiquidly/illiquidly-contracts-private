@@ -314,14 +314,19 @@ export async function parseNFTSet(
   let [infoError, nftsInfo] = await asyncAction(Promise.all(nftsArray.map(async (nft) => {
     return limitNFT(() => getCachedNFTInfo(network, nft));
   })));
+  console.log(nftsInfo)
 
   return nftsOwned.map((nftContract: any[], i: number)=>{
     return nftContract.map((token: any)=>({
       tokenId: token.tokenId,
       contractAddress: nftsArray[i],
       collectionName: nftsInfo?.[i]?.name,
-      imageUrl: token.nftInfo?.extension?.image,
-      nftInfo: token.nftInfo,
+      allNftInfo: token.nftInfo,
+      imageUrl: token.nftInfo?.extension?.image,// fromIPFSImageURLtoImageURL(nftInfo?.extension?.image)
+      description: token.nftInfo?.extension?.description,
+      name: token.nftInfo?.extension?.name,
+      attributes: token.nftInfo?.extension?.attributes,
+      traits:  (token.nftInfo?.extension?.attributes ?? []).map( ({ trait_type, value }:       { traitType: string; value: string }) => [trait_type,value,]),
     }))
   }).flat()
 }

@@ -67,17 +67,27 @@ interface ContractsInteracted {
   txs: TxQueried;
 }
 
+
+interface NFTAttribute {
+  displayType?: string
+  traitType: string
+  value: string
+}
+
 export interface TokenInteracted{
   tokenId: string;
   collectionName: string;
   contractAddress: string;
   imageUrl: string;
-  nftInfo?: any
+  name?: string;
+  attributes?: NFTAttribute[]
+  traits?: [string, string][]
+  otherNFTInfo?:any 
 }
 
 interface NFTInteracted{
-  name: string;
-  contract: string;
+  collectionName: string;
+  collectionAddress: string;
 }
 
 
@@ -276,8 +286,8 @@ async function updateOwnedTokensAndSave(
     // We update the owned Contracts
     currentData.ownedCollections = _.uniq(
       currentData.ownedTokens.map((token)=>({
-        name: token.collectionName,
-        contract: token.contractAddress
+        collectionName: token.collectionName,
+        collectionAddress: token.contractAddress
       }))
     )
   }

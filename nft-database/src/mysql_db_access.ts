@@ -9,9 +9,10 @@ async function initNFTDB() {
       host: '127.0.0.1',
       user: 'illiquidly',
       password: 'illiquidly',
-      database: 'TRADES'
+      database: 'ILLIQUIDLY'
     }
   });
+  console.log("db illiquidly")
   await flushDB();
   await createNFTInfoDB();
 }
@@ -38,7 +39,7 @@ async function createNFTInfoDB(){
       table.string("symbol")
       table.unique(["network","nft_address"])
     })
-    .catch(() => console.log('Counter Trade table exists already'));
+    .catch(() => console.log('NFT Info table exists already'));
 }
 
 async function flushDB() {
@@ -62,10 +63,19 @@ async function addNftInfo(nftInfo: any[]) {
 
 async function getNftInfo(network: string, nft_address: string){
   return (await knexDB("nft_info").select("*")
-    
     .where("network", network)
     .where("nft_address", nft_address)
     
+    ).map((info)=>({
+      nftAddress: info.nft_address,
+      name: info.name,
+      symbol: info.symbol
+    }))
+}
+
+async function getAllNftInfo(network: string, nft_name: string){
+  return (await knexDB("nft_info").select("*")
+    .where("network", network)
     ).map((info)=>({
       nftAddress: info.nft_address,
       name: info.name,
@@ -86,6 +96,7 @@ async function getNftInfoByName(network: string, nft_name: string){
 
 
 
+
 export {
   flushDB,
   initNFTDB,
@@ -93,5 +104,6 @@ export {
   createNFTInfoDB,
   addNftInfo,
   getNftInfo,
+  getAllNftInfo,
   getNftInfoByName,
 };
