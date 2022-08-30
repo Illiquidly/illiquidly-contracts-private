@@ -5,7 +5,7 @@ import { TokenInteracted } from './database.js';
 import { addNftInfo, getNftInfo} from './mysql_db_access.js';
 const fs = require("fs");
 var cloudscraper = require('cloudscraper');
-
+import camelCaseObjectDeep from "camelcase-object-deep"
 var _ = require('lodash');
 
 const limitNFT = pLimit(10);
@@ -16,6 +16,7 @@ import {
   chains, fcds, registered_nft_contracts
 } from "./utils/blockchain/chains.js";
 import { asyncAction } from './utils/js/asyncAction.js';
+import { fromIPFSImageURLtoImageURL } from './utils/blockchain/ipfs.js';
 
 
 const local_nft_list = require("../nft_list.json");
@@ -317,16 +318,19 @@ export async function parseNFTSet(
   console.log(nftsInfo)
 
   return nftsOwned.map((nftContract: any[], i: number)=>{
-    return nftContract.map((token: any)=>({
-      tokenId: token.tokenId,
-      contractAddress: nftsArray[i],
-      collectionName: nftsInfo?.[i]?.name,
-      allNftInfo: token.nftInfo,
-      imageUrl: token.nftInfo?.extension?.image,// fromIPFSImageURLtoImageURL(nftInfo?.extension?.image)
-      description: token.nftInfo?.extension?.description,
-      name: token.nftInfo?.extension?.name,
-      attributes: token.nftInfo?.extension?.attributes,
-      traits:  (token.nftInfo?.extension?.attributes ?? []).map( ({ trait_type, value }:       { traitType: string; value: string }) => [trait_type,value,]),
-    }))
+    return nftContract.map((token: any)=>{
+      let tokenNftInfo = camelCaseObjectDeep(token.nftInfo)
+      return {
+        tokenId: token.tokenId,
+        contractAddress: nftsArray[i],
+        collectionName: nftsInfo?.[i]?.name,
+        allNftInfo: tokenNftInfo,
+        imageUrl: fromIPFSImageURLtoImageURL(tokenNftInfo?.extension?.image),
+        description: tokenNftInfo?.extension?.description,
+        name: tokenNftInfo?.extension?.name,
+        attributes: tokenNftInfo?.extension?.attributes,
+        traits:  (tokenNftInfo?.extension?.attributes ?? []).map( ({ traitType, value }:       { traitType: string; value: string }) => [traitType,value,]),
+      }
+    })
   }).flat()
 }
