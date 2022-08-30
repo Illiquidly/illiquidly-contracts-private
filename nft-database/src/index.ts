@@ -252,7 +252,6 @@ async function parseTokensFromOneNft(
 
 async function getCachedNFTInfo(network: string, nft: string){
   let [err, cachedInfo] = await asyncAction(getNftInfo(network, nft));  
-
   if(cachedInfo?.[0]?.name){
     return {
       name: cachedInfo[0]?.name,
@@ -261,7 +260,6 @@ async function getCachedNFTInfo(network: string, nft: string){
   }
   // If there is no cached info, we get the distant info
   let [lcdErr, newInfo] = await asyncAction(getDistantNftInfo(network, nft))
-
   if(newInfo){
     await addNftInfo([{
       network: network, 
@@ -315,7 +313,6 @@ export async function parseNFTSet(
   let [infoError, nftsInfo] = await asyncAction(Promise.all(nftsArray.map(async (nft) => {
     return limitNFT(() => getCachedNFTInfo(network, nft));
   })));
-  console.log(nftsInfo)
 
   return nftsOwned.map((nftContract: any[], i: number)=>{
     return nftContract.map((token: any)=>{

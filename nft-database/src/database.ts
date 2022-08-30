@@ -284,11 +284,12 @@ async function updateOwnedTokensAndSave(
     });
 
     // We update the owned Contracts
-    currentData.ownedCollections = _.uniq(
+    currentData.ownedCollections = _.uniqBy(
       currentData.ownedTokens.map((token)=>({
         collectionName: token.collectionName,
         collectionAddress: token.contractAddress
-      }))
+      })),
+      "collectionAddress"
     )
   }
 
