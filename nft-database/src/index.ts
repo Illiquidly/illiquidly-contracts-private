@@ -365,7 +365,6 @@ export async function parseNFTSet(
       });
     })
     .flat();
-=======
 ): Promise<TokenInteracted []> {
 
   let nftsArray = Array.from(nfts)
@@ -393,5 +392,4 @@ export async function parseNFTSet(
       }
     })
   }).flat()
->>>>>>> cef37b55258bc7565ea8bce2aa53432d9824ac5d
 }
