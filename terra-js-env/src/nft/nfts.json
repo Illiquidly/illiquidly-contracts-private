@@ -1,0 +1,106 @@
+{
+  "terra18728qmpsrkemfhjllgntuet9e7qycuqh252rpqqy5ygfdn6k08ks29t5zx":{
+    "nft":{
+      "minter": "terra1jw45gtcxzs9r3evdwexryzq5lzk224a7mmvv2e",
+      "name": "dystopAI",
+      "symbol": "DYSTOPAI"
+    },
+    "token":{
+      "token_uri": "ipfs://QmWJgobrC2e1dKZJEtQ2K5WXgFnmHZqkp1mXEgxK7Ycvgy",
+      "extension": {
+        "image": "ipfs://QmRZZU3ni2tzHumZRMeoBRKGawRCUv2L3X2aKw7gDYXTRv",
+        "image_data": null,
+        "external_url": null,
+        "description": "1 of 750 AI-generated scenes from the apocalypse",
+        "name": "dystopAI 406",
+        "attributes": [
+          {
+            "display_type": null,
+            "trait_type": "Faction",
+            "value": "The Fallout of the North"
+          },
+          {
+            "display_type": null,
+            "trait_type": "Type",
+            "value": "Cityscape"
+          },
+          {
+            "display_type": null,
+            "trait_type": "Timeline",
+            "value": "Era of Enlightenment"
+          },
+          {
+            "display_type": null,
+            "trait_type": "Secret",
+            "value": ""
+          }
+        ],
+        "background_color": null,
+        "animation_url": null,
+        "youtube_url": null
+      }
+    }
+  },
+    "terra1pw2svczz3s0kgspc8ejm6lxlhmdskutynzfryre0me69kdj0u90qxhnvxj":{
+    "nft":{
+      "name": "Galactic Punks",
+      "symbol": "GP",
+      "minter": "terra16wuzgsx3tz4hkqu73q5s7unxenefkkvefvewsh"
+    },
+    "token":{
+      "token_uri": "ipfs://Qme33WAJnKgVoTSpiSb9yUpC9UweumhqwY5LLzQoNQCMtb",
+      "extension": {
+        "image": "ipfs://QmfWJt9wtYDDpq7U2twW6kgUJG5QR8NyKXCqVvoHBmzjff",
+        "image_data": null,
+        "external_url": null,
+        "description": "Galactic Punks are 10,921 randomly generated NFTs on the Terra blockchain.",
+        "name": "Galactic Punk #9092",
+        "attributes": [
+          {
+            "display_type": null,
+            "trait_type": "backgrounds",
+            "value": "green planet landed night"
+          },
+          {
+            "display_type": null,
+            "trait_type": "suits",
+            "value": "captain"
+          },
+          {
+            "display_type": null,
+            "trait_type": "species",
+            "value": "terrarian neptune 2"
+          },
+          {
+            "display_type": null,
+            "trait_type": "jewelry",
+            "value": "silver earring and chain"
+          },
+          {
+            "display_type": null,
+            "trait_type": "face",
+            "value": "tear drop"
+          },
+          {
+            "display_type": null,
+            "trait_type": "hair",
+            "value": "neat brown"
+          },
+          {
+            "display_type": null,
+            "trait_type": "glasses",
+            "value": "3d"
+          },
+          {
+            "display_type": null,
+            "trait_type": "headware",
+            "value": "halo"
+          }
+        ],
+        "background_color": null,
+        "animation_url": null,
+        "youtube_url": null
+      }
+    }
+  }
+}

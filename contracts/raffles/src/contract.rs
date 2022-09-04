@@ -186,26 +186,6 @@ pub fn execute_renounce(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Re
         .add_attribute("value", contract_info.owner))
 }
 
-/// Replace the current fee_contract with the provided fee_contract address
-/// * `fee_addr` must be a valid Terra address
-pub fn set_new_fee_addr(
-    deps: DepsMut,
-    _env: Env,
-    info: MessageInfo,
-    fee_addr: String,
-) -> Result<Response, ContractError> {
-    let mut contract_info = is_owner(deps.storage, info.sender)?;
-
-    let fee_addr = deps.api.addr_validate(&fee_addr)?;
-    contract_info.fee_addr = fee_addr.clone();
-    CONTRACT_INFO.save(deps.storage, &contract_info)?;
-
-    Ok(Response::new()
-        .add_attribute("action", "modify_parameter")
-        .add_attribute("parameter", "fee_addr")
-        .add_attribute("value", fee_addr))
-}
-
 pub fn execute_toggle_lock(
     deps: DepsMut,
     _env: Env,
@@ -359,7 +339,7 @@ pub mod tests {
     use cosmwasm_std::{
         coin, coins, from_binary,
         testing::{mock_dependencies, mock_env, mock_info, MOCK_CONTRACT_ADDR},
-        Api, BankMsg, Coin, SubMsg, SubMsgResponse,
+        Api, BankMsg, Coin, SubMsg, SubMsgResponse, Attribute
     };
     use raffles_export::msg::{into_cosmos_msg, DrandRandomness, QueryFilters, VerifierExecuteMsg};
     use raffles_export::state::{AssetInfo, Cw721Coin, RaffleInfo, RaffleState, RaffleOptions, RaffleOptionsMsg};
@@ -413,6 +393,30 @@ pub mod tests {
                 }),
                 raffle_options: RaffleOptionsMsg::default(),
                 raffle_ticket_price: AssetInfo::coin(10000u128, "uluna")
+            },
+        )
+    }
+
+    fn create_raffle_by_receiving(deps: DepsMut, nft: &str, token_id: &str) -> Result<Response> {
+        let info = mock_info(nft, &[]);
+        let env = mock_env();
+
+        execute(
+            deps,
+            env,
+            info,
+            ExecuteMsg::ReceiveNft {
+                sender: "creator".to_string(),
+                token_id: token_id.to_string(),
+                msg: to_binary(&ExecuteMsg::CreateRaffle {
+                    owner: Some("creator".to_string()),
+                    asset: AssetInfo::Cw721Coin(Cw721Coin {
+                        address: nft.to_string(),
+                        token_id: token_id.to_string(),
+                    }),
+                    raffle_options: RaffleOptionsMsg::default(),
+                    raffle_ticket_price: AssetInfo::coin(10000u128, "uluna")
+                }).unwrap()
             },
         )
     }
@@ -549,6 +553,22 @@ pub mod tests {
                 )
                 .unwrap()
             )]
+        );
+    }
+
+    #[test]
+    fn test_create_raffle_receive() {
+        let mut deps = mock_dependencies();
+        init_helper(deps.as_mut());
+        let response = create_raffle_by_receiving(deps.as_mut(),"nft","token_id").unwrap();
+
+        assert_eq!(
+            response.attributes,
+            vec![
+                Attribute::new("action","create_raffle"),
+                Attribute::new("raffle_id",0.to_string()),
+                Attribute::new("owner","creator")
+            ]
         );
     }
 
@@ -1014,6 +1034,7 @@ pub mod tests {
             },
         )
         .unwrap();
+
         assert_eq!(
             CONTRACT_INFO
                 .load(&deps.storage)
@@ -1256,7 +1277,7 @@ pub mod tests {
                 filters: Some(QueryFilters {
                     states: None,
                     owner: None,
-                    ticket_depositor: Some(deps.api.addr_validate("actor").unwrap()),
+                    ticket_depositor: Some("actor".to_string()),
                     contains_token: None,
                 }),
             },
@@ -1279,7 +1300,7 @@ pub mod tests {
                 filters: Some(QueryFilters {
                     states: None,
                     owner: None,
-                    ticket_depositor: Some(deps.api.addr_validate("actor").unwrap()),
+                    ticket_depositor: Some("actor".to_string()),
                     contains_token: None,
                 }),
             },

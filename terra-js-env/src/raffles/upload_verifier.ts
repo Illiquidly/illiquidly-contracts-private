@@ -10,7 +10,7 @@ async function main() {
     '../artifacts/randomness_verifier.wasm'
   );
 
-  // Initialize p2p contract
+  // Initialize the verifier contract
   let initMsg = {
   };
   console.log(initMsg)

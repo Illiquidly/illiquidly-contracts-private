@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 #[cfg(not(feature = "library"))]
-use cosmwasm_std::{Addr, Api, Deps, Env, Order, StdResult};
+use cosmwasm_std::{Api, Deps, Env, Order, StdResult};
 
 use cw_storage_plus::Bound;
 use schemars::JsonSchema;
@@ -83,9 +83,9 @@ pub fn query_ticket_number(
     deps: Deps,
     _env: Env,
     raffle_id: u64,
-    ticket_depositor: Addr,
+    ticket_depositor: String,
 ) -> Result<u32> {
-    Ok(USER_TICKETS.load(deps.storage, (&ticket_depositor, raffle_id))?)
+    Ok(USER_TICKETS.load(deps.storage, (&deps.api.addr_validate(&ticket_depositor)?, raffle_id))?)
 }
 
 /// Query all raffles using ALL filters 
@@ -116,11 +116,11 @@ pub fn query_all_raffles_by_depositor(
 
     let start = start_after.map(Bound::exclusive);
 
-    let ticket_depositor = filters
+    let ticket_depositor = deps.api.addr_validate(&filters
         .clone()
         .ok_or_else(|| anyhow!(ContractError::Unauthorized {}))?
         .ticket_depositor
-        .ok_or_else(|| anyhow!(ContractError::Unauthorized {}))?;
+        .ok_or_else(|| anyhow!(ContractError::Unauthorized {}))?)?;
 
     let mut raffles = USER_TICKETS
         .prefix(&ticket_depositor)

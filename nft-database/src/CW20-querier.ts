@@ -11,9 +11,7 @@ export interface TxInterval {
   newest: number | null;
 }
 
-import {
-  chains, fcds
-} from "./utils/blockchain/chains.js";
+import { chains, fcds } from './utils/blockchain/chains.js';
 
 function addFromWasmEvents(tx: any, CW20Interacted: any) {
   if (tx.logs) {
@@ -47,10 +45,10 @@ function getCW20sFromTxList(tx_data: any): [Set<string>, number, number] {
   let lastTxIdSeen = 0;
   let newestTxIdSeen = 0;
   // In case we are using cloudscraper to get rid of cloudflare
-  if(tx_data.data == undefined){
+  if (tx_data.data == undefined) {
     tx_data = {
       data: JSON.parse(tx_data)
-    }
+    };
   }
   for (let tx of tx_data.data.txs) {
     // We add NFTS interacted with

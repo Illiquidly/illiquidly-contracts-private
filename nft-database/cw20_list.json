@@ -1,11 +1,5 @@
 {
-    "mainnet": {
-        
-    },
-    "classic":{
-
-    },
-    "testnet": {
-	   
-    }
+  "mainnet": {},
+  "classic": {},
+  "testnet": {}
 }

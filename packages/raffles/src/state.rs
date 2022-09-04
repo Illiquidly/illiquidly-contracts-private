@@ -12,7 +12,7 @@ pub const MAXIMUM_PARTICIPANT_NUMBER: u64 = 1000;
 */
 
 pub const MINIMUM_RAFFLE_DURATION: u64 = 1;
-pub const MINIMUM_RAFFLE_TIMEOUT: u64 = 120; // The raffle duration is a least 2 minutes
+pub const MINIMUM_RAFFLE_TIMEOUT: u64 = 120; // The raffle timeout is a least 2 minutes
 pub const MINIMUM_RAND_FEE: u128 = 1; // The randomness provider gets at least 1/10_000 of the total raffle price
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

@@ -38,7 +38,7 @@ pub fn execute_create_raffle(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
-    owner: Option<Addr>,
+    owner: Option<String>,
     asset: AssetInfo,
     raffle_ticket_price: AssetInfo,
     raffle_options: RaffleOptionsMsg
@@ -73,10 +73,11 @@ pub fn execute_create_raffle(
         _ => return Err(anyhow!(ContractError::WrongAssetType {})),
     };
     // Then we create the internal raffle structure
+    let owner = owner.map(|x|deps.api.addr_validate(&x)).transpose()?;
     let raffle_id = _create_raffle(
         deps,
         env,
-        owner.unwrap_or_else(|| info.sender.clone()),
+        owner.clone().unwrap_or_else(|| info.sender.clone()),
         asset,
         raffle_ticket_price,
         raffle_options
@@ -86,7 +87,7 @@ pub fn execute_create_raffle(
         .add_message(transfer_message)
         .add_attribute("action", "create_raffle")
         .add_attribute("raffle_id", raffle_id.to_string())
-        .add_attribute("owner", info.sender))
+        .add_attribute("owner", owner.unwrap_or_else(|| info.sender.clone()),))
 }
 
 /// Create a new raffle by depositing assets.
@@ -121,10 +122,11 @@ pub fn execute_receive_nft(
                         return  Err(anyhow!(ContractError::AssetMismatch {}))
                     }
                     // The asset is a match, we can create the raffle object and return
+                    let owner = owner.map(|x| deps.api.addr_validate(&x)).transpose()?;
                     let raffle_id = _create_raffle(
                         deps,
                         env,
-                        owner.unwrap_or(sender),
+                        owner.clone().unwrap_or_else(||sender.clone()),
                         asset,
                         raffle_ticket_price,
                         raffle_options
@@ -133,7 +135,8 @@ pub fn execute_receive_nft(
                     Ok(Response::new()
                         .add_attribute("action", "create_raffle")
                         .add_attribute("raffle_id", raffle_id.to_string())
-                        .add_attribute("owner", info.sender))
+                        .add_attribute("owner", owner.unwrap_or(sender))
+                        )
                 }
                 _ => Err(anyhow!(ContractError::AssetMismatch {})),
             }
@@ -177,10 +180,11 @@ pub fn execute_receive_1155(
                         return Err(anyhow!(ContractError::AssetMismatch {}))
                     }
                     // The asset is a match, we can create the raffle object and return
+                    let owner = owner.map(|x| deps.api.addr_validate(&x)).transpose()?;
                     let raffle_id = _create_raffle(
                         deps,
                         env,
-                        owner.unwrap_or(sender),
+                        owner.clone().unwrap_or_else(||sender.clone()),
                         asset,
                         raffle_ticket_price,
                         raffle_options
@@ -189,7 +193,7 @@ pub fn execute_receive_1155(
                     Ok(Response::new()
                         .add_attribute("action", "create_raffle")
                         .add_attribute("raffle_id", raffle_id.to_string())
-                        .add_attribute("owner", info.sender))
+                        .add_attribute("owner", owner.unwrap_or(sender)))
                 }
                 _ => Err(anyhow!(ContractError::AssetMismatch {})),
             }
@@ -319,12 +323,12 @@ pub fn execute_receive(
                         && amount_received == amount
                     {
                         // The asset is a match, we can create the raffle object and return
-                        _buy_ticket(deps, env, sender, raffle_id, sent_assets)?;
+                        _buy_ticket(deps, env, sender.clone(), raffle_id, sent_assets)?;
 
                         Ok(Response::new()
-                            .add_attribute("action", "create_raffle")
+                            .add_attribute("action", "buy_ticket")
                             .add_attribute("raffle_id", raffle_id.to_string())
-                            .add_attribute("owner", info.sender))
+                            .add_attribute("owner", sender))
                     } else {
                         Err(anyhow!(ContractError::AssetMismatch {}))
                     }

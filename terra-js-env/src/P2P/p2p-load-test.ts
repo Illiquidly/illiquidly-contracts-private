@@ -1,5 +1,5 @@
-import { Address } from './terra_utils';
-import { env } from './env_helper';
+import { Address } from '../terra_utils';
+import { env } from '../env_helper';
 import { MsgExecuteContract } from '@terra-money/terra.js';
 
 function getContractLog(response: any) {

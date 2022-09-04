@@ -15,7 +15,7 @@ async function main() {
   // First we approve the contract for the NFT
 
   let response = await raffle_contract.execute.buy_ticket({
-   raffle_id: 0,
+   raffle_id: 4,
    sent_assets:{
     coin:{
       denom: "uluna",

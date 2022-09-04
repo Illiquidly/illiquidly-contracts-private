@@ -5,6 +5,9 @@ function getContractLog(response: any) {
   return response.logs[0].eventsByType.from_contract;
 }
 
+const duration_progress = require('progressbar').create().step('buy ticket zone')
+const timeout_progress = require('progressbar').create().step('randomness zone')
+
 /// Here we want to upload the p2p contract and add the fee contract
 async function main() {
 
@@ -27,7 +30,8 @@ async function main() {
   })
   console.log(response)
 
-  response = await raffle_contract.execute.create_raffle({
+  let raffle_duration = 120;
+  let msg = {
     asset: {
       cw721_coin:{
         address: nft.address,
@@ -40,11 +44,32 @@ async function main() {
         amount: "476"
       }
     },
-    raffle_duration: 120,
-    max_participant_number: 4000
+    raffle_options: {
+      max_participant_number: 4000,
+      raffle_duration,
+    }
 
-  })
+  }
+  console.log(msg);
+  response = await raffle_contract.execute.create_raffle(msg)
   console.log(response)
+
+  duration_progress.setTotal(raffle_duration)
+  setInterval(()=>{
+    if(duration_progress.getTick() == duration_progress.getTotal() - 1){
+      timeout_progress.setTotal(raffle_duration)
+      setInterval(()=>{
+        
+        if(timeout_progress.getTick() < timeout_progress.getTotal()){
+          timeout_progress.addTick()
+        }
+      }, 1000)
+    }
+    if(duration_progress.getTick() < duration_progress.getTotal()){
+      duration_progress.addTick()
+    }
+  }, 1000)
+
 }
 
 main()

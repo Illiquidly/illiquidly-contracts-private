@@ -1,5 +1,5 @@
-import { Address } from './terra_utils';
-import { env, add_uploaded_token, add_contract } from './env_helper';
+import { Address } from '../terra_utils';
+import { env, add_uploaded_token, add_contract } from '../env_helper';
 import {MsgMigrateContract, MsgUpdateContractAdmin } from "@terra-money/terra.js";
 import * as fs from 'fs';
 

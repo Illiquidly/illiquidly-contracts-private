@@ -1,6 +1,6 @@
 use crate::state::{AssetInfo, RaffleOptionsMsg};
 use anyhow::Result;
-use cosmwasm_std::{to_binary, Addr, Binary, CosmosMsg, StdError, StdResult, Uint128, WasmMsg};
+use cosmwasm_std::{to_binary, Binary, CosmosMsg, StdError, StdResult, Uint128, WasmMsg};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -70,7 +70,7 @@ pub struct DrandRandomness {
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
     CreateRaffle {
-        owner: Option<Addr>,
+        owner: Option<String>,
         asset: AssetInfo,
         raffle_options: RaffleOptionsMsg,
         raffle_ticket_price: AssetInfo,
@@ -119,8 +119,8 @@ pub enum ExecuteMsg {
 #[serde(rename_all = "snake_case")]
 pub struct QueryFilters {
     pub states: Option<Vec<String>>,
-    pub owner: Option<Addr>,
-    pub ticket_depositor: Option<Addr>,
+    pub owner: Option<String>,
+    pub ticket_depositor: Option<String>,
     pub contains_token: Option<String>,
 }
 
@@ -137,7 +137,7 @@ pub enum QueryMsg {
         filters: Option<QueryFilters>,
     },
     TicketNumber {
-        owner: Addr,
+        owner: String,
         raffle_id: u64,
     },
 }

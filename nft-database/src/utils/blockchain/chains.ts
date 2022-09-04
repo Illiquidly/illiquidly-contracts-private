@@ -1,5 +1,4 @@
-
-import {settenProject, settenKey } from "./setten-env.json";
+import { settenProject, settenKey } from './setten-env.json';
 
 export const chains: any = {
   devnet: {
@@ -13,7 +12,7 @@ export const chains: any = {
   },
   classic: {
     URL: 'https://columbus-lcd.terra.dev',
-    chainID: 'columbus-5',
+    chainID: 'columbus-5'
   },
   mainnet: {
     //URL: 'https://phoenix-lcd.terra.dev',
@@ -28,4 +27,5 @@ export let fcds: any = {
   mainnet: 'https://phoenix-fcd.terra.dev'
 };
 
-export const registered_nft_contracts: any = "https://assets.terra.money/cw721/contracts.json";
+export const registeredNftContracts: any =
+  'https://assets.terra.money/cw721/contracts.json';
