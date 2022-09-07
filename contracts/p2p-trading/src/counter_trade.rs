@@ -6,7 +6,7 @@ use crate::error::ContractError;
 use crate::messages::set_comment;
 use crate::state::{
     add_cw1155_coin, add_cw20_coin, add_cw721_coin, add_funds, can_suggest_counter_trade,
-    is_counter_trader, load_trade, COUNTER_TRADE_INFO, TRADE_INFO, LAST_USER_COUNTER_TRADE
+    is_counter_trader, load_trade, COUNTER_TRADE_INFO, LAST_USER_COUNTER_TRADE, TRADE_INFO,
 };
 use crate::trade::{
     _are_assets_in_trade, _create_receive_asset_messages, _create_withdraw_messages_unsafe,
@@ -22,9 +22,9 @@ pub fn get_last_counter_id_created(
     trade_id: u64,
 ) -> Result<u64, ContractError> {
     let owner = deps.api.addr_validate(&by)?;
-    LAST_USER_COUNTER_TRADE.load(deps.storage, (&owner, trade_id)).map_err(|_|ContractError::NotFoundInCounterTradeInfo {})
-
-
+    LAST_USER_COUNTER_TRADE
+        .load(deps.storage, (&owner, trade_id))
+        .map_err(|_| ContractError::NotFoundInCounterTradeInfo {})
 }
 
 /// Create a new counter_trade and assign it a unique id for the specified `trade_id`

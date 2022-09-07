@@ -85,10 +85,13 @@ pub fn query_ticket_number(
     raffle_id: u64,
     ticket_depositor: String,
 ) -> Result<u32> {
-    Ok(USER_TICKETS.load(deps.storage, (&deps.api.addr_validate(&ticket_depositor)?, raffle_id))?)
+    Ok(USER_TICKETS.load(
+        deps.storage,
+        (&deps.api.addr_validate(&ticket_depositor)?, raffle_id),
+    )?)
 }
 
-/// Query all raffles using ALL filters 
+/// Query all raffles using ALL filters
 pub fn query_all_raffles(
     deps: Deps,
     env: Env,
@@ -116,11 +119,13 @@ pub fn query_all_raffles_by_depositor(
 
     let start = start_after.map(Bound::exclusive);
 
-    let ticket_depositor = deps.api.addr_validate(&filters
-        .clone()
-        .ok_or_else(|| anyhow!(ContractError::Unauthorized {}))?
-        .ticket_depositor
-        .ok_or_else(|| anyhow!(ContractError::Unauthorized {}))?)?;
+    let ticket_depositor = deps.api.addr_validate(
+        &filters
+            .clone()
+            .ok_or_else(|| anyhow!(ContractError::Unauthorized {}))?
+            .ticket_depositor
+            .ok_or_else(|| anyhow!(ContractError::Unauthorized {}))?,
+    )?;
 
     let mut raffles = USER_TICKETS
         .prefix(&ticket_depositor)
@@ -154,7 +159,7 @@ pub fn query_all_raffles_by_depositor(
     Ok(AllRafflesResponse { raffles })
 }
 
-/// Query all raffles without ticket_depositor filters 
+/// Query all raffles without ticket_depositor filters
 /// Returns an empty raffle_info if none where found in the BASE_LIMIT first results
 pub fn query_all_raffles_raw(
     deps: Deps,

@@ -19,11 +19,11 @@ pub const RAFFLE_INFO: Map<u64, RaffleInfo> = Map::new("raffle_info");
 pub const RAFFLE_TICKETS: Map<(u64, u32), Addr> = Map::new("raffle_tickets");
 pub const USER_TICKETS: Map<(&Addr, u64), u32> = Map::new("user_tickets");
 
-// We use the same structure as nft token_ids that allows to have a bi-directional storage facility
-
-// This function is largely inspired (and even directly copied) from https://github.com/confio/rand/.
-// Part of the randomness flow was inspired from https://github.com/scrtlabs/secret-raffle/ and https://github.com/LoTerra/terrand-contract-step1/
-
+/// This function is largely inspired (and even directly copied) from https://github.com/LoTerra/terrand-contract-step1/
+/// This function actually simply calls an external contract that checks the randomness origin
+/// This architecture was chosen because the imported libraries needed to verify signatures and very heavy and won't upload.
+/// Separating into 2 contracts seems to help with that
+/// For more info about randomness, visit : https://drand.love/
 pub fn assert_randomness_origin_and_order(
     deps: Deps,
     owner: Addr,
@@ -36,7 +36,7 @@ pub fn assert_randomness_origin_and_order(
     if let Some(local_randomness) = raffle_info.randomness {
         if randomness.round <= local_randomness.randomness_round {
             return Err(anyhow!(ContractError::RandomnessNotAccepted {
-                round: randomness.round
+                current_round: local_randomness.randomness_round
             }));
         }
     }
@@ -62,10 +62,20 @@ pub fn is_owner(storage: &dyn Storage, sender: Addr) -> Result<ContractInfo, Con
     }
 }
 
-pub fn get_raffle_winner(deps: Deps, env: Env, raffle_id: u64, raffle_info: RaffleInfo) -> Result<Addr> {
+/// Picking the winner of the raffle was inspried by https://github.com/scrtlabs/secret-raffle/
+/// We know the odds are not exactly perfect with this architecture
+/// --> that's not how you select a true random number from an interval, but 1/4_294_967_295 is quite small anyway
+pub fn get_raffle_winner(
+    deps: Deps,
+    env: Env,
+    raffle_id: u64,
+    raffle_info: RaffleInfo,
+) -> Result<Addr> {
     // We initiate the random number generator
-    if raffle_info.randomness.is_none(){
-        return Err(anyhow!(ContractError::WrongStateForClaim{status: get_raffle_state(env, raffle_info)}));
+    if raffle_info.randomness.is_none() {
+        return Err(anyhow!(ContractError::WrongStateForClaim {
+            status: get_raffle_state(env, raffle_info)
+        }));
     }
     let mut rng: Prng = Prng::new(&raffle_info.randomness.unwrap().randomness);
 
@@ -76,18 +86,24 @@ pub fn get_raffle_winner(deps: Deps, env: Env, raffle_id: u64, raffle_info: Raff
     Ok(winner)
 }
 
+/// Queries the raffle state
+/// This function depends on the block time to return the RaffleState.
+/// As actions can only happen in certain time-periods, you have to be careful when testing off-chain
+/// If the chains stops or the block time is not accurate we might get some errors (let's hope it never happens)
 pub fn get_raffle_state(env: Env, raffle_info: RaffleInfo) -> RaffleState {
     if env.block.time < raffle_info.raffle_options.raffle_start_timestamp {
         RaffleState::Created
     } else if env.block.time
         < raffle_info
-            .raffle_options.raffle_start_timestamp
+            .raffle_options
+            .raffle_start_timestamp
             .plus_seconds(raffle_info.raffle_options.raffle_duration)
     {
         RaffleState::Started
     } else if env.block.time
         < raffle_info
-            .raffle_options.raffle_start_timestamp
+            .raffle_options
+            .raffle_start_timestamp
             .plus_seconds(raffle_info.raffle_options.raffle_duration)
             .plus_seconds(raffle_info.raffle_options.raffle_timeout)
         || raffle_info.randomness.is_none()
@@ -106,6 +122,7 @@ pub fn load_raffle(storage: &dyn Storage, raffle_id: u64) -> Result<RaffleInfo> 
         .map_err(|_| anyhow!(ContractError::NotFoundInRaffleInfo {}))
 }
 
+/// Can only buy a ticket when the raffle has started and is not closed
 pub fn can_buy_ticket(env: Env, raffle_info: RaffleInfo) -> Result<()> {
     if get_raffle_state(env, raffle_info) == RaffleState::Started {
         Ok(())
@@ -114,14 +131,7 @@ pub fn can_buy_ticket(env: Env, raffle_info: RaffleInfo) -> Result<()> {
     }
 }
 
-pub fn get_asset_amount(asset: AssetInfo) -> Result<Uint128> {
-    match asset {
-        AssetInfo::Cw20Coin(coin) => Ok(coin.amount),
-        AssetInfo::Coin(coin) => Ok(coin.amount),
-        _ => Err(anyhow!(ContractError::WrongFundsType {})),
-    }
-}
-
+/// Util to get the winner messages to return when claiming a Raffle (returns the raffled asset)
 pub fn get_raffle_winner_message(env: Env, raffle_info: RaffleInfo) -> Result<CosmosMsg> {
     match raffle_info.asset {
         AssetInfo::Cw721Coin(nft) => {
@@ -147,19 +157,20 @@ pub fn get_raffle_winner_message(env: Env, raffle_info: RaffleInfo) -> Result<Co
     }
 }
 
+/// Util to get the organizers and helpers messages to return when claiming a Raffle (returns the funds)
 pub fn get_raffle_owner_finished_messages(
     storage: &dyn Storage,
     _env: Env,
     raffle_info: RaffleInfo,
 ) -> Result<Vec<CosmosMsg>> {
     let contract_info = CONTRACT_INFO.load(storage)?;
-    match raffle_info.accumulated_ticket_fee {
+    match raffle_info.raffle_ticket_price {
         AssetInfo::Cw20Coin(coin) => {
             // We start by splitting the fees between owner, treasury and radomness provider
-            let rand_amount = coin.amount * contract_info.rand_fee / Uint128::from(10_000u128);
-            let treasury_amount =
-                coin.amount * contract_info.raffle_fee / Uint128::from(10_000u128);
-            let owner_amount = coin.amount - rand_amount - treasury_amount;
+            let total_paid = coin.amount * Uint128::from(u128::from(raffle_info.number_of_tickets));
+            let rand_amount = total_paid * contract_info.rand_fee / Uint128::from(10_000u128);
+            let treasury_amount = total_paid * contract_info.raffle_fee / Uint128::from(10_000u128);
+            let owner_amount = total_paid - rand_amount - treasury_amount;
 
             let mut messages: Vec<CosmosMsg> = vec![];
             if rand_amount != Uint128::zero() {
@@ -193,10 +204,10 @@ pub fn get_raffle_owner_finished_messages(
         }
         AssetInfo::Coin(coin) => {
             // We start by splitting the fees between owner, treasury and radomness provider
-            let rand_amount = coin.amount * contract_info.rand_fee / Uint128::from(10_000u128);
-            let treasury_amount =
-                coin.amount * contract_info.raffle_fee / Uint128::from(10_000u128);
-            let owner_amount = coin.amount - rand_amount - treasury_amount;
+            let total_paid = coin.amount * Uint128::from(u128::from(raffle_info.number_of_tickets));
+            let rand_amount = total_paid * contract_info.rand_fee / Uint128::from(10_000u128);
+            let treasury_amount = total_paid * contract_info.raffle_fee / Uint128::from(10_000u128);
+            let owner_amount = total_paid - rand_amount - treasury_amount;
 
             let mut messages: Vec<CosmosMsg> = vec![];
             if rand_amount != Uint128::zero() {

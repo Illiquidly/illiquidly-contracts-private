@@ -9,7 +9,7 @@ use cw1155::Cw1155ExecuteMsg;
 use cw20::Cw20ExecuteMsg;
 use cw721::Cw721ExecuteMsg;
 
-use p2p_trading_export::msg::{into_cosmos_msg};
+use p2p_trading_export::msg::into_cosmos_msg;
 use p2p_trading_export::state::{
     AdditionalTradeInfo, AssetInfo, Comment, CounterTradeInfo, TradeInfo, TradeState,
 };
@@ -18,7 +18,7 @@ use crate::error::ContractError;
 use crate::messages::set_comment;
 use crate::state::{
     add_cw1155_coin, add_cw20_coin, add_cw721_coin, add_funds, is_trader, load_counter_trade,
-    CONTRACT_INFO, COUNTER_TRADE_INFO, TRADE_INFO, LAST_USER_TRADE
+    CONTRACT_INFO, COUNTER_TRADE_INFO, LAST_USER_TRADE, TRADE_INFO,
 };
 
 /// Query the last trade created by the owner.
@@ -26,10 +26,12 @@ use crate::state::{
 /// Otherwise, specify the trade_id directly in the transaction
 pub fn get_last_trade_id_created(deps: Deps, by: String) -> Result<u64, ContractError> {
     let owner = deps.api.addr_validate(&by)?;
-    LAST_USER_TRADE.load(deps.storage, &owner).map_err(|_|ContractError::NotFoundInTradeInfo {})
+    LAST_USER_TRADE
+        .load(deps.storage, &owner)
+        .map_err(|_| ContractError::NotFoundInTradeInfo {})
 }
 
-/// Create a new trade and assign it a unique id. 
+/// Create a new trade and assign it a unique id.
 /// Saves this trade as the last one created by a user
 pub fn create_trade(
     deps: DepsMut,
@@ -365,13 +367,19 @@ pub fn _try_withdraw_assets_unsafe(
             AssetInfo::Coin(mut fund_info) => {
                 if let AssetInfo::Coin(fund) = asset {
                     // If everything is in order, we remove the coin from the trade
-                    fund_info.amount = fund_info.amount.checked_sub(fund.amount).map_err(ContractError::Overflow)?;
+                    fund_info.amount = fund_info
+                        .amount
+                        .checked_sub(fund.amount)
+                        .map_err(ContractError::Overflow)?;
                     trade_info.associated_assets[position] = AssetInfo::Coin(fund_info);
                 }
             }
             AssetInfo::Cw20Coin(mut token_info) => {
                 if let AssetInfo::Cw20Coin(token) = asset {
-                    token_info.amount = token_info.amount.checked_sub(token.amount).map_err(ContractError::Overflow)?;
+                    token_info.amount = token_info
+                        .amount
+                        .checked_sub(token.amount)
+                        .map_err(ContractError::Overflow)?;
                     trade_info.associated_assets[position] = AssetInfo::Cw20Coin(token_info);
                 }
             }
@@ -383,7 +391,10 @@ pub fn _try_withdraw_assets_unsafe(
             }
             AssetInfo::Cw1155Coin(mut cw1155_info) => {
                 if let AssetInfo::Cw1155Coin(cw1155) = asset {
-                    cw1155_info.value = cw1155_info.value.checked_sub(cw1155.value).map_err(ContractError::Overflow)?;
+                    cw1155_info.value = cw1155_info
+                        .value
+                        .checked_sub(cw1155.value)
+                        .map_err(ContractError::Overflow)?;
                     trade_info.associated_assets[position] = AssetInfo::Cw1155Coin(cw1155_info);
                 }
             }

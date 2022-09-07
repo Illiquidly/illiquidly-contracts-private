@@ -12,7 +12,7 @@ use crate::state::{
     is_fee_contract, is_owner, load_counter_trade, load_trade, CONTRACT_INFO, COUNTER_TRADE_INFO,
     TRADE_INFO,
 };
-use p2p_trading_export::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg, AddAssetAction};
+use p2p_trading_export::msg::{AddAssetAction, ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
 use p2p_trading_export::state::{AssetInfo, ContractInfo, TradeState};
 
 use crate::counter_trade::{
@@ -76,16 +76,7 @@ pub fn execute(
             comment,
         } => create_trade(deps, env, info, whitelisted_users, comment),
 
-        ExecuteMsg::AddAsset {
-            action,
-            asset,
-        } => add_asset(
-            deps,
-            env,
-            info,
-            action,
-            asset,
-        ),
+        ExecuteMsg::AddAsset { action, asset } => add_asset(deps, env, info, action, asset),
         ExecuteMsg::RemoveAssets {
             trade_id,
             counter_id,
@@ -289,23 +280,18 @@ pub fn add_asset(
     asset: AssetInfo,
 ) -> Result<Response, ContractError> {
     // We implement 4 different cases here.
-    match action{
-        AddAssetAction::ToLastTrade{}=>{
-            add_asset_to_trade(deps, env, info, None, asset)
-        },
-        AddAssetAction::ToLastCounterTrade{trade_id}=>
-            add_asset_to_counter_trade(
-            deps,
-            env,
-            info,
+    match action {
+        AddAssetAction::ToLastTrade {} => add_asset_to_trade(deps, env, info, None, asset),
+        AddAssetAction::ToLastCounterTrade { trade_id } => {
+            add_asset_to_counter_trade(deps, env, info, trade_id, None, asset)
+        }
+        AddAssetAction::ToTrade { trade_id } => {
+            add_asset_to_trade(deps, env, info, Some(trade_id), asset)
+        }
+        AddAssetAction::ToCounterTrade {
             trade_id,
-            None,
-            asset,
-        ),
-        AddAssetAction::ToTrade{trade_id}=>
-            add_asset_to_trade(deps, env, info, Some(trade_id), asset),
-        AddAssetAction::ToCounterTrade{trade_id, counter_id}=>
-            add_asset_to_counter_trade(deps, env, info, trade_id, Some(counter_id), asset)
+            counter_id,
+        } => add_asset_to_counter_trade(deps, env, info, trade_id, Some(counter_id), asset),
     }
 }
 
@@ -597,9 +583,7 @@ pub mod tests {
             env,
             info,
             ExecuteMsg::AddAsset {
-                action: AddAssetAction::ToTrade{
-                    trade_id
-                },
+                action: AddAssetAction::ToTrade { trade_id },
                 asset,
             },
         )
@@ -1446,7 +1430,7 @@ pub mod tests {
                 env.clone(),
                 info,
                 ExecuteMsg::AddAsset {
-                    action: AddAssetAction::ToLastTrade{},
+                    action: AddAssetAction::ToLastTrade {},
                     asset: AssetInfo::Cw20Coin(Cw20Coin {
                         address: "cw20".to_string(),
                         amount: Uint128::from(100u64),
@@ -1461,7 +1445,7 @@ pub mod tests {
                 env,
                 info,
                 ExecuteMsg::AddAsset {
-                    action: AddAssetAction::ToLastTrade{},
+                    action: AddAssetAction::ToLastTrade {},
                     asset: AssetInfo::Coin(coin(97u128, "uluna")),
                 },
             )
@@ -3019,8 +3003,9 @@ pub mod tests {
             env,
             info,
             ExecuteMsg::AddAsset {
-                action: AddAssetAction::ToCounterTrade{trade_id,
-                    counter_id
+                action: AddAssetAction::ToCounterTrade {
+                    trade_id,
+                    counter_id,
                 },
                 asset,
             },
@@ -3390,9 +3375,7 @@ pub mod tests {
                 env.clone(),
                 info,
                 ExecuteMsg::AddAsset {
-                    action: AddAssetAction::ToLastCounterTrade{
-                        trade_id: 0
-                    },
+                    action: AddAssetAction::ToLastCounterTrade { trade_id: 0 },
                     asset: AssetInfo::Cw20Coin(Cw20Coin {
                         address: "cw20".to_string(),
                         amount: Uint128::from(100u64),
@@ -3407,9 +3390,7 @@ pub mod tests {
                 env,
                 info,
                 ExecuteMsg::AddAsset {
-                    action: AddAssetAction::ToLastCounterTrade{
-                        trade_id: 0
-                    },
+                    action: AddAssetAction::ToLastCounterTrade { trade_id: 0 },
                     asset: AssetInfo::Coin(coin(97u128, "uluna")),
                 },
             )

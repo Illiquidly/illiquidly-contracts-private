@@ -43,8 +43,8 @@ pub enum ContractError {
     #[error("Too much tickets were already purchased for this raffle")]
     TooMuchTickets {},
 
-    #[error("The provided randomness is invalid current round : {round:?}")]
-    RandomnessNotAccepted { round: u64 },
+    #[error("The provided randomness is invalid current round : {current_round:?}")]
+    RandomnessNotAccepted { current_round: u64 },
 
     #[error("This raffle is not ready to accept new randomness. Only Closed raffles can be decided upon. Current status : {status:?}")]
     WrongStateForRandmness { status: RaffleState },

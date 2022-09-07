@@ -1,6 +1,6 @@
 use strum_macros;
 
-use cosmwasm_std::{coin, Addr, Binary, Coin, Timestamp, Uint128, Env};
+use cosmwasm_std::{coin, Addr, Binary, Coin, Env, Timestamp, Uint128};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -106,47 +106,50 @@ pub struct ContractInfo {
     pub owner: Addr,
     pub fee_addr: Addr,
     pub last_raffle_id: Option<u64>,
-    pub minimum_raffle_duration: u64,
-    pub minimum_raffle_timeout: u64,
-    pub raffle_fee: Uint128, // in 10_000
-    pub rand_fee: Uint128,   // in 10_000
-    pub lock: bool,
-    pub drand_url: String,
-    pub verify_signature_contract: Addr,
-    pub random_pubkey: Binary,
+    pub minimum_raffle_duration: u64, // The minimum interval in which users can buy raffle tickets
+    pub minimum_raffle_timeout: u64, // The minimum interval during which users can provide entropy to the contract
+    pub raffle_fee: Uint128, // in 10_000, the percentage of the resulting ticket-tokens that will go to the treasury
+    pub rand_fee: Uint128, // in 10_000, the percentage of the resulting ticket-tokens that will go to the entropy provider
+    pub lock: bool,        // Wether the contract can accept new raffles
+    pub drand_url: String, // The drand provider url (to find the right entropy provider)
+    pub verify_signature_contract: Addr, // The contract that can verify the entropy signature
+    pub random_pubkey: Binary, // The public key of the randomness provider, to verify entropy origin
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "snake_case")]
-pub struct RaffleOptions{
+pub struct RaffleOptions {
     pub raffle_start_timestamp: Timestamp, // If not specified, starts immediately
     pub raffle_duration: u64,
     pub raffle_timeout: u64,
     pub comment: Option<String>,
     pub max_participant_number: Option<u32>,
-    pub max_ticket_per_address: Option<u32>
+    pub max_ticket_per_address: Option<u32>,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug, Default)]
 #[serde(rename_all = "snake_case")]
-pub struct RaffleOptionsMsg{
+pub struct RaffleOptionsMsg {
     pub raffle_start_timestamp: Option<Timestamp>, // If not specified, starts immediately
     pub raffle_duration: Option<u64>,
     pub raffle_timeout: Option<u64>,
     pub comment: Option<String>,
     pub max_participant_number: Option<u32>,
-    pub max_ticket_per_address: Option<u32>
+    pub max_ticket_per_address: Option<u32>,
 }
 
-impl RaffleOptions{
-    pub fn new(env: Env, raffle_options: RaffleOptionsMsg, contract_info: ContractInfo) -> Self{
-        Self{
-             raffle_start_timestamp: raffle_options.raffle_start_timestamp
+impl RaffleOptions {
+    pub fn new(env: Env, raffle_options: RaffleOptionsMsg, contract_info: ContractInfo) -> Self {
+        Self {
+            raffle_start_timestamp: raffle_options
+                .raffle_start_timestamp
                 .unwrap_or(env.block.time),
-            raffle_duration: raffle_options.raffle_duration
+            raffle_duration: raffle_options
+                .raffle_duration
                 .unwrap_or(contract_info.minimum_raffle_duration)
                 .max(contract_info.minimum_raffle_duration),
-            raffle_timeout: raffle_options.raffle_timeout
+            raffle_timeout: raffle_options
+                .raffle_timeout
                 .unwrap_or(contract_info.minimum_raffle_timeout)
                 .max(contract_info.minimum_raffle_timeout),
             comment: raffle_options.comment,
@@ -154,16 +157,14 @@ impl RaffleOptions{
             max_ticket_per_address: raffle_options.max_ticket_per_address,
         }
     }
-}  
-
-
+}
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "snake_case")]
-pub struct Randomness{
+pub struct Randomness {
     pub randomness: [u8; 32],
     pub randomness_round: u64,
-    pub randomness_owner: Addr
+    pub randomness_owner: Addr,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -172,9 +173,8 @@ pub struct RaffleInfo {
     pub owner: Addr,
     pub asset: AssetInfo,
     pub raffle_ticket_price: AssetInfo,
-    pub accumulated_ticket_fee: AssetInfo,
     pub number_of_tickets: u32,
     pub randomness: Option<Randomness>,
     pub winner: Option<Addr>,
-    pub raffle_options: RaffleOptions
+    pub raffle_options: RaffleOptions,
 }

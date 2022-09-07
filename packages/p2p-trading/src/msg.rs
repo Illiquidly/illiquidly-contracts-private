@@ -49,24 +49,13 @@ impl InstantiateMsg {
     }
 }
 
-
-
-
-
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum AddAssetAction{
-    ToLastTrade{},
-    ToLastCounterTrade{
-        trade_id: u64
-    },
-    ToTrade{
-        trade_id: u64,
-    },
-    ToCounterTrade{
-        trade_id: u64,
-        counter_id: u64
-    }
+pub enum AddAssetAction {
+    ToLastTrade {},
+    ToLastCounterTrade { trade_id: u64 },
+    ToTrade { trade_id: u64 },
+    ToCounterTrade { trade_id: u64, counter_id: u64 },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

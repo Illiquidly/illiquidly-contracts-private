@@ -1,4 +1,4 @@
-use cosmwasm_std::{StdError, OverflowError};
+use cosmwasm_std::{OverflowError, StdError};
 use p2p_trading_export::state::TradeState;
 use thiserror::Error;
 
