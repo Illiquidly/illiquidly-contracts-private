@@ -62,5 +62,6 @@ pub enum QueryMsg {
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
 pub struct FeeResponse {
-    pub fee: Uint128,
+    pub amount: Uint128,
+    pub denom: String
 }

@@ -16,6 +16,8 @@ use p2p_trading_export::msg::ExecuteMsg as P2PExecuteMsg;
 use p2p_trading_export::state::AssetInfo;
 use utils::msg::into_cosmos_msg;
 
+
+const COIN_DENOM: &str = "uluna";
 const ASSET_FEE_RATE: u128 = 40u128; // In thousands
 const FEE_MAX: u128 = 10_000_000u128;
 const FIRST_TEER_RATE: u128 = 500_000u128;
@@ -158,7 +160,7 @@ pub fn pay_fee_and_withdraw(
     // We accept a small fee deviation, in case the exchange rates fluctuate a bit between the query and the paiement.
     let acceptable_fee_deviation = FEE_RATES.load(deps.storage)?.acceptable_fee_deviation;
 
-    if funds.denom == "uluna" {
+    if funds.denom == COIN_DENOM {
         if funds.amount + funds.amount * acceptable_fee_deviation / Uint128::from(1_000u128)
             < fee_amount
         {
@@ -280,7 +282,7 @@ pub fn fee_amount_raw(
         |(fund_fee, asset_number), x| -> Result<(Uint128, Uint128), ContractError> {
             match x {
                 AssetInfo::Coin(coin) => {
-                    if coin.denom != "uluna" {
+                    if coin.denom != COIN_DENOM {
                         return Err(ContractError::FeeNotPaid {});
                     }
 
@@ -336,7 +338,7 @@ pub fn query_fee_for(
         &counter_info.associated_assets,
     )?;
 
-    Ok(FeeResponse { fee })
+    Ok(FeeResponse { amount: fee, denom: COIN_DENOM.to_string() })
 }
 
 /// Allows to simulate the fee that will need to be paid if the submitted assets are those of the accepted counter trade
@@ -350,7 +352,7 @@ pub fn simulate_fee(
     let trade_info = load_trade(deps, contract_info.p2p_contract, trade_id)?;
     let fee = fee_amount_raw(deps, &trade_info.associated_assets, &counter_assets)?;
 
-    Ok(FeeResponse { fee })
+    Ok(FeeResponse { amount: fee, denom: COIN_DENOM.to_string() })
 }
 
 #[cfg(test)]

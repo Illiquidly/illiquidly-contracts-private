@@ -8,15 +8,15 @@ async function main() {
 
   let cw721_tokens = env['cw721'];
   let cw721_token_names = Object.keys(cw721_tokens);
-  let nft = handler.getContract(cw721_tokens[cw721_token_names[0]]);
+  let nft = handler.getContract(cw721_tokens[cw721_token_names[1]]);
 
   let mario = "terra12ywvf22d3etfgh5qtguk35zwc7ayfzr2uq2fn0";
-  let mint_to_address = mario;
+  let mint_to_address = handler.getAddress();
 
   let mintMsgs: MsgExecuteContract[] = []
 
   for(var i=0;i<100;i++){
-    mintMsgs.push(createMintMsg(handler.getAddress(),  new Date().toString(), mint_to_address, nft.address))
+    mintMsgs.push(createMintMsg(handler.getAddress(),  new Date().toString() + Math.floor(Math.random() * 434876823), mint_to_address, nft.address))
   }
   
   let response = await handler.post(mintMsgs)
@@ -29,7 +29,11 @@ function createMintMsg(user: string, tokenId: string, owner: string, contract: s
    let msg = {
       mint:{
         owner: owner,
-        token_id: tokenId
+        token_id: tokenId,
+        extension: {
+          image:"Same image for eveybody",
+          image_data:"Wait this is not binary right ?"
+        }
       }
     };
   return new MsgExecuteContract(

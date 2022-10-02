@@ -12,9 +12,16 @@ async function main() {
 
   let p2p = handler.getContract(env.contracts.p2p)
   // We try to add trades
-  let trade_id = 2;
-  let response = await p2p.execute.confirm_trade({
-    trade_id
+  let response = await p2p.execute.add_tokens_wanted({
+    trade_id: 1,
+    tokens_wanted: [
+      {
+        coin:{
+          denom:"uluna",
+          amount: "456345"
+        }
+      }
+    ]
   });
 
   console.log(response);

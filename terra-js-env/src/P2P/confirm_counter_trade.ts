@@ -12,9 +12,11 @@ async function main() {
 
   let p2p = handler.getContract(env.contracts.p2p)
   // We try to add trades
-  let trade_id = 2;
-  let response = await p2p.execute.confirm_trade({
-    trade_id
+  let trade_id = 1;
+  let counter_id = 0;
+  let response = await p2p.execute.confirm_counter_trade({
+    trade_id,
+    counter_id
   });
 
   console.log(response);
