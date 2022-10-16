@@ -2,6 +2,18 @@ import { Address } from '../terra_utils';
 import { env } from '../env_helper';
 import { MsgExecuteContract } from '@terra-money/terra.js';
 import {asyncAction} from "../utils/js/asyncAction"
+
+let mario = "terra12ywvf22d3etfgh5qtguk35zwc7ayfzr2uq2fn0";
+let jack = "terra1xfr03za5h0xse0ym0hq0ull66q8vuaalg0qxac";
+let karma = "terra1ts7lekdxct5qse00zx78hu2wtkfpa8tepclu2s";
+let nic = "terra1xlyyxnwdxx7ukx662jyxd2huhkqyp4xfdcrcsh"
+
+const params = {
+  nftId: 3,
+  nftMainnetAddress: "terra1vn0qwkp9l53q73ajsrnexdw97ekzscexh2q5rduk2kajqrvzwtkqj4nc08",
+  mintAddress: mario,
+}
+
 async function main() {
   // Getting a handler for the current address
   let handler = new Address(env['mnemonics'][0]);
@@ -9,11 +21,9 @@ async function main() {
 
   let cw721_tokens = env['cw721'];
   let cw721_token_names = Object.keys(cw721_tokens);
-  let nft = handler.getContract(cw721_tokens[cw721_token_names[2]]);
-  let gpMainnetContract = mainnetHandler.getContract("terra16ds898j530kn4nnlc7xlj6hcxzqpcxxk4mj8gkcl3vswksu6s3zszs8kp2")
+  let nft = handler.getContract(cw721_tokens[cw721_token_names[params.nftId]]);
+  let gpMainnetContract = mainnetHandler.getContract(params.nftMainnetAddress)
 
-  let mario = "terra12ywvf22d3etfgh5qtguk35zwc7ayfzr2uq2fn0";
-  let mint_to_address = mario;
   console.log(nft.address)
   console.log(handler.getAddress())
   // We start by querying some tokenIds from the contract
@@ -21,7 +31,7 @@ async function main() {
   let tokenIds = await queryTokens(gpMainnetContract, nft, 90)
  
   let mintMsgs: MsgExecuteContract[] = await Promise.all(tokenIds.map(async (tokenId: string) =>  
-      createMintMsg(gpMainnetContract, handler.getAddress(),  tokenId, mint_to_address, nft.address))
+      createMintMsg(gpMainnetContract, handler.getAddress(),  tokenId, params.mintAddress, nft.address))
   )
 
   let response = await handler.post(mintMsgs);

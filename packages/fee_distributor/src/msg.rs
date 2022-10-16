@@ -1,4 +1,5 @@
 use cosmwasm_std::{StdError, StdResult, Uint128};
+use fee_contract_export::state::FeeType;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use utils::msg::is_valid_name;
@@ -31,10 +32,12 @@ pub enum ExecuteMsg {
     ModifyContractInfo {
         owner: Option<String>,
         treasury: Option<String>,
-        projects_allocation: Option<Uint128>,
+        projects_allocation_for_assets_fee: Option<Uint128>,
+        projects_allocation_for_funds_fee: Option<Uint128>,
     },
     DepositFees {
         addresses: Vec<String>,
+        fee_type: FeeType
     },
     WithdrawFees {
         addresses: Vec<String>,

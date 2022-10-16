@@ -35,6 +35,7 @@ anyhow = "1.0"
 cw_4626 = { path = "../../packages/CW4626", version = "0.1.0" }
 lender-export = { path = "../../packages/lender", version = "0.1.0" }
 fee-distributor-export = { path = "../../packages/fee_distributor", version = "0.1.0" }
+fee-contract-export = { path = "../../packages/fee_contract", version = "0.1.0" }
 utils = { path = "../../packages/utils", version = "0.1.0" }
 
 

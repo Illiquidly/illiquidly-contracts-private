@@ -1,5 +1,5 @@
 import { Address } from '../terra_utils';
-import { env, add_uploaded_nft } from '../env_helper';
+import { env, add_uploaded_nft, env_name } from '../env_helper';
 
 async function main() {
   // Getting a handler for the current address
@@ -9,11 +9,6 @@ async function main() {
   );
 
   // Uploading the contract code
-  /*
-  let nft_codeId: string[] = await handler.uploadContract(
-    '../artifacts/cw721_base1.0.wasm'
-  );
-  */
   let nft_codeId: string[];
   if(env.type == "classic"){
     /*
@@ -22,19 +17,21 @@ async function main() {
     );
     */
     nft_codeId =  ['5790'];
+  }else if(env_name == "staging"){
+    nft_codeId =  ['3489'];
   }else{
     nft_codeId = await handler.uploadContract(
       '../artifacts/cw721_metadata_all.wasm'
     );
   }
 
-  let codeName: string = 'NFT' + Math.ceil(Math.random() * 10000);
+  let codeName: string = "Space Toadz"
 
   // Instantiating the contract
   let NFTInitMsg = {
-   "name": "Galactic Punks",
-      "symbol": "GP",
-    minter: handler.getAddress()
+      "name": codeName,
+      "symbol": "TDZ",
+      minter: handler.getAddress()
   };
   let nft = await handler.instantiateContract(+nft_codeId[0], NFTInitMsg);
   add_uploaded_nft(codeName, nft.execute.contractAddress);

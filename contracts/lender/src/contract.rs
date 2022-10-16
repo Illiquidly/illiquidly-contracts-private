@@ -18,6 +18,7 @@ use crate::query::{
 };
 use crate::state::{set_lock, set_oracle, set_owner};
 use cw_4626::state::AssetInfo;
+use fee_contract_export::state::{FeeType};
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -485,6 +486,7 @@ pub mod tests {
                     into_cosmos_msg(
                         DistributorExecuteMsg::DepositFees {
                             addresses: vec!["nft".to_string()],
+                            fee_type: FeeType::Funds
                         },
                         "distributor".to_string(),
                         Some(coins(6u128, "utest"))
@@ -598,6 +600,7 @@ pub mod tests {
                     into_cosmos_msg(
                         DistributorExecuteMsg::DepositFees {
                             addresses: vec!["nft".to_string()],
+                            fee_type: FeeType::Funds
                         },
                         "distributor".to_string(),
                         Some(coins(6u128, "utest"))

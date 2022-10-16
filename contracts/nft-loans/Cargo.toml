@@ -37,6 +37,7 @@ nft-loans-export = { path = "../../packages/nft-loans", version = "0.1.0" }
 utils = { path = "../../packages/utils", version = "0.1.0" }
 p2p-trading-export = { path = "../../packages/p2p-trading", version = "0.1.0" }
 fee-distributor-export = { path = "../../packages/fee_distributor", version = "0.1.0" }
+fee-contract-export = { path = "../../packages/fee_contract", version = "0.1.0" }
 
 
 [dev-dependencies]

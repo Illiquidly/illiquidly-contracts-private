@@ -12,10 +12,10 @@ async function main() {
 
   let p2p = handler.getContract(env.contracts.p2p)
   // We try to add trades
-  let trade_id = 1;
+  let trade_id = 3;
   let response = await p2p.execute.add_whitelisted_users({
     trade_id,
-    whitelisted_users: ["terra1dcegyrekltswvyy0xy69ydgxn9x8x32zdtapd8"]
+    whitelisted_users: ["terra1hzttzrf2yge4pepnlalvt5zuaphpzk3nnc8x7s"]
   })
   console.log(response);
 

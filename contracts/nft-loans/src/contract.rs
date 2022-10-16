@@ -27,7 +27,8 @@ use nft_loans_export::state::{
 use utils::msg::into_cosmos_msg;
 use utils::state::{AssetInfo, Cw1155Coin, Cw721Coin};
 
-use fee_distributor_export::msg::ExecuteMsg as FeeDistributorMsg;
+use fee_contract_export::state::FeeType;
+use fee_distributor_export::msg::{ExecuteMsg as FeeDistributorMsg};
 
 const MAX_QUERY_LIMIT: u32 = 30;
 const DEFAULT_QUERY_LIMIT: u32 = 10;
@@ -740,6 +741,7 @@ pub fn repay_borrowed_funds(
         .add_message(into_cosmos_msg(
             FeeDistributorMsg::DepositFees {
                 addresses: vec![collateral_address],
+                fee_type: FeeType::Funds
             },
             contract_info.fee_distributor,
             Some(coins(
@@ -1916,7 +1918,8 @@ pub mod tests {
                 SubMsg::new(
                     into_cosmos_msg(
                         FeeDistributorMsg::DepositFees {
-                            addresses: vec!["nft".to_string()]
+                            addresses: vec!["nft".to_string()],
+                            fee_type: FeeType::Funds
                         },
                         "T",
                         Some(coins(3, "luna"))

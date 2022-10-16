@@ -1,4 +1,4 @@
-use cosmwasm_std::{StdError, StdResult, Uint128};
+    use cosmwasm_std::{StdError, StdResult, Uint128};
 use p2p_trading_export::state::AssetInfo;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -64,4 +64,10 @@ pub enum QueryMsg {
 pub struct FeeResponse {
     pub amount: Uint128,
     pub denom: String
+}
+
+#[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
+pub struct FeeRawResponse {
+    pub assets_fee: Uint128,
+    pub funds_fee: Uint128
 }

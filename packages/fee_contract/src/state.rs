@@ -23,3 +23,10 @@ pub struct FeeInfo {
     pub third_teer_rate: Uint128,
     pub acceptable_fee_deviation: Uint128, // In thousands
 }
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum FeeType{
+    Assets,
+    Funds,
+}
