@@ -95,4 +95,10 @@ pub enum ContractError {
         wanted: u128,
         available: u128,
     },
+
+    #[error("You indicated the wrong token")]
+    WrongTokenType {},
+
+    #[error("You can't set a preview of an asset not associated with the trade")]
+    AssetNotInTrade {},
 }

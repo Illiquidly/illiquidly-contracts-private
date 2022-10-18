@@ -1084,7 +1084,6 @@ dependencies = [
  "cw721",
  "getrandom 0.2.7",
  "itertools 0.10.3",
- "nft-loans-export",
  "p2p-trading-export",
  "schemars",
  "serde",

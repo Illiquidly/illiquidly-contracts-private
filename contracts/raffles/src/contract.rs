@@ -19,7 +19,7 @@ use raffles_export::state::{
 
 use crate::execute::{
     execute_buy_ticket, execute_claim, execute_create_raffle, execute_receive,
-    execute_receive_1155, execute_receive_nft, execute_update_randomness,
+    execute_update_randomness, execute_cancel_raffle, execute_modify_raffle,
 };
 use crate::query::{query_all_raffles, query_contract_info, query_ticket_number, RaffleResponse};
 
@@ -78,7 +78,7 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> R
     match msg {
         ExecuteMsg::CreateRaffle {
             owner,
-            asset,
+            assets,
             raffle_ticket_price,
             raffle_options,
         } => execute_create_raffle(
@@ -86,10 +86,12 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> R
             env,
             info,
             owner,
-            asset,
+            assets,
             raffle_ticket_price,
             raffle_options,
         ),
+        ExecuteMsg::CancelRaffle { raffle_id } => execute_cancel_raffle(deps, env, info, raffle_id),
+        ExecuteMsg::ModifyRaffle { raffle_id, raffle_options } => execute_modify_raffle(deps, env, info, raffle_id, raffle_options),
         ExecuteMsg::BuyTicket {
             raffle_id,
             sent_assets,
@@ -99,26 +101,6 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> R
             amount,
             msg,
         } => execute_receive(deps, env, info, sender, amount, msg),
-        ExecuteMsg::ReceiveNft {
-            sender,
-            token_id,
-            msg,
-        } => execute_receive_nft(deps, env, info, sender, token_id, msg),
-        ExecuteMsg::Cw1155ReceiveMsg {
-            operator,
-            from,
-            token_id,
-            amount,
-            msg,
-        } => execute_receive_1155(
-            deps,
-            env,
-            info,
-            from.unwrap_or(operator),
-            token_id,
-            amount,
-            msg,
-        ),
         ExecuteMsg::ClaimNft { raffle_id } => execute_claim(deps, env, info, raffle_id),
         ExecuteMsg::UpdateRandomness {
             raffle_id,
@@ -345,7 +327,7 @@ pub mod tests {
     use cosmwasm_std::{
         coin, coins, from_binary,
         testing::{mock_dependencies, mock_env, mock_info, MOCK_CONTRACT_ADDR},
-        Api, Attribute, BankMsg, Coin, SubMsg, SubMsgResponse,
+        Api, BankMsg, Coin, SubMsg, SubMsgResponse,
     };
     use raffles_export::msg::{into_cosmos_msg, DrandRandomness, QueryFilters, VerifierExecuteMsg};
     use raffles_export::state::{
@@ -395,37 +377,12 @@ pub mod tests {
             info,
             ExecuteMsg::CreateRaffle {
                 owner: None,
-                asset: AssetInfo::Cw721Coin(Cw721Coin {
+                assets: vec![AssetInfo::Cw721Coin(Cw721Coin {
                     address: "nft".to_string(),
                     token_id: "token_id".to_string(),
-                }),
+                })],
                 raffle_options: RaffleOptionsMsg::default(),
                 raffle_ticket_price: AssetInfo::coin(10000u128, "uluna"),
-            },
-        )
-    }
-
-    fn create_raffle_by_receiving(deps: DepsMut, nft: &str, token_id: &str) -> Result<Response> {
-        let info = mock_info(nft, &[]);
-        let env = mock_env();
-
-        execute(
-            deps,
-            env,
-            info,
-            ExecuteMsg::ReceiveNft {
-                sender: "creator".to_string(),
-                token_id: token_id.to_string(),
-                msg: to_binary(&ExecuteMsg::CreateRaffle {
-                    owner: Some("creator".to_string()),
-                    asset: AssetInfo::Cw721Coin(Cw721Coin {
-                        address: nft.to_string(),
-                        token_id: token_id.to_string(),
-                    }),
-                    raffle_options: RaffleOptionsMsg::default(),
-                    raffle_ticket_price: AssetInfo::coin(10000u128, "uluna"),
-                })
-                .unwrap(),
             },
         )
     }
@@ -440,10 +397,10 @@ pub mod tests {
             info,
             ExecuteMsg::CreateRaffle {
                 owner: None,
-                asset: AssetInfo::Cw721Coin(Cw721Coin {
+                assets: vec![AssetInfo::Cw721Coin(Cw721Coin {
                     address: "nft".to_string(),
                     token_id: "token_id".to_string(),
-                }),
+                })],
                 raffle_options: RaffleOptionsMsg {
                     comment: Some(comment.to_string()),
                     ..Default::default()
@@ -464,7 +421,7 @@ pub mod tests {
             info,
             ExecuteMsg::CreateRaffle {
                 owner: None,
-                asset: AssetInfo::cw721("nft", "token_id"),
+                assets: vec![AssetInfo::cw721("nft", "token_id")],
                 raffle_options: RaffleOptionsMsg::default(),
                 raffle_ticket_price: AssetInfo::cw20(10000u128, "address"),
             },
@@ -481,7 +438,7 @@ pub mod tests {
             info,
             ExecuteMsg::CreateRaffle {
                 owner: None,
-                asset: AssetInfo::cw1155("nft", "token_id", 675u128),
+                assets: vec![AssetInfo::cw1155("nft", "token_id", 675u128)],
                 raffle_options: RaffleOptionsMsg::default(),
                 raffle_ticket_price: AssetInfo::coin(10000u128, "uluna"),
             },
@@ -562,22 +519,6 @@ pub mod tests {
                 )
                 .unwrap()
             )]
-        );
-    }
-
-    #[test]
-    fn test_create_raffle_receive() {
-        let mut deps = mock_dependencies();
-        init_helper(deps.as_mut());
-        let response = create_raffle_by_receiving(deps.as_mut(), "nft", "token_id").unwrap();
-
-        assert_eq!(
-            response.attributes,
-            vec![
-                Attribute::new("action", "create_raffle"),
-                Attribute::new("raffle_id", 0.to_string()),
-                Attribute::new("owner", "creator")
-            ]
         );
     }
 
@@ -1149,7 +1090,7 @@ pub mod tests {
                 raffle_state: RaffleState::Started,
                 raffle_info: Some(RaffleInfo {
                     owner: deps.api.addr_validate("creator").unwrap(),
-                    asset: AssetInfo::cw721("nft", "token_id"),
+                    assets: vec![AssetInfo::cw721("nft", "token_id")],
                     raffle_options: RaffleOptions {
                         raffle_start_timestamp: env.block.time,
                         raffle_duration: 1u64,
@@ -1157,11 +1098,13 @@ pub mod tests {
                         comment: Some("random things my dude".to_string()),
                         max_participant_number: None,
                         max_ticket_per_address: None,
+                        raffle_preview: 0
                     },
                     raffle_ticket_price: AssetInfo::coin(10000u128, "uluna"),
                     number_of_tickets: 0u32,
                     randomness: None,
-                    winner: None
+                    winner: None,
+                    is_cancelled: false,
                 })
             }
         );
@@ -1198,19 +1141,21 @@ pub mod tests {
                     raffle_state: RaffleState::Started,
                     raffle_info: Some(RaffleInfo {
                         owner: deps.api.addr_validate("creator").unwrap(),
-                        asset: AssetInfo::cw721("nft", "token_id"),
+                        assets: vec![AssetInfo::cw721("nft", "token_id")],
                         raffle_options: RaffleOptions {
                             raffle_start_timestamp: env.block.time,
                             raffle_duration: 1u64,
                             raffle_timeout: 120u64,
                             comment: Some("random things my dude".to_string()),
                             max_participant_number: None,
-                            max_ticket_per_address: None
+                            max_ticket_per_address: None,
+                            raffle_preview: 0
                         },
                         raffle_ticket_price: AssetInfo::coin(10000u128, "uluna"),
                         number_of_tickets: 0u32,
                         randomness: None,
-                        winner: None
+                        winner: None,
+                        is_cancelled: false,
                     })
                 },
                 RaffleResponse {
@@ -1218,19 +1163,21 @@ pub mod tests {
                     raffle_state: RaffleState::Started,
                     raffle_info: Some(RaffleInfo {
                         owner: deps.api.addr_validate("creator").unwrap(),
-                        asset: AssetInfo::cw721("nft", "token_id"),
+                        assets: vec![AssetInfo::cw721("nft", "token_id")],
                         raffle_options: RaffleOptions {
                             raffle_start_timestamp: env.block.time,
                             raffle_duration: 1u64,
                             raffle_timeout: 120u64,
                             comment: None,
                             max_participant_number: None,
-                            max_ticket_per_address: None
+                            max_ticket_per_address: None,
+                            raffle_preview: 0
                         },
                         raffle_ticket_price: AssetInfo::coin(10000u128, "uluna"),
                         number_of_tickets: 0u32,
                         randomness: None,
-                        winner: None
+                        winner: None,
+                        is_cancelled: false,
                     })
                 }
             ]
@@ -1257,19 +1204,21 @@ pub mod tests {
                 raffle_state: RaffleState::Started,
                 raffle_info: Some(RaffleInfo {
                     owner: deps.api.addr_validate("creator").unwrap(),
-                    asset: AssetInfo::cw721("nft", "token_id"),
+                    assets: vec![AssetInfo::cw721("nft", "token_id")],
                     raffle_options: RaffleOptions {
                         raffle_start_timestamp: env.block.time,
                         raffle_duration: 1u64,
                         raffle_timeout: 120u64,
                         comment: Some("random things my dude".to_string()),
                         max_participant_number: None,
-                        max_ticket_per_address: None
+                        max_ticket_per_address: None,
+                        raffle_preview: 0
                     },
                     raffle_ticket_price: AssetInfo::coin(10000u128, "uluna"),
                     number_of_tickets: 0u32,
                     randomness: None,
-                    winner: None
+                    winner: None,
+                        is_cancelled: false,
                 })
             }]
         );
@@ -1295,19 +1244,21 @@ pub mod tests {
                 raffle_state: RaffleState::Started,
                 raffle_info: Some(RaffleInfo {
                     owner: deps.api.addr_validate("creator").unwrap(),
-                    asset: AssetInfo::cw721("nft", "token_id"),
+                    assets: vec![AssetInfo::cw721("nft", "token_id")],
                     raffle_options: RaffleOptions {
                         raffle_start_timestamp: env.block.time,
                         raffle_duration: 1u64,
                         raffle_timeout: 120u64,
                         comment: None,
                         max_participant_number: None,
-                        max_ticket_per_address: None
+                        max_ticket_per_address: None,
+                        raffle_preview: 0
                     },
                     raffle_ticket_price: AssetInfo::coin(10000u128, "uluna"),
                     number_of_tickets: 0u32,
                     randomness: None,
-                    winner: None
+                    winner: None,
+                        is_cancelled: false,
                 })
             }]
         );

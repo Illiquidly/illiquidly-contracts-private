@@ -71,9 +71,16 @@ pub struct DrandRandomness {
 pub enum ExecuteMsg {
     CreateRaffle {
         owner: Option<String>,
-        asset: AssetInfo,
+        assets: Vec<AssetInfo>,
         raffle_options: RaffleOptionsMsg,
         raffle_ticket_price: AssetInfo,
+    },
+    CancelRaffle {
+        raffle_id: u64
+    },
+    ModifyRaffle {
+        raffle_id: u64,
+        raffle_options: RaffleOptionsMsg,
     },
     BuyTicket {
         raffle_id: u64,
@@ -81,18 +88,6 @@ pub enum ExecuteMsg {
     },
     Receive {
         sender: String,
-        amount: Uint128,
-        msg: Binary,
-    },
-    ReceiveNft {
-        sender: String,
-        token_id: String,
-        msg: Binary,
-    },
-    Cw1155ReceiveMsg {
-        operator: String,
-        from: Option<String>,
-        token_id: String,
         amount: Uint128,
         msg: Binary,
     },

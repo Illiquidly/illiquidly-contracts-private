@@ -65,12 +65,14 @@ pub fn raffle_filter(
             Some(owner) => raffle.raffle_info.as_ref().unwrap().owner == owner.clone(),
             None => true,
         } && match &filters.contains_token {
-            Some(token) => match raffle.raffle_info.clone().unwrap().asset {
-                AssetInfo::Coin(x) => x.denom == token.as_ref(),
-                AssetInfo::Cw20Coin(x) => x.address == token.as_ref(),
-                AssetInfo::Cw721Coin(x) => x.address == token.as_ref(),
-                AssetInfo::Cw1155Coin(x) => x.address == token.as_ref(),
-            },
+            Some(token) => raffle.raffle_info.clone().unwrap().assets.iter().any(|asset| {
+                match asset{
+                    AssetInfo::Coin(x) => x.denom == token.as_ref(),
+                    AssetInfo::Cw20Coin(x) => x.address == token.as_ref(),
+                    AssetInfo::Cw721Coin(x) => x.address == token.as_ref(),
+                    AssetInfo::Cw1155Coin(x) => x.address == token.as_ref(),
+                }
+            }),
             None => true,
         })
     } else {

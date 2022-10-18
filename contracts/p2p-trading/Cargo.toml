@@ -37,7 +37,6 @@ serde = { version = "1.0.103", default-features = false, features = ["derive"] }
 thiserror = { version = "1.0.23" }
 
 # Local Modules
-nft-loans-export = { path = "../../packages/nft-loans", version = "0.1.0" }
 p2p-trading-export = { path = "../../packages/p2p-trading", version = "0.1.0" }
 
 [dev-dependencies]

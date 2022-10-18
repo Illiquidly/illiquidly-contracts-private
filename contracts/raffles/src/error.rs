@@ -52,6 +52,9 @@ pub enum ContractError {
     #[error("This raffle is not ready to be claimed.  Current status : {status:?}")]
     WrongStateForClaim { status: RaffleState },
 
+    #[error("This raffle has already started.")]
+    RaffleAlreadyStarted{},
+
     #[error("The public key you indicated is invalid")]
     InvalidPubkey {},
 

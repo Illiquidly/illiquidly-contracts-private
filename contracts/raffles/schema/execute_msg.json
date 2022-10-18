@@ -11,22 +11,21 @@
         "create_raffle": {
           "type": "object",
           "required": [
-            "asset",
+            "assets",
             "raffle_options",
             "raffle_ticket_price"
           ],
           "properties": {
-            "asset": {
-              "$ref": "#/definitions/AssetInfo"
+            "assets": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/AssetInfo"
+              }
             },
             "owner": {
-              "anyOf": [
-                {
-                  "$ref": "#/definitions/Addr"
-                },
-                {
-                  "type": "null"
-                }
+              "type": [
+                "string",
+                "null"
               ]
             },
             "raffle_options": {
@@ -34,6 +33,54 @@
             },
             "raffle_ticket_price": {
               "$ref": "#/definitions/AssetInfo"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "cancel_raffle"
+      ],
+      "properties": {
+        "cancel_raffle": {
+          "type": "object",
+          "required": [
+            "raffle_id"
+          ],
+          "properties": {
+            "raffle_id": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "modify_raffle"
+      ],
+      "properties": {
+        "modify_raffle": {
+          "type": "object",
+          "required": [
+            "raffle_id",
+            "raffle_options"
+          ],
+          "properties": {
+            "raffle_id": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            },
+            "raffle_options": {
+              "$ref": "#/definitions/RaffleOptionsMsg"
             }
           }
         }
@@ -87,72 +134,6 @@
               "$ref": "#/definitions/Binary"
             },
             "sender": {
-              "type": "string"
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
-        "receive_nft"
-      ],
-      "properties": {
-        "receive_nft": {
-          "type": "object",
-          "required": [
-            "msg",
-            "sender",
-            "token_id"
-          ],
-          "properties": {
-            "msg": {
-              "$ref": "#/definitions/Binary"
-            },
-            "sender": {
-              "type": "string"
-            },
-            "token_id": {
-              "type": "string"
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
-        "cw1155_receive_msg"
-      ],
-      "properties": {
-        "cw1155_receive_msg": {
-          "type": "object",
-          "required": [
-            "amount",
-            "msg",
-            "operator",
-            "token_id"
-          ],
-          "properties": {
-            "amount": {
-              "$ref": "#/definitions/Uint128"
-            },
-            "from": {
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "msg": {
-              "$ref": "#/definitions/Binary"
-            },
-            "operator": {
-              "type": "string"
-            },
-            "token_id": {
               "type": "string"
             }
           }
@@ -266,10 +247,6 @@
     }
   ],
   "definitions": {
-    "Addr": {
-      "description": "A human readable address.\n\nIn Cosmos, this is typically bech32 encoded. But for multi-chain smart contracts no assumptions should be made other than being UTF-8 encoded and of reasonable length.\n\nThis type represents a validated address. It can be created in the following ways 1. Use `Addr::unchecked(input)` 2. Use `let checked: Addr = deps.api.addr_validate(input)?` 3. Use `let checked: Addr = deps.api.addr_humanize(canonical_addr)?` 4. Deserialize from JSON. This must only be done from JSON that was validated before such as a contract's state. `Addr` must not be used in messages sent by the user because this would result in unvalidated instances.\n\nThis type is immutable. If you really need to mutate it (Really? Are you sure?), create a mutable copy using `let mut mutable = Addr::to_string()` and operate on that `String` instance.",
-      "type": "string"
-    },
     "AssetInfo": {
       "oneOf": [
         {
@@ -442,6 +419,14 @@
             "null"
           ],
           "format": "uint64",
+          "minimum": 0.0
+        },
+        "raffle_preview": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
           "minimum": 0.0
         },
         "raffle_start_timestamp": {

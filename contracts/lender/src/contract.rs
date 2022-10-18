@@ -18,7 +18,6 @@ use crate::query::{
 };
 use crate::state::{set_lock, set_oracle, set_owner};
 use cw_4626::state::AssetInfo;
-use fee_contract_export::state::{FeeType};
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -217,6 +216,7 @@ pub mod tests {
     use lender_export::msg::InstantiateMsg;
     use lender_export::state::{BorrowMode, Cw721Info};
     use utils::msg::into_cosmos_msg;
+    use fee_contract_export::state::{FeeType};
 
     fn init_helper(deps: DepsMut) {
         let instantiate_msg = InstantiateMsg {

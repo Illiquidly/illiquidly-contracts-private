@@ -1,3 +1,4 @@
+use std::convert::TryInto;
 use strum_macros;
 
 use cosmwasm_std::{coin, Addr, Binary, Coin, Env, Timestamp, Uint128};
@@ -97,6 +98,7 @@ pub enum RaffleState {
     Closed,
     Finished,
     Claimed,
+    Cancelled, 
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -125,6 +127,7 @@ pub struct RaffleOptions {
     pub comment: Option<String>,
     pub max_participant_number: Option<u32>,
     pub max_ticket_per_address: Option<u32>,
+    pub raffle_preview: u32
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug, Default)]
@@ -136,10 +139,11 @@ pub struct RaffleOptionsMsg {
     pub comment: Option<String>,
     pub max_participant_number: Option<u32>,
     pub max_ticket_per_address: Option<u32>,
+    pub raffle_preview: Option<u32>
 }
 
 impl RaffleOptions {
-    pub fn new(env: Env, raffle_options: RaffleOptionsMsg, contract_info: ContractInfo) -> Self {
+    pub fn new(env: Env, assets_len: usize, raffle_options: RaffleOptionsMsg, contract_info: ContractInfo) -> Self {
         Self {
             raffle_start_timestamp: raffle_options
                 .raffle_start_timestamp
@@ -155,6 +159,40 @@ impl RaffleOptions {
             comment: raffle_options.comment,
             max_participant_number: raffle_options.max_participant_number,
             max_ticket_per_address: raffle_options.max_ticket_per_address,
+            raffle_preview: raffle_options.raffle_preview.map(|preview|{
+                if preview >= assets_len.try_into().unwrap(){
+                    0u32
+                }else {
+                    preview
+                }
+            }).unwrap_or(0u32)
+        }
+    }
+
+    pub fn new_from(current_options: RaffleOptions, assets_len: usize, raffle_options: RaffleOptionsMsg, contract_info: ContractInfo) -> Self {
+        Self {
+            raffle_start_timestamp: raffle_options
+                .raffle_start_timestamp
+                .unwrap_or(current_options.raffle_start_timestamp),
+            raffle_duration: raffle_options
+                .raffle_duration
+                .unwrap_or(current_options
+                .raffle_duration)
+                .max(contract_info.minimum_raffle_duration),
+            raffle_timeout: raffle_options
+                .raffle_timeout
+                .unwrap_or(current_options.raffle_timeout)
+                .max(contract_info.minimum_raffle_timeout),
+            comment: raffle_options.comment,
+            max_participant_number: raffle_options.max_participant_number,
+            max_ticket_per_address: raffle_options.max_ticket_per_address,
+            raffle_preview: raffle_options.raffle_preview.map(|preview|{
+                if preview >= assets_len.try_into().unwrap(){
+                    0u32
+                }else {
+                    preview
+                }
+            }).unwrap_or(current_options.raffle_preview)
         }
     }
 }
@@ -171,10 +209,11 @@ pub struct Randomness {
 #[serde(rename_all = "snake_case")]
 pub struct RaffleInfo {
     pub owner: Addr,
-    pub asset: AssetInfo,
+    pub assets: Vec<AssetInfo>,
     pub raffle_ticket_price: AssetInfo,
     pub number_of_tickets: u32,
     pub randomness: Option<Randomness>,
     pub winner: Option<Addr>,
+    pub is_cancelled: bool,
     pub raffle_options: RaffleOptions,
 }

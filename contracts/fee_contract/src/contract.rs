@@ -192,30 +192,36 @@ pub fn pay_fee_and_withdraw(
 
     let mut distribute_messages = vec![];
 
-    if fee.funds_fee != Uint128::zero(){
-        distribute_messages.push( into_cosmos_msg(
-        FeeDistributorMsg::DepositFees {
-            addresses: contract_addresses.clone(),
-            fee_type: FeeType::Funds
-        },
-        contract_info.fee_distributor.clone(),
-        Some(coins(fee.funds_fee.u128(), COIN_DENOM)),
-    )?,)
-    }
+    let two = Uint128::from(2u128);
+    let assets_fee_paid_by_user = if funds.amount < fee.assets_fee/two{
+        funds.amount
+    }else{
+        fee.assets_fee/two
+    };
+    let funds_fee_paid_by_user = funds.amount - assets_fee_paid_by_user;
 
-    if fee.assets_fee != Uint128::zero(){
+    if assets_fee_paid_by_user != Uint128::zero(){
         distribute_messages.push( 
     into_cosmos_msg(
         FeeDistributorMsg::DepositFees {
-            addresses: contract_addresses,
+            addresses: contract_addresses.clone(),
             fee_type: FeeType::Assets
         },
-        contract_info.fee_distributor,
-        Some(coins(fee.assets_fee.u128(), COIN_DENOM)),
+        contract_info.fee_distributor.clone(),
+        Some(coins(assets_fee_paid_by_user.u128(), COIN_DENOM)),
     )?)
     }
 
-   
+    if funds_fee_paid_by_user != Uint128::zero(){
+        distribute_messages.push( into_cosmos_msg(
+        FeeDistributorMsg::DepositFees {
+            addresses: contract_addresses,
+            fee_type: FeeType::Funds
+        },
+        contract_info.fee_distributor.clone(),
+        Some(coins(funds_fee_paid_by_user.u128(), COIN_DENOM)),
+    )?,)
+    }
 
     // Then we call withdraw on the p2p contract
     let withdraw_message = P2PExecuteMsg::WithdrawPendingAssets {
