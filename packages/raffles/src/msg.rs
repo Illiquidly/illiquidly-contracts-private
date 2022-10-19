@@ -84,6 +84,7 @@ pub enum ExecuteMsg {
     },
     BuyTicket {
         raffle_id: u64,
+        ticket_number: u32, 
         sent_assets: AssetInfo,
     },
     Receive {

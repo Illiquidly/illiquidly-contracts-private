@@ -1,3 +1,4 @@
+use cosmwasm_std::Coin;
 use anyhow::{anyhow, Result};
 use cw_storage_plus::{Item, Map};
 
@@ -8,10 +9,10 @@ use cosmwasm_std::{
 use crate::error::ContractError;
 use crate::rand::Prng;
 use raffles_export::msg::{into_cosmos_msg, DrandRandomness, VerifierExecuteMsg};
-use raffles_export::state::{AssetInfo, ContractInfo, RaffleInfo, RaffleState};
+use raffles_export::state::{AssetInfo, ContractInfo, RaffleInfo, RaffleState, Cw20Coin};
 
 use cw1155::Cw1155ExecuteMsg;
-use cw20::Cw20ExecuteMsg;
+use cw20::{Cw20ExecuteMsg};
 use cw721::Cw721ExecuteMsg;
 
 pub const CONTRACT_INFO: Item<ContractInfo> = Item::new("contract_info");
@@ -140,6 +141,25 @@ pub fn can_buy_ticket(env: Env, raffle_info: RaffleInfo) -> Result<()> {
     } else {
         Err(anyhow!(ContractError::CantBuyTickets {}))
     }
+}
+
+/// Can only buy a ticket when the raffle has started and is not closed
+pub fn ticket_cost(raffle_info: RaffleInfo, ticket_number: u32) -> Result<AssetInfo> {
+    Ok(
+        match raffle_info.raffle_ticket_price{
+            AssetInfo::Coin(x) => 
+                AssetInfo::Coin(Coin{
+                    denom: x.denom,
+                    amount: Uint128::from(ticket_number) * x.amount
+                }),
+            AssetInfo::Cw20Coin(x) =>
+                AssetInfo::Cw20Coin(Cw20Coin{
+                    address: x.address,
+                    amount: Uint128::from(ticket_number) * x.amount
+                }),
+            _ => return Err(anyhow!(ContractError::WrongAssetType {})),
+        }   
+    )
 }
 
 /// Util to get the winner messages to return when claiming a Raffle (returns the raffled asset)

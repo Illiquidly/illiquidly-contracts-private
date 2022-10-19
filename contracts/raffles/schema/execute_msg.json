@@ -97,7 +97,8 @@
           "type": "object",
           "required": [
             "raffle_id",
-            "sent_assets"
+            "sent_assets",
+            "ticket_number"
           ],
           "properties": {
             "raffle_id": {
@@ -107,6 +108,11 @@
             },
             "sent_assets": {
               "$ref": "#/definitions/AssetInfo"
+            },
+            "ticket_number": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
             }
           }
         }

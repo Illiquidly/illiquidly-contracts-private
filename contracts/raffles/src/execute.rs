@@ -6,7 +6,7 @@ use cosmwasm_std::{
 use crate::state::{
     assert_randomness_origin_and_order, can_buy_ticket, get_raffle_owner_finished_messages,
     get_raffle_state, get_raffle_winner, get_raffle_winner_messages, CONTRACT_INFO, RAFFLE_INFO,
-    RAFFLE_TICKETS, USER_TICKETS, get_raffle_owner_messages, is_raffle_owner
+    RAFFLE_TICKETS, USER_TICKETS, get_raffle_owner_messages, is_raffle_owner, ticket_cost
 };
 
 use crate::error::ContractError;
@@ -200,6 +200,7 @@ pub fn execute_buy_ticket(
     env: Env,
     info: MessageInfo,
     raffle_id: u64,
+    ticket_number: u32,
     assets: AssetInfo,
 ) -> Result<Response> {
     // First we physcially transfer the AssetInfo
@@ -227,7 +228,7 @@ pub fn execute_buy_ticket(
         _ => return Err(anyhow!(ContractError::WrongAssetType {})),
     };
     // Then we verify the funds sent match the raffle conditions and we save the ticket that was bought
-    _buy_ticket(deps, env, info.sender.clone(), raffle_id, assets)?;
+    _buy_ticket(deps, env, info.sender.clone(), raffle_id, ticket_number, assets)?;
 
     Ok(Response::new()
         .add_messages(transfer_messages)
@@ -252,6 +253,7 @@ pub fn execute_receive(
     match from_binary(&msg)? {
         ExecuteMsg::BuyTicket {
             raffle_id,
+            ticket_number, 
             sent_assets,
         } => {
             // First we make sure the received Asset is the one specified in the message
@@ -264,7 +266,7 @@ pub fn execute_receive(
                         && amount_received == amount
                     {
                         // The asset is a match, we can create the raffle object and return
-                        _buy_ticket(deps, env, sender.clone(), raffle_id, sent_assets)?;
+                        _buy_ticket(deps, env, sender.clone(), raffle_id, ticket_number, sent_assets)?;
 
                         Ok(Response::new()
                             .add_attribute("action", "buy_ticket")
@@ -289,12 +291,13 @@ pub fn _buy_ticket(
     env: Env,
     owner: Addr,
     raffle_id: u64,
+    ticket_number: u32,
     assets: AssetInfo,
 ) -> Result<()> {
     let mut raffle_info = RAFFLE_INFO.load(deps.storage, raffle_id)?;
 
     // We first check the sent assets match the raffle assets
-    if raffle_info.raffle_ticket_price != assets {
+    if ticket_cost(raffle_info.clone(), ticket_number)? != assets {
         return Err(anyhow!(ContractError::PaiementNotSufficient {
             assets_wanted: raffle_info.raffle_ticket_price,
             assets_received: assets
@@ -304,34 +307,45 @@ pub fn _buy_ticket(
     // We then check the raffle is in the right state
     can_buy_ticket(env, raffle_info.clone())?;
 
-    // Then we check the user has the right to buy one more ticket
+    // Then we check the user has the right to buy `ticket_number` more tickets
     if let Some(max_ticket_per_address) = raffle_info.raffle_options.max_ticket_per_address {
         let current_ticket_number = USER_TICKETS
             .load(deps.storage, (&owner, raffle_id))
             .unwrap_or(0);
-        if current_ticket_number >= max_ticket_per_address {
-            return Err(anyhow!(ContractError::TooMuchTickets {}));
+        if current_ticket_number + ticket_number > max_ticket_per_address {
+            return Err(anyhow!(ContractError::TooMuchTicketsForUser {
+                max:  max_ticket_per_address,
+                nb_before: current_ticket_number,
+                nb_after: current_ticket_number + ticket_number
+            }));
         }
     }
 
     // Then we check there are some ticket left to buy
     if let Some(max_participant_number) = raffle_info.raffle_options.max_participant_number {
-        if raffle_info.number_of_tickets >= max_participant_number {
-            return Err(anyhow!(ContractError::TooMuchTickets {}));
+        if raffle_info.number_of_tickets + ticket_number > max_participant_number {
+            return Err(anyhow!(ContractError::TooMuchTickets {
+                max: max_participant_number,
+                nb_before: raffle_info.number_of_tickets,
+                nb_after: raffle_info.number_of_tickets + ticket_number
+            }));
         }
     };
 
     // Then we save the sender to the bought tickets
-    RAFFLE_TICKETS.save(
-        deps.storage,
-        (raffle_id, raffle_info.number_of_tickets),
-        &owner,
-    )?;
+    for n in 0..ticket_number{
+        RAFFLE_TICKETS.save(
+            deps.storage,
+            (raffle_id, raffle_info.number_of_tickets + n),
+            &owner,
+        )?;
+    }
+   
     USER_TICKETS.update::<_, anyhow::Error>(deps.storage, (&owner, raffle_id), |x| match x {
-        Some(ticket_number) => Ok(ticket_number + 1),
-        None => Ok(1),
+        Some(current_ticket_number) => Ok(current_ticket_number + ticket_number),
+        None => Ok(ticket_number),
     })?;
-    raffle_info.number_of_tickets += 1;
+    raffle_info.number_of_tickets += ticket_number;
 
     RAFFLE_INFO.save(deps.storage, raffle_id, &raffle_info)?;
 
