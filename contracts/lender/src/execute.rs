@@ -20,8 +20,8 @@ use cw20::Cw20ExecuteMsg;
 use cw721::Cw721ExecuteMsg;
 use cw_4626::msg::ExecuteMsg as Cw4626ExecuteMsg;
 use cw_4626::state::AssetInfo;
+use fee_contract_export::state::FeeType;
 use fee_distributor_export::msg::ExecuteMsg as DistributorExecuteMsg;
-use fee_contract_export::state::{FeeType};
 pub fn _diff_abs(x: u128, y: u128) -> u128 {
     std::cmp::max(x, y) - std::cmp::min(x, y)
 }
@@ -436,7 +436,7 @@ pub fn create_repay_and_fee_messages(
             fee,
             DistributorExecuteMsg::DepositFees {
                 addresses: vec![nft_address],
-                fee_type: FeeType::Funds
+                fee_type: FeeType::Funds,
             },
         )?,
         // We send the rest to the vault

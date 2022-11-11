@@ -24,20 +24,22 @@ async function main() {
 
   let token_id = (await nft.query.tokens({owner: handler.getAddress()})).tokens[0]
 
+
   let response = await nft.execute.approve({
     spender: raffle_contract.address,
     token_id
   })
+  return;
   console.log(response)
 
-  let raffle_duration = 120;
+  let raffle_duration = 30;
   let msg = {
-    asset: {
+    assets:[ {
       cw721_coin:{
         address: nft.address,
         token_id
       }
-    },
+    }],
     raffle_ticket_price: {
       coin:{
         denom: "uluna",
@@ -47,6 +49,7 @@ async function main() {
     raffle_options: {
       max_participant_number: 4000,
       raffle_duration,
+      raffle_timeout: 30,
     }
 
   }

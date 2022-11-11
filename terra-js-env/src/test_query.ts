@@ -10,6 +10,21 @@ async function main() {
   // Getting a handler for the current address
   let handler = new Address(env['mnemonics'][0]);
   //let counter = new Address(env['mnemonics'][1]);
+
+  let response = await handler.terra.tx.search({
+          events: [
+            { key: "message.action", value: "/cosmwasm.wasm.v1.MsgExecuteContract" },
+            {
+              key: "wasm.action",
+              value: "transfer_nft",
+            },
+          ],
+          'pagination.limit': '10',
+          'pagination.offset': "1040"
+  })
+  console.log(response)
+
+
   console.log(handler.getAddress());
 }
 

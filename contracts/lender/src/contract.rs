@@ -212,11 +212,11 @@ pub mod tests {
     use cosmwasm_std::{coins, Api, Coin, CosmosMsg, DepsMut, Uint128, WasmMsg};
     use cw721::Cw721ExecuteMsg;
     use cw_4626::msg::ExecuteMsg as Cw4626ExecuteMsg;
+    use fee_contract_export::state::FeeType;
     use fee_distributor_export::msg::ExecuteMsg as DistributorExecuteMsg;
     use lender_export::msg::InstantiateMsg;
     use lender_export::state::{BorrowMode, Cw721Info};
     use utils::msg::into_cosmos_msg;
-    use fee_contract_export::state::{FeeType};
 
     fn init_helper(deps: DepsMut) {
         let instantiate_msg = InstantiateMsg {

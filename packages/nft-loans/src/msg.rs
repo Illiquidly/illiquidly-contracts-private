@@ -1,14 +1,13 @@
+use utils::state::AssetInfo;
+use crate::state::{BorrowerInfo, CollateralInfo, ContractInfo, LoanTerms, OfferInfo};
+use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{StdError, StdResult, Uint128};
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
 use utils::msg::is_valid_name;
 
-use crate::state::{CollateralInfo, LoanTerms};
-
-#[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
+#[cw_serde]
 pub struct MigrateMsg {}
 
-#[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
+#[cw_serde]
 pub struct InstantiateMsg {
     pub name: String,
     pub owner: Option<String>,
@@ -30,50 +29,48 @@ impl InstantiateMsg {
 /// This contract nevers holds any funds
 /// In case it does, it's that an error occured
 /// TODO, we need to provide a way to make sure we can get those funds back
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-#[serde(rename_all = "snake_case")]
+#[cw_serde]
 pub enum ExecuteMsg {
     //// We support both Cw721 and Cw1155
-    DepositCollateral {
-        address: String,
-        token_id: String,
-        value: Option<Uint128>,
+    DepositCollaterals {
+        tokens: Vec<AssetInfo>,
         terms: Option<LoanTerms>,
+        comment: Option<String>
+    },
+    /// Used to modify the loan terms and the associated comment
+    ModifyCollaterals {
+        loan_id: u64,
+        terms: Option<LoanTerms>,
+        comment: Option<String>
     },
     /// Used to withdraw the collateral before the loan starts
-    WithdrawCollateral {
+    WithdrawCollaterals {
         loan_id: u64,
     },
-    SetTerms {
-        loan_id: u64,
-        terms: LoanTerms,
-    },
+
+    /// Make an offer to deposited collaterals
     MakeOffer {
         borrower: String,
         loan_id: u64,
         terms: LoanTerms,
+        comment: Option<String>
     },
     CancelOffer {
-        borrower: String,
-        loan_id: u64,
-        offer_id: u64,
+        global_offer_id: String,
     },
     RefuseOffer {
-        loan_id: u64,
-        offer_id: u64,
+        global_offer_id: String,
     },
     WithdrawRefusedOffer {
-        borrower: String,
-        loan_id: u64,
-        offer_id: u64,
+        global_offer_id: String,
     },
     AcceptOffer {
-        loan_id: u64,
-        offer_id: u64,
+        global_offer_id: String,
     },
     AcceptLoan {
         borrower: String,
         loan_id: u64,
+        comment: Option<String>
     },
     RepayBorrowedFunds {
         loan_id: u64,
@@ -82,11 +79,13 @@ pub enum ExecuteMsg {
         borrower: String,
         loan_id: u64,
     },
+
     /// Used only when the loan can be paid back late
     WithdrawDefaultedLoan {
         borrower: String,
         loan_id: u64,
     },
+
     /// Internal state
     SetOwner {
         owner: String,
@@ -99,27 +98,75 @@ pub enum ExecuteMsg {
     },
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-#[serde(rename_all = "snake_case")]
+#[cw_serde]
+#[derive(QueryResponses)]
 pub enum QueryMsg {
+    #[returns(ContractInfo)]
     ContractInfo {},
-    CollateralInfo { borrower: String, loan_id: u64 },
+    #[returns(BorrowerInfo)]
     BorrowerInfo { borrower: String },
+
+    #[returns(CollateralResponse)]
+    CollateralInfo { borrower: String, loan_id: u64 },
+
+    #[returns(MultipleCollateralsResponse)]
+    Collaterals {
+        borrower: String,
+        start_after: Option<u64>,
+        limit: Option<u32>,
+    },
+
+    #[returns(MultipleCollateralsAllResponse)]
+    AllCollaterals {
+        start_after: Option<(String, u64)>,
+        limit: Option<u32>,
+    },
+
+    #[returns(OfferResponse)]
+    OfferInfo { global_offer_id: String },
+
+    #[returns(MultipleOffersResponse)]
+    Offers {
+        borrower: String,
+        loan_id: u64,
+        start_after: Option<String>,
+        limit: Option<u32>,
+    },
+    #[returns(MultipleOffersResponse)]
+    LenderOffers {
+        lender: String,
+        start_after: Option<String>,
+        limit: Option<u32>,
+    },
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-#[serde(rename_all = "snake_case")]
+#[cw_serde]
 pub struct CollateralResponse {
     pub borrower: String,
     pub loan_id: u64,
     pub collateral: CollateralInfo,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-#[serde(rename_all = "snake_case")]
+#[cw_serde]
+pub struct MultipleCollateralsResponse {
+    pub collaterals: Vec<CollateralResponse>,
+    pub next_collateral: Option<u64>,
+}
+
+#[cw_serde]
+pub struct MultipleCollateralsAllResponse {
+    pub collaterals: Vec<CollateralResponse>,
+    pub next_collateral: Option<(String, u64)>,
+}
+
+#[cw_serde]
 pub struct OfferResponse {
-    pub lender: String,
-    pub borrower: String,
-    pub loan_id: u64,
-    pub offer_id: u64,
+    pub global_offer_id: String,
+    pub offer_info: OfferInfo,
+}
+
+#[cw_serde]
+pub struct MultipleOffersResponse {
+    pub offers: Vec<OfferResponse>,
+    pub next_offer: Option<String>,
 }

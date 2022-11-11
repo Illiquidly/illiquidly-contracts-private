@@ -19,12 +19,13 @@ async function main() {
    sent_assets:{
     coin:{
       denom: "uluna",
-      amount: "476"
+      amount: "4760"
     }
-   }
+   },
+   ticket_number: 10
 
   },
-  "476uluna")
+  "4760uluna")
   console.log(response)
 }
 

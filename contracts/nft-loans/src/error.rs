@@ -13,6 +13,9 @@ pub enum ContractError {
     #[error("An unplanned bug just happened :/")]
     ContractBug {},
 
+    #[error("Wrong asset deposited, only cw1155 and cw721 are authorized")]
+    WrongAssetDeposited{},
+
     #[error("You need to send exactly one coin with this transaction")]
     MultipleCoins {},
 
@@ -31,7 +34,7 @@ pub enum ContractError {
     #[error("Sorry, you can't accept this loan")]
     NotAcceptable {},
 
-    #[error("Sorry, you can't make an offer on this trade")]
+    #[error("Sorry, you can't make an offer on this loan")]
     NotCounterable {},
 
     #[error("This loan doesn't have any terms")]
@@ -45,6 +48,9 @@ pub enum ContractError {
 
     #[error("Wrong state of the loan for the current operation : {state:?}")]
     WrongLoanState { state: LoanState },
+
+    #[error("Wrong state of the offer for the current operation : {state:?}")]
+    WrongOfferState { state: OfferState },
 
     #[error("Can change the state of the offer from {from:?} to {to:?}")]
     CantChangeOfferState { from: OfferState, to: OfferState },

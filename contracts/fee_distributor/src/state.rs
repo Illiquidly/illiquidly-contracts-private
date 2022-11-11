@@ -15,14 +15,21 @@ pub fn is_admin(deps: Deps, addr: Addr) -> Result<(), ContractError> {
     }
 }
 
-pub fn is_admin_or_address(deps: Deps, addr: Addr, project_address: &Addr, fee_address: Addr) -> Result<(), ContractError> {
-
-    is_admin(deps, addr).or(is_fee_address(deps, project_address, fee_address))
-
+pub fn is_admin_or_address(
+    deps: Deps,
+    addr: Addr,
+    project_address: &Addr,
+    fee_address: Addr,
+) -> Result<(), ContractError> {
+    is_admin(deps, addr).or_else(|_| is_fee_address(deps, project_address, fee_address))
 }
 
-pub fn is_fee_address(deps: Deps, project_address: &Addr, fee_address: Addr) -> Result<(), ContractError>{
-     if ASSOCIATED_FEE_ADDRESS.load(deps.storage, project_address)? == fee_address {
+pub fn is_fee_address(
+    deps: Deps,
+    project_address: &Addr,
+    fee_address: Addr,
+) -> Result<(), ContractError> {
+    if ASSOCIATED_FEE_ADDRESS.load(deps.storage, project_address)? == fee_address {
         Ok(())
     } else {
         Err(ContractError::Unauthorized {})

@@ -37,7 +37,7 @@ pub enum ExecuteMsg {
     },
     DepositFees {
         addresses: Vec<String>,
-        fee_type: FeeType
+        fee_type: FeeType,
     },
     WithdrawFees {
         addresses: Vec<String>,

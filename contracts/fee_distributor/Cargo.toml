@@ -24,7 +24,6 @@ cw721 = "0.13.0"
 cw-storage-plus = "0.13.0"
 cw20-base = { version = "0.13.0", features = ["library"] }
 cosmwasm-std = { version = "1.0.0" }
-terra-cosmwasm = { version = "2.2" }
 
 #Other Modules
 schemars = "0.8.1"

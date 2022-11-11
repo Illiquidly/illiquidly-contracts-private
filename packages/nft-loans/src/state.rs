@@ -1,65 +1,63 @@
-use strum_macros;
+use cosmwasm_schema::cw_serde;
+use cosmwasm_std::{Addr, Coin, Uint128, Timestamp};
 
-use cosmwasm_std::{Addr, Coin, Uint128};
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
-
-use utils::state::{AssetInfo, Cw20Coin};
+use utils::state::{AssetInfo};
 // We neep a map per user of all loans that are happening right now !
 // The info should be redondant and linked
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
-#[serde(rename_all = "snake_case")]
+#[cw_serde]
 pub struct CollateralInfo {
     pub terms: Option<LoanTerms>,
-    pub associated_asset: AssetInfo,
+    pub associated_assets: Vec<AssetInfo>,
+    pub list_date: Timestamp,
     pub state: LoanState,
-    pub offers: Vec<OfferInfo>,
-    pub active_loan: Option<u64>,
+    pub offer_amount: u64,
+    pub active_offer: Option<String>,
     pub start_block: Option<u64>,
+    pub comment: Option<String>
 }
 
 impl Default for CollateralInfo {
     fn default() -> Self {
         Self {
             terms: None,
-            associated_asset: AssetInfo::Cw20Coin(Cw20Coin {
-                address: "".to_string(),
-                amount: Uint128::zero(),
-            }),
+            associated_assets: vec![],
+            list_date: Timestamp::from_nanos(0),
+            comment: None,
             state: LoanState::Published,
-            offers: vec![],
-            active_loan: None,
+            offer_amount: 0u64,
+            active_offer: None,
             start_block: None,
         }
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug, Default)]
-#[serde(rename_all = "snake_case")]
+#[cw_serde]
+#[derive(Default)]
 pub struct BorrowerInfo {
     pub last_collateral_id: u64,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-#[serde(rename_all = "snake_case")]
+#[cw_serde]
 pub struct OfferInfo {
     pub lender: Addr,
+    pub borrower: Addr,
+    pub loan_id: u64,
+    pub offer_id: u64,
     pub terms: LoanTerms,
     pub state: OfferState,
     pub deposited_funds: Option<Coin>,
+    pub comment: Option<String>
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema, Default)]
-#[serde(rename_all = "snake_case")]
+#[cw_serde]
 pub struct LoanTerms {
     pub principle: Coin,
     pub interest: Uint128,
     pub duration_in_blocks: u64,
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug, strum_macros::Display)]
-#[serde(rename_all = "snake_case")]
+#[cw_serde]
 pub enum LoanState {
     Published,
     Started,
@@ -68,8 +66,7 @@ pub enum LoanState {
     AssetWithdrawn,
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug, strum_macros::Display)]
-#[serde(rename_all = "snake_case")]
+#[cw_serde]
 pub enum OfferState {
     Published,
     Accepted,
@@ -77,11 +74,11 @@ pub enum OfferState {
     Cancelled,
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
-#[serde(rename_all = "snake_case")]
+#[cw_serde]
 pub struct ContractInfo {
     pub name: String,
     pub owner: Addr,
     pub fee_distributor: String,
     pub fee_rate: Uint128,
+    pub global_offer_index: u64,
 }

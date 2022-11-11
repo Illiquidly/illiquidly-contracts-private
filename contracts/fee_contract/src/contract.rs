@@ -1,11 +1,13 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::{
-    entry_point, to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult,
-    Uint128, coins
+    coins, entry_point, to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdError,
+    StdResult, Uint128,
 };
 
 use fee_contract_export::error::ContractError;
-use fee_contract_export::msg::{ExecuteMsg, FeeResponse, InstantiateMsg, MigrateMsg, QueryMsg, FeeRawResponse};
+use fee_contract_export::msg::{
+    ExecuteMsg, FeeRawResponse, FeeResponse, InstantiateMsg, MigrateMsg, QueryMsg,
+};
 use fee_contract_export::state::{ContractInfo, FeeInfo, FeeType};
 
 use p2p_trading_export::query::{load_trade, load_trade_and_accepted_counter_trade};
@@ -15,7 +17,6 @@ use fee_distributor_export::msg::ExecuteMsg as FeeDistributorMsg;
 use p2p_trading_export::msg::ExecuteMsg as P2PExecuteMsg;
 use p2p_trading_export::state::AssetInfo;
 use utils::msg::into_cosmos_msg;
-
 
 const COIN_DENOM: &str = "uluna";
 const ASSET_FEE_RATE: u128 = 60u128; // In thousands
@@ -160,7 +161,6 @@ pub fn pay_fee_and_withdraw(
 
     let total_fee_amount = get_user_fee_amount(fee.clone());
 
-
     // We accept a small fee deviation, in case the exchange rates fluctuate a bit between the query and the paiement.
     let acceptable_fee_deviation = FEE_RATES.load(deps.storage)?.acceptable_fee_deviation;
 
@@ -189,38 +189,36 @@ pub fn pay_fee_and_withdraw(
         })
         .collect();
 
-
     let mut distribute_messages = vec![];
 
     let two = Uint128::from(2u128);
-    let assets_fee_paid_by_user = if funds.amount < fee.assets_fee/two{
+    let assets_fee_paid_by_user = if funds.amount < fee.assets_fee / two {
         funds.amount
-    }else{
-        fee.assets_fee/two
+    } else {
+        fee.assets_fee / two
     };
     let funds_fee_paid_by_user = funds.amount - assets_fee_paid_by_user;
 
-    if assets_fee_paid_by_user != Uint128::zero(){
-        distribute_messages.push( 
-    into_cosmos_msg(
-        FeeDistributorMsg::DepositFees {
-            addresses: contract_addresses.clone(),
-            fee_type: FeeType::Assets
-        },
-        contract_info.fee_distributor.clone(),
-        Some(coins(assets_fee_paid_by_user.u128(), COIN_DENOM)),
-    )?)
+    if assets_fee_paid_by_user != Uint128::zero() {
+        distribute_messages.push(into_cosmos_msg(
+            FeeDistributorMsg::DepositFees {
+                addresses: contract_addresses.clone(),
+                fee_type: FeeType::Assets,
+            },
+            contract_info.fee_distributor.clone(),
+            Some(coins(assets_fee_paid_by_user.u128(), COIN_DENOM)),
+        )?)
     }
 
-    if funds_fee_paid_by_user != Uint128::zero(){
-        distribute_messages.push( into_cosmos_msg(
-        FeeDistributorMsg::DepositFees {
-            addresses: contract_addresses,
-            fee_type: FeeType::Funds
-        },
-        contract_info.fee_distributor.clone(),
-        Some(coins(funds_fee_paid_by_user.u128(), COIN_DENOM)),
-    )?,)
+    if funds_fee_paid_by_user != Uint128::zero() {
+        distribute_messages.push(into_cosmos_msg(
+            FeeDistributorMsg::DepositFees {
+                addresses: contract_addresses,
+                fee_type: FeeType::Funds,
+            },
+            contract_info.fee_distributor.clone(),
+            Some(coins(funds_fee_paid_by_user.u128(), COIN_DENOM)),
+        )?)
     }
 
     // Then we call withdraw on the p2p contract
@@ -294,9 +292,8 @@ pub fn update_fee_rates(
     Ok(Response::new().add_attribute("updated", "fee_rates"))
 }
 
-
-pub fn get_user_fee_amount(fee: FeeRawResponse) -> Uint128{
-   (fee.assets_fee + fee.funds_fee)/Uint128::from(2u128)
+pub fn get_user_fee_amount(fee: FeeRawResponse) -> Uint128 {
+    (fee.assets_fee + fee.funds_fee) / Uint128::from(2u128)
 }
 
 /// Compute the fee amount for trade and counter_trade assets
@@ -341,12 +338,10 @@ pub fn fee_amount_raw(
             * (asset_number.max(fee_info.second_teer_limit) - fee_info.second_teer_limit)
                 .min(fee_info.fee_max);
 
-    Ok(
-        FeeRawResponse{
-            funds_fee,
-            assets_fee: fee
-        }
-    )
+    Ok(FeeRawResponse {
+        funds_fee,
+        assets_fee: fee,
+    })
 }
 
 pub fn contract_info(deps: Deps) -> StdResult<ContractInfo> {
@@ -379,7 +374,10 @@ pub fn query_fee_for(
         &counter_info.associated_assets,
     )?;
 
-    Ok(FeeResponse { amount: get_user_fee_amount(fee), denom: COIN_DENOM.to_string() })
+    Ok(FeeResponse {
+        amount: get_user_fee_amount(fee),
+        denom: COIN_DENOM.to_string(),
+    })
 }
 
 /// Allows to simulate the fee that will need to be paid if the submitted assets are those of the accepted counter trade
@@ -393,7 +391,10 @@ pub fn simulate_fee(
     let trade_info = load_trade(deps, contract_info.p2p_contract, trade_id)?;
     let fee = fee_amount_raw(deps, &trade_info.associated_assets, &counter_assets)?;
 
-    Ok(FeeResponse { amount: get_user_fee_amount(fee), denom: COIN_DENOM.to_string() })
+    Ok(FeeResponse {
+        amount: get_user_fee_amount(fee),
+        denom: COIN_DENOM.to_string(),
+    })
 }
 
 #[cfg(test)]

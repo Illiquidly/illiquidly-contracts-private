@@ -565,7 +565,7 @@ pub fn add_whitelisted_users(
     TRADE_INFO.save(storage, trade_id, &trade_info)?;
 
     let mut users_attribute = whitelisted_users.join(",");
-    if users_attribute.is_empty(){
+    if users_attribute.is_empty() {
         users_attribute = "None".to_string()
     }
 

@@ -3,20 +3,22 @@ use cosmwasm_std::{
     Order, Response, StdError, StdResult, Uint128,
 };
 use cw_storage_plus::Bound;
+use fee_contract_export::state::FeeType;
 use itertools::Itertools;
 #[cfg(not(feature = "library"))]
 use std::convert::TryInto;
-use utils::state::maybe_addr;   
-use fee_contract_export::state::FeeType;
+use utils::state::maybe_addr;
 
 use fee_distributor_export::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
-use fee_distributor_export::state::{ContractInfo};
+use fee_distributor_export::state::ContractInfo;
 
 use crate::error::ContractError;
-use crate::state::{is_admin, ALLOCATED_FUNDS, ASSOCIATED_FEE_ADDRESS, CONTRACT_INFO, is_admin_or_address};
+use crate::state::{
+    is_admin, is_admin_or_address, ALLOCATED_FUNDS, ASSOCIATED_FEE_ADDRESS, CONTRACT_INFO,
+};
 
-const PROJECTS_ALLOCATION_FOR_ASSETS_FEE: u128 = 600u128; 
-const PROJECTS_ALLOCATION_FOR_FUNDS_FEE: u128 = 666u128; 
+const PROJECTS_ALLOCATION_FOR_ASSETS_FEE: u128 = 600u128;
+const PROJECTS_ALLOCATION_FOR_FUNDS_FEE: u128 = 666u128;
 const PROJECT_ALLOCATION_MAX_PERCENTAGE: u128 = 1000u128;
 const DEFAULT_LIMIT: u32 = 10u32;
 const MAX_LIMIT: u32 = 30u32;
@@ -60,12 +62,23 @@ pub fn execute(
             treasury,
             projects_allocation_for_assets_fee,
             projects_allocation_for_funds_fee,
-        } => modify_contract_info(deps, env, info, owner, treasury, projects_allocation_for_assets_fee, projects_allocation_for_funds_fee),
+        } => modify_contract_info(
+            deps,
+            env,
+            info,
+            owner,
+            treasury,
+            projects_allocation_for_assets_fee,
+            projects_allocation_for_funds_fee,
+        ),
         ExecuteMsg::AddAssociatedAddress {
             address,
             fee_address,
         } => add_associated_address(deps, env, info, address, fee_address),
-        ExecuteMsg::DepositFees { addresses, fee_type } => deposit_fees(deps, env, info, fee_type, addresses),
+        ExecuteMsg::DepositFees {
+            addresses,
+            fee_type,
+        } => deposit_fees(deps, env, info, fee_type, addresses),
         ExecuteMsg::WithdrawFees { addresses } => withdraw_fees(deps, env, info, addresses),
     }
 }
@@ -103,10 +116,10 @@ pub fn modify_contract_info(
     let mut contract_info = CONTRACT_INFO.load(deps.storage)?;
     contract_info.owner = maybe_addr(deps.api, owner)?.unwrap_or(contract_info.owner);
     contract_info.treasury = maybe_addr(deps.api, treasury)?.unwrap_or(contract_info.treasury);
-    contract_info.projects_allocation_for_assets_fee =
-        projects_allocation_for_assets_fee.unwrap_or(contract_info.projects_allocation_for_assets_fee);
-    contract_info.projects_allocation_for_funds_fee =
-        projects_allocation_for_funds_fee.unwrap_or(contract_info.projects_allocation_for_funds_fee);
+    contract_info.projects_allocation_for_assets_fee = projects_allocation_for_assets_fee
+        .unwrap_or(contract_info.projects_allocation_for_assets_fee);
+    contract_info.projects_allocation_for_funds_fee = projects_allocation_for_funds_fee
+        .unwrap_or(contract_info.projects_allocation_for_funds_fee);
 
     if contract_info.projects_allocation_for_funds_fee.u128() > PROJECT_ALLOCATION_MAX_PERCENTAGE {
         return Err(ContractError::AllocationTooHigh {});
@@ -130,7 +143,12 @@ pub fn add_associated_address(
     let valid_address = deps.api.addr_validate(&address)?;
     let valid_fee_address = deps.api.addr_validate(&fee_address)?;
 
-    is_admin_or_address(deps.as_ref(), info.sender, &valid_address, valid_fee_address.clone())?;
+    is_admin_or_address(
+        deps.as_ref(),
+        info.sender,
+        &valid_address,
+        valid_fee_address.clone(),
+    )?;
 
     ASSOCIATED_FEE_ADDRESS.save(deps.storage, &valid_address, &valid_fee_address)?;
 
@@ -160,7 +178,7 @@ pub fn deposit_fees(
 
     let projects_allocation = match fee_type {
         FeeType::Funds => contract_info.projects_allocation_for_funds_fee,
-        FeeType::Assets => contract_info.projects_allocation_for_assets_fee
+        FeeType::Assets => contract_info.projects_allocation_for_assets_fee,
     };
 
     let each_project_allocation = if n_addresses > 0 {
@@ -170,8 +188,6 @@ pub fn deposit_fees(
     } else {
         Uint128::zero()
     };
-
-
 
     let treasury_allocation = fund.amount - each_project_allocation * Uint128::from(n_addresses);
     let each_project_fund = coin(each_project_allocation.u128(), fund.denom.clone());
@@ -362,7 +378,7 @@ pub mod tests {
             info.clone(),
             ExecuteMsg::DepositFees {
                 addresses: vec!["test".to_string()],
-                fee_type: FeeType::Assets
+                fee_type: FeeType::Assets,
             },
         )
         .unwrap();
@@ -376,7 +392,10 @@ pub mod tests {
         .unwrap();
         assert_eq!(
             from_binary::<Vec<Coin>>(&response).unwrap(),
-            coins(54u128 * PROJECTS_ALLOCATION_FOR_ASSETS_FEE  / PROJECT_ALLOCATION_MAX_PERCENTAGE, "uluna")
+            coins(
+                54u128 * PROJECTS_ALLOCATION_FOR_ASSETS_FEE / PROJECT_ALLOCATION_MAX_PERCENTAGE,
+                "uluna"
+            )
         );
 
         let response = execute(
@@ -385,7 +404,7 @@ pub mod tests {
             info,
             ExecuteMsg::DepositFees {
                 addresses: vec!["test".to_string()],
-                fee_type: FeeType::Assets
+                fee_type: FeeType::Assets,
             },
         )
         .unwrap();
@@ -393,7 +412,12 @@ pub mod tests {
             response.messages,
             vec![SubMsg::new(BankMsg::Send {
                 to_address: "treasury".to_string(),
-                amount: coins(54u128 - 54u128 * PROJECTS_ALLOCATION_FOR_ASSETS_FEE  / PROJECT_ALLOCATION_MAX_PERCENTAGE, "uluna")
+                amount: coins(
+                    54u128
+                        - 54u128 * PROJECTS_ALLOCATION_FOR_ASSETS_FEE
+                            / PROJECT_ALLOCATION_MAX_PERCENTAGE,
+                    "uluna"
+                )
             })]
         );
     }
@@ -412,7 +436,7 @@ pub mod tests {
             info.clone(),
             ExecuteMsg::DepositFees {
                 addresses: vec!["test".to_string()],
-                fee_type: FeeType::Assets
+                fee_type: FeeType::Assets,
             },
         )
         .unwrap();
@@ -423,7 +447,7 @@ pub mod tests {
             info.clone(),
             ExecuteMsg::DepositFees {
                 addresses: vec!["test".to_string()],
-                fee_type: FeeType::Assets
+                fee_type: FeeType::Assets,
             },
         )
         .unwrap();
@@ -439,7 +463,9 @@ pub mod tests {
         assert_eq!(
             from_binary::<Vec<Coin>>(&response).unwrap(),
             coins(
-                54u128 * PROJECTS_ALLOCATION_FOR_ASSETS_FEE  / PROJECT_ALLOCATION_MAX_PERCENTAGE + 54u128 * PROJECTS_ALLOCATION_FOR_ASSETS_FEE / PROJECT_ALLOCATION_MAX_PERCENTAGE,
+                54u128 * PROJECTS_ALLOCATION_FOR_ASSETS_FEE / PROJECT_ALLOCATION_MAX_PERCENTAGE
+                    + 54u128 * PROJECTS_ALLOCATION_FOR_ASSETS_FEE
+                        / PROJECT_ALLOCATION_MAX_PERCENTAGE,
                 "uluna"
             )
         );
@@ -461,7 +487,7 @@ pub mod tests {
             info.clone(),
             ExecuteMsg::DepositFees {
                 addresses: vec!["test".to_string()],
-                fee_type: FeeType::Assets
+                fee_type: FeeType::Assets,
             },
         )
         .unwrap();
@@ -471,11 +497,21 @@ pub mod tests {
             vec![
                 SubMsg::new(BankMsg::Send {
                     to_address: "treasury".to_string(),
-                    amount: coins(54u128 - 54u128 * PROJECTS_ALLOCATION_FOR_ASSETS_FEE  / PROJECT_ALLOCATION_MAX_PERCENTAGE, "uluna")
+                    amount: coins(
+                        54u128
+                            - 54u128 * PROJECTS_ALLOCATION_FOR_ASSETS_FEE
+                                / PROJECT_ALLOCATION_MAX_PERCENTAGE,
+                        "uluna"
+                    )
                 }),
                 SubMsg::new(BankMsg::Send {
                     to_address: "fee".to_string(),
-                    amount: coins(54u128 * PROJECTS_ALLOCATION_FOR_ASSETS_FEE  / PROJECT_ALLOCATION_MAX_PERCENTAGE * 3u128, "uluna")
+                    amount: coins(
+                        54u128 * PROJECTS_ALLOCATION_FOR_ASSETS_FEE
+                            / PROJECT_ALLOCATION_MAX_PERCENTAGE
+                            * 3u128,
+                        "uluna"
+                    )
                 })
             ]
         );
@@ -496,7 +532,7 @@ pub mod tests {
             info,
             ExecuteMsg::DepositFees {
                 addresses: vec!["test".to_string()],
-                fee_type: FeeType::Assets
+                fee_type: FeeType::Assets,
             },
         )
         .unwrap();
@@ -506,11 +542,20 @@ pub mod tests {
             vec![
                 SubMsg::new(BankMsg::Send {
                     to_address: "treasury".to_string(),
-                    amount: coins(54u128 - 54u128 * PROJECTS_ALLOCATION_FOR_ASSETS_FEE  / PROJECT_ALLOCATION_MAX_PERCENTAGE, "uluna")
+                    amount: coins(
+                        54u128
+                            - 54u128 * PROJECTS_ALLOCATION_FOR_ASSETS_FEE
+                                / PROJECT_ALLOCATION_MAX_PERCENTAGE,
+                        "uluna"
+                    )
                 }),
                 SubMsg::new(BankMsg::Send {
                     to_address: "fee".to_string(),
-                    amount: coins(54u128 * PROJECTS_ALLOCATION_FOR_ASSETS_FEE  / PROJECT_ALLOCATION_MAX_PERCENTAGE, "uluna")
+                    amount: coins(
+                        54u128 * PROJECTS_ALLOCATION_FOR_ASSETS_FEE
+                            / PROJECT_ALLOCATION_MAX_PERCENTAGE,
+                        "uluna"
+                    )
                 })
             ]
         );
@@ -551,7 +596,7 @@ pub mod tests {
                     "test8".to_string(),
                     "test9".to_string(),
                 ],
-                fee_type: FeeType::Assets
+                fee_type: FeeType::Assets,
             },
         )
         .unwrap();

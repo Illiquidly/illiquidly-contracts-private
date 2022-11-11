@@ -1,4 +1,4 @@
-use cosmwasm_std::{StdError};
+use cosmwasm_std::StdError;
 use raffles_export::state::{AssetInfo, RaffleState};
 use thiserror::Error;
 
@@ -44,14 +44,14 @@ pub enum ContractError {
     TooMuchTickets {
         max: u32,
         nb_before: u32,
-        nb_after: u32
+        nb_after: u32,
     },
 
     #[error("Too much tickets were already purchased by this user for this raffle. Max : {max:?}, Number before purchase : {nb_before:?}, Number after purchase : {nb_after:?}")]
     TooMuchTicketsForUser {
         max: u32,
         nb_before: u32,
-        nb_after: u32
+        nb_after: u32,
     },
 
     #[error("The provided randomness is invalid current round : {current_round:?}")]
@@ -64,7 +64,7 @@ pub enum ContractError {
     WrongStateForClaim { status: RaffleState },
 
     #[error("This raffle has already started.")]
-    RaffleAlreadyStarted{},
+    RaffleAlreadyStarted {},
 
     #[error("The public key you indicated is invalid")]
     InvalidPubkey {},

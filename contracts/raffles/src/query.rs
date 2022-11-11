@@ -1,3 +1,4 @@
+use crate::state::RAFFLE_TICKETS;
 use anyhow::{anyhow, Result};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::{Api, Deps, Env, Order, StdResult};
@@ -12,7 +13,7 @@ use raffles_export::msg::QueryFilters;
 use raffles_export::state::{AssetInfo, ContractInfo, RaffleInfo, RaffleState};
 
 // settings for pagination
-const MAX_LIMIT: u32 = 30;
+const MAX_LIMIT: u32 = 100;
 const DEFAULT_LIMIT: u32 = 10;
 const BASE_LIMIT: usize = 100;
 
@@ -65,14 +66,20 @@ pub fn raffle_filter(
             Some(owner) => raffle.raffle_info.as_ref().unwrap().owner == owner.clone(),
             None => true,
         } && match &filters.contains_token {
-            Some(token) => raffle.raffle_info.clone().unwrap().assets.iter().any(|asset| {
-                match asset{
-                    AssetInfo::Coin(x) => x.denom == token.as_ref(),
-                    AssetInfo::Cw20Coin(x) => x.address == token.as_ref(),
-                    AssetInfo::Cw721Coin(x) => x.address == token.as_ref(),
-                    AssetInfo::Cw1155Coin(x) => x.address == token.as_ref(),
-                }
-            }),
+            Some(token) => {
+                raffle
+                    .raffle_info
+                    .clone()
+                    .unwrap()
+                    .assets
+                    .iter()
+                    .any(|asset| match asset {
+                        AssetInfo::Coin(x) => x.denom == token.as_ref(),
+                        AssetInfo::Cw20Coin(x) => x.address == token.as_ref(),
+                        AssetInfo::Cw721Coin(x) => x.address == token.as_ref(),
+                        AssetInfo::Cw1155Coin(x) => x.address == token.as_ref(),
+                    })
+            }
             None => true,
         })
     } else {
@@ -198,4 +205,24 @@ pub fn query_all_raffles_raw(
         }
     }
     Ok(AllRafflesResponse { raffles })
+}
+
+/// Query all ticket onwers within a raffle
+///
+pub fn query_all_tickets(
+    deps: Deps,
+    _env: Env,
+    raffle_id: u64,
+    start_after: Option<u32>,
+    limit: Option<u32>,
+) -> Result<Vec<String>> {
+    let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
+    let start = start_after.map(Bound::exclusive);
+
+    RAFFLE_TICKETS
+        .prefix(raffle_id)
+        .range(deps.storage, start.clone(), None, Order::Ascending)
+        .map(|kv_item| Ok(kv_item?.1.to_string()))
+        .take(limit)
+        .collect()
 }

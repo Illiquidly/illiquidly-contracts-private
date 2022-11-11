@@ -76,15 +76,16 @@ pub enum ExecuteMsg {
         raffle_ticket_price: AssetInfo,
     },
     CancelRaffle {
-        raffle_id: u64
+        raffle_id: u64,
     },
     ModifyRaffle {
         raffle_id: u64,
+        raffle_ticket_price: Option<AssetInfo>,
         raffle_options: RaffleOptionsMsg,
     },
     BuyTicket {
         raffle_id: u64,
-        ticket_number: u32, 
+        ticket_number: u32,
         sent_assets: AssetInfo,
     },
     Receive {
@@ -127,10 +128,15 @@ pub enum QueryMsg {
     RaffleInfo {
         raffle_id: u64,
     },
-    GetAllRaffles {
+    AllRaffles {
         start_after: Option<u64>,
         limit: Option<u32>,
         filters: Option<QueryFilters>,
+    },
+    AllTickets {
+        raffle_id: u64,
+        start_after: Option<u32>,
+        limit: Option<u32>,
     },
     TicketNumber {
         owner: String,

@@ -1,5 +1,5 @@
-use cosmwasm_std::Coin;
 use anyhow::{anyhow, Result};
+use cosmwasm_std::Coin;
 use cw_storage_plus::{Item, Map};
 
 use cosmwasm_std::{
@@ -9,10 +9,10 @@ use cosmwasm_std::{
 use crate::error::ContractError;
 use crate::rand::Prng;
 use raffles_export::msg::{into_cosmos_msg, DrandRandomness, VerifierExecuteMsg};
-use raffles_export::state::{AssetInfo, ContractInfo, RaffleInfo, RaffleState, Cw20Coin};
+use raffles_export::state::{AssetInfo, ContractInfo, Cw20Coin, RaffleInfo, RaffleState};
 
 use cw1155::Cw1155ExecuteMsg;
-use cw20::{Cw20ExecuteMsg};
+use cw20::Cw20ExecuteMsg;
 use cw721::Cw721ExecuteMsg;
 
 pub const CONTRACT_INFO: Item<ContractInfo> = Item::new("contract_info");
@@ -63,7 +63,11 @@ pub fn is_owner(storage: &dyn Storage, sender: Addr) -> Result<ContractInfo, Con
     }
 }
 
-pub fn is_raffle_owner(storage: &dyn Storage, raffle_id: u64, sender: Addr) -> Result<RaffleInfo, ContractError> {
+pub fn is_raffle_owner(
+    storage: &dyn Storage,
+    raffle_id: u64,
+    sender: Addr,
+) -> Result<RaffleInfo, ContractError> {
     let raffle_info = RAFFLE_INFO.load(storage, raffle_id)?;
     if sender == raffle_info.owner {
         Ok(raffle_info)
@@ -90,7 +94,7 @@ pub fn get_raffle_winner(
     let mut rng: Prng = Prng::new(&raffle_info.randomness.unwrap().randomness);
 
     // We pick a winner id
-    let winner_id = rng.random_between(0u32, raffle_info.number_of_tickets);
+    let winner_id = rng.random_between(0u32, raffle_info.number_of_tickets - 1);
     let winner = RAFFLE_TICKETS.load(deps.storage, (raffle_id, winner_id))?;
 
     Ok(winner)
@@ -101,7 +105,7 @@ pub fn get_raffle_winner(
 /// As actions can only happen in certain time-periods, you have to be careful when testing off-chain
 /// If the chains stops or the block time is not accurate we might get some errors (let's hope it never happens)
 pub fn get_raffle_state(env: Env, raffle_info: RaffleInfo) -> RaffleState {
-    if raffle_info.is_cancelled{
+    if raffle_info.is_cancelled {
         RaffleState::Cancelled
     } else if env.block.time < raffle_info.raffle_options.raffle_start_timestamp {
         RaffleState::Created
@@ -145,21 +149,17 @@ pub fn can_buy_ticket(env: Env, raffle_info: RaffleInfo) -> Result<()> {
 
 /// Can only buy a ticket when the raffle has started and is not closed
 pub fn ticket_cost(raffle_info: RaffleInfo, ticket_number: u32) -> Result<AssetInfo> {
-    Ok(
-        match raffle_info.raffle_ticket_price{
-            AssetInfo::Coin(x) => 
-                AssetInfo::Coin(Coin{
-                    denom: x.denom,
-                    amount: Uint128::from(ticket_number) * x.amount
-                }),
-            AssetInfo::Cw20Coin(x) =>
-                AssetInfo::Cw20Coin(Cw20Coin{
-                    address: x.address,
-                    amount: Uint128::from(ticket_number) * x.amount
-                }),
-            _ => return Err(anyhow!(ContractError::WrongAssetType {})),
-        }   
-    )
+    Ok(match raffle_info.raffle_ticket_price {
+        AssetInfo::Coin(x) => AssetInfo::Coin(Coin {
+            denom: x.denom,
+            amount: Uint128::from(ticket_number) * x.amount,
+        }),
+        AssetInfo::Cw20Coin(x) => AssetInfo::Cw20Coin(Cw20Coin {
+            address: x.address,
+            amount: Uint128::from(ticket_number) * x.amount,
+        }),
+        _ => return Err(anyhow!(ContractError::WrongAssetType {})),
+    })
 }
 
 /// Util to get the winner messages to return when claiming a Raffle (returns the raffled asset)
@@ -175,9 +175,15 @@ pub fn get_raffle_owner_messages(env: Env, raffle_info: RaffleInfo) -> Result<Ve
 }
 
 /// Util to get the assets back from a raffle
-fn _get_raffle_end_asset_messages(env: Env, raffle_info: RaffleInfo, receiver: String) -> Result<Vec<CosmosMsg>> {
-    raffle_info.assets.iter().map(|asset|{
-        match asset {
+fn _get_raffle_end_asset_messages(
+    env: Env,
+    raffle_info: RaffleInfo,
+    receiver: String,
+) -> Result<Vec<CosmosMsg>> {
+    raffle_info
+        .assets
+        .iter()
+        .map(|asset| match asset {
             AssetInfo::Cw721Coin(nft) => {
                 let message = Cw721ExecuteMsg::TransferNft {
                     recipient: receiver.clone(),
@@ -198,10 +204,9 @@ fn _get_raffle_end_asset_messages(env: Env, raffle_info: RaffleInfo, receiver: S
             _ => Err(anyhow!(StdError::generic_err(
                 "Unreachable, wrong asset type raffled"
             ))),
-        }
-    }).collect()
+        })
+        .collect()
 }
-
 
 /// Util to get the organizers and helpers messages to return when claiming a Raffle (returns the funds)
 pub fn get_raffle_owner_finished_messages(

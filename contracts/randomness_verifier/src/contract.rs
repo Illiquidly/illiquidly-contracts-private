@@ -70,7 +70,7 @@ pub fn execute_verify(
         .add_attribute("round", randomness.round.to_string())
         .add_attribute("randomness", Binary::from(randomness_result).to_string())
         .add_attribute("raffle_id", raffle_id.to_string())
-        .add_attribute("owner", owner.to_string()))
+        .add_attribute("owner", owner))
 }
 
 #[cfg(test)]
