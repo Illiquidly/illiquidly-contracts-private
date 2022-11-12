@@ -7,6 +7,9 @@ pub enum ContractError {
     #[error("{0}")]
     Std(#[from] StdError),
 
+    #[error("Unreachable error")]
+    Unreachable {},
+
     #[error("Unauthorized")]
     Unauthorized {},
 

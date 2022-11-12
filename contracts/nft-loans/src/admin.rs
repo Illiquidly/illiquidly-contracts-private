@@ -1,6 +1,5 @@
 use cosmwasm_std::{DepsMut, Env, MessageInfo, Response, Uint128};
-
-use crate::error::ContractError;
+use anyhow::Result;
 use crate::state::{is_owner, CONTRACT_INFO};
 
 /// Owner only function
@@ -14,7 +13,7 @@ pub fn set_owner(
     _env: Env,
     info: MessageInfo,
     new_owner: String,
-) -> Result<Response, ContractError> {
+) -> Result<Response> {
     let mut contract_info = is_owner(deps.storage, info.sender)?;
 
     let new_owner = deps.api.addr_validate(&new_owner)?;
@@ -35,7 +34,7 @@ pub fn set_fee_distributor(
     _env: Env,
     info: MessageInfo,
     new_distributor: String,
-) -> Result<Response, ContractError> {
+) -> Result<Response> {
     let mut contract_info = is_owner(deps.storage, info.sender)?;
 
     contract_info.fee_distributor = new_distributor.clone();
@@ -56,7 +55,7 @@ pub fn set_fee_rate(
     _env: Env,
     info: MessageInfo,
     new_fee_rate: Uint128,
-) -> Result<Response, ContractError> {
+) -> Result<Response> {
     let mut contract_info = is_owner(deps.storage, info.sender)?;
 
     contract_info.fee_rate = new_fee_rate;

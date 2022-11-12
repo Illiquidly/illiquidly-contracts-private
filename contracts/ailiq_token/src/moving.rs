@@ -1,6 +1,6 @@
 use crate::error::ContractError;
 #[cfg(not(feature = "library"))]
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Result, bail};
 use cosmwasm_std::{
     BankMsg, Coin, DepsMut, Env, MessageInfo, Response, StdResult, Storage, Uint128,
 };
@@ -19,12 +19,12 @@ pub fn deposit(
     info: MessageInfo,
     receiver: String,
     deposit_amount: Uint128,
-) -> Result<Response, ContractError> {
+) -> Result<Response> {
     let state = STATE.load(deps.storage)?;
 
     // Cannot deposit 0 amount
     if deposit_amount == Uint128::zero() {
-        return Err(ContractError::ZeroDeposit {});
+        bail!(ContractError::ZeroDeposit {});
     };
     let mint_amount = convert_to_shares(
         deps.as_ref(),
@@ -42,12 +42,12 @@ pub fn deposit(
         AssetInfo::Coin(x) => {
             // We need to check if the funds sent match the AssetInfo we have
             if info.funds.len() != 1 || info.funds[0].denom != x {
-                return Err(ContractError::WrongAssetDeposited {
+                bail!(ContractError::WrongAssetDeposited {
                     sent: info.funds[0].denom.clone(),
                     expected: x,
                 });
             } else if deposit_amount != info.funds[0].amount {
-                return Err(ContractError::InsufficientAssetDeposited {
+                bail!(ContractError::InsufficientAssetDeposited {
                     sent: info.funds[0].amount,
                     expected: deposit_amount,
                 });
@@ -82,12 +82,12 @@ pub fn mint(
     info: MessageInfo,
     receiver: String,
     mint_amount: Uint128,
-) -> Result<Response, ContractError> {
+) -> Result<Response> {
     let state = STATE.load(deps.storage)?;
 
     // Cannot deposit 0 amount
     if mint_amount == Uint128::zero() {
-        return Err(ContractError::ZeroDeposit {});
+        bail!(ContractError::ZeroDeposit {});
     }
 
     // Computing the necessary deposit amount to get that number of shares
@@ -107,12 +107,12 @@ pub fn mint(
         AssetInfo::Coin(x) => {
             // We need to check if the funds sent match the AssetInfo we have
             if info.funds.len() != 1 || info.funds[0].denom != x {
-                return Err(ContractError::WrongAssetDeposited {
+                bail!(ContractError::WrongAssetDeposited {
                     sent: info.funds[0].denom.clone(),
                     expected: x,
                 });
             } else if deposit_amount > info.funds[0].amount {
-                return Err(ContractError::InsufficientAssetDeposited {
+                bail!(ContractError::InsufficientAssetDeposited {
                     sent: info.funds[0].amount,
                     expected: deposit_amount,
                 });
@@ -191,7 +191,7 @@ pub fn withdraw(
     let state = STATE.load(deps.storage)?;
     // Cannot withdraw 0 assets
     if assets == Uint128::zero() {
-        return Err(anyhow::anyhow!(ContractError::ZeroDeposit {}));
+        bail!(anyhow::anyhow!(ContractError::ZeroDeposit {}));
     }
 
     let shares_needed = convert_to_shares(deps.as_ref(), env.clone(), assets, None)?;
@@ -226,7 +226,7 @@ pub fn redeem(
 
     // Cannot withdraw 0 assets
     if shares == Uint128::zero() {
-        return Err(anyhow::anyhow!(ContractError::ZeroDeposit {}));
+        bail!(anyhow::anyhow!(ContractError::ZeroDeposit {}));
     }
 
     let assets_needed = convert_to_shares(deps.as_ref(), env.clone(), shares, None)?;
@@ -255,9 +255,9 @@ pub fn _execute_mint(
     deps: DepsMut,
     recipient: String,
     amount: Uint128,
-) -> Result<(), ContractError> {
+) -> Result<()> {
     if amount == Uint128::zero() {
-        return Err(ContractError::InvalidZeroAmount {});
+        bail!(ContractError::InvalidZeroAmount {});
     }
 
     let mut config = TOKEN_INFO.load(deps.storage)?;
@@ -266,7 +266,7 @@ pub fn _execute_mint(
     config.total_supply += amount;
     if let Some(limit) = config.get_cap() {
         if config.total_supply > limit {
-            return Err(ContractError::CannotExceedCap {});
+            bail!(ContractError::CannotExceedCap {});
         }
     }
     TOKEN_INFO.save(deps.storage, &config)?;
@@ -295,7 +295,7 @@ pub fn borrow(
     let mut state = STATE.load(deps.storage)?;
     // Only the authorized address can borrow assets (this usually is a contract address)
     if state.borrower.is_none() || info.sender != state.borrower.clone().unwrap() {
-        return Err(anyhow::anyhow!(ContractError::Unauthorized {}));
+        bail!(anyhow::anyhow!(ContractError::Unauthorized {}));
     }
 
     // We update the internal state of the contract, more assets were borrowed
@@ -331,12 +331,12 @@ pub fn repay(
         AssetInfo::Coin(x) => {
             // We need to check if the funds sent match the AssetInfo we have
             if info.funds.len() != 1 || info.funds[0].denom != x {
-                return Err(anyhow!(ContractError::WrongAssetDeposited {
+                bail!(anyhow!(ContractError::WrongAssetDeposited {
                     sent: info.funds[0].denom.clone(),
                     expected: x,
                 }));
             } else if assets != info.funds[0].amount {
-                return Err(anyhow!(ContractError::InsufficientAssetDeposited {
+                bail!(anyhow!(ContractError::InsufficientAssetDeposited {
                     sent: info.funds[0].amount,
                     expected: assets,
                 }));
@@ -370,7 +370,7 @@ pub fn _repay(storage: &mut dyn Storage, assets: Uint128) -> Result<Uint128> {
 
     // Cannot deposit 0 amount
     if assets == Uint128::zero() {
-        return Err(anyhow!(ContractError::ZeroDeposit {}));
+        bail!(anyhow!(ContractError::ZeroDeposit {}));
     };
     // Then we update the total debt
     // If the current debt is higher than the repay amount, we repay some of the debt with the deposit

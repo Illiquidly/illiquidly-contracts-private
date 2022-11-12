@@ -1,3 +1,4 @@
+use anyhow::Result;
 use crate::contract::execute;
 use crate::contract::instantiate;
 use crate::error::ContractError;
@@ -29,6 +30,13 @@ use utils::msg::into_cosmos_msg;
 use utils::state::AssetInfo;
 use utils::state::Cw1155Coin;
 use utils::state::Cw721Coin;
+
+pub fn assert_error(err: anyhow::Error, contract_error: ContractError){
+    assert_eq!(
+        err.downcast::<ContractError>().unwrap(),
+        contract_error
+    )
+}
 
 pub fn init_helper(deps: DepsMut) {
     let instantiate_msg = InstantiateMsg {
@@ -95,7 +103,7 @@ fn test_init_sanity() {
         },
     )
     .unwrap_err();
-    assert_eq!(unauthorized, ContractError::Unauthorized {});
+    assert_error(unauthorized, ContractError::Unauthorized {});
 
     // We test changing the owner
     let unauthorized = execute(
@@ -107,7 +115,7 @@ fn test_init_sanity() {
         },
     )
     .unwrap_err();
-    assert_eq!(unauthorized, ContractError::Unauthorized {});
+    assert_error(unauthorized, ContractError::Unauthorized {});
 
     // We test changing the owner
     execute(
@@ -135,7 +143,7 @@ fn test_init_sanity() {
         },
     )
     .unwrap_err();
-    assert_eq!(unauthorized, ContractError::Unauthorized {});
+    assert_error(unauthorized, ContractError::Unauthorized {});
 
     execute(
         deps.as_mut(),
@@ -159,7 +167,7 @@ pub fn add_collateral_helper(
     token_id: &str,
     value: Option<Uint128>,
     terms: Option<LoanTerms>,
-) -> Result<Response, ContractError> {
+) -> Result<Response> {
     let info = mock_info(creator, &[]);
     let env = mock_env();
 
@@ -191,7 +199,7 @@ fn set_terms_helper(
     borrower: &str,
     loan_id: u64,
     terms: LoanTerms,
-) -> Result<Response, ContractError> {
+) -> Result<Response> {
     let info = mock_info(borrower, &[]);
     let env = mock_env();
 
@@ -214,7 +222,7 @@ fn make_offer_helper(
     loan_id: u64,
     terms: LoanTerms,
     coins: Vec<Coin>,
-) -> Result<Response, ContractError> {
+) -> Result<Response> {
     let info = mock_info(lender, &coins);
     let env = mock_env();
 
@@ -235,7 +243,7 @@ fn cancel_offer_helper(
     deps: DepsMut,
     lender: &str,
     global_offer_id: &str,
-) -> Result<Response, ContractError> {
+) -> Result<Response> {
     let info = mock_info(lender, &[]);
     let env = mock_env();
 
@@ -253,7 +261,7 @@ fn refuse_offer_helper(
     deps: DepsMut,
     borrower: &str,
     global_offer_id: &str,
-) -> Result<Response, ContractError> {
+) -> Result<Response> {
     let info = mock_info(borrower, &[]);
     let env = mock_env();
 
@@ -273,7 +281,7 @@ fn accept_loan_helper(
     borrower: &str,
     loan_id: u64,
     coins: Vec<Coin>,
-) -> Result<Response, ContractError> {
+) -> Result<Response> {
     let info = mock_info(lender, &coins);
     let env = mock_env();
 
@@ -293,7 +301,7 @@ fn accept_offer_helper(
     deps: DepsMut,
     borrower: &str,
     global_offer_id: &str,
-) -> Result<Response, ContractError> {
+) -> Result<Response> {
     let info = mock_info(borrower, &[]);
     let env = mock_env();
 
@@ -311,7 +319,7 @@ fn withdraw_collateral_helper(
     deps: DepsMut,
     creator: &str,
     loan_id: u64,
-) -> Result<Response, ContractError> {
+) -> Result<Response> {
     let info = mock_info(creator, &[]);
     let env = mock_env();
 
@@ -322,7 +330,7 @@ fn withdraw_refused_offer_helper(
     deps: DepsMut,
     lender: &str,
     global_offer_id: &str,
-) -> Result<Response, ContractError> {
+) -> Result<Response> {
     let info = mock_info(lender, &[]);
     let env = mock_env();
 
@@ -341,7 +349,7 @@ fn repay_borrowed_funds_helper(
     loan_id: u64,
     funds: Vec<Coin>,
     env: Env,
-) -> Result<Response, ContractError> {
+) -> Result<Response> {
     let info = mock_info(borrower, &funds);
 
     execute(deps, env, info, ExecuteMsg::RepayBorrowedFunds { loan_id })
@@ -352,7 +360,7 @@ fn withdraw_defaulted_loan_helper(
     borrower: &str,
     loan_id: u64,
     env: Env,
-) -> Result<Response, ContractError> {
+) -> Result<Response> {
     let info = mock_info(lender, &[]);
 
     execute(
@@ -506,12 +514,10 @@ fn test_withdraw_collateral() {
     let repay_err =
         repay_borrowed_funds_helper(deps.as_mut(), "creator", 0, coins(506, "luna"), mock_env())
             .unwrap_err();
-    assert_eq!(
-        repay_err,
+    assert_error(repay_err,
         ContractError::WrongLoanState {
             state: LoanState::AssetWithdrawn
-        }
-    )
+        })
 }
 
 #[test]
@@ -540,7 +546,7 @@ fn test_accept_loan() {
     // The funds have to match the terms
     let err =
         accept_loan_helper(deps.as_mut(), "anyone", "creator", 0, coins(123, "luna")).unwrap_err();
-    assert_eq!(err, ContractError::FundsDontMatchTerms {});
+    assert_error(err, ContractError::FundsDontMatchTerms {});
     let err = accept_loan_helper(
         deps.as_mut(),
         "anyone",
@@ -549,7 +555,7 @@ fn test_accept_loan() {
         vec![coin(123, "luna"), coin(457, "uusd")],
     )
     .unwrap_err();
-    assert_eq!(err, ContractError::MultipleCoins {});
+    assert_error(err, ContractError::MultipleCoins {});
 
     accept_loan_helper(deps.as_mut(), "anyone", "creator", 0, coins(456, "luna")).unwrap();
     accept_loan_helper(
@@ -606,7 +612,7 @@ fn test_accept_loan_and_modify() {
 
     // We try to modify the loan
     let modify_err = set_terms_helper(deps.as_mut(), "creator", 0, terms.clone()).unwrap_err();
-    assert_eq!(modify_err, ContractError::NotModifiable {});
+    assert_error(modify_err, ContractError::NotModifiable {});
 
     // We try to counter the loan, and propose new terms
     let offer_err = make_offer_helper(
@@ -619,7 +625,7 @@ fn test_accept_loan_and_modify() {
     )
     .unwrap_err();
 
-    assert_eq!(offer_err, ContractError::NotCounterable {});
+    assert_error(offer_err, ContractError::NotCounterable {});
 }
 
 #[test]
@@ -644,7 +650,7 @@ fn test_repay_loan_early() {
     let repay_err =
         repay_borrowed_funds_helper(deps.as_mut(), "creator", 0, coins(506, "luna"), mock_env())
             .unwrap_err();
-    assert_eq!(
+    assert_error(
         repay_err,
         ContractError::WrongLoanState {
             state: LoanState::Published
@@ -683,7 +689,7 @@ fn test_make_offer() {
         coins(6765, "luna"),
     )
     .unwrap_err();
-    assert_eq!(err, ContractError::FundsDontMatchTerms {});
+    assert_error(err, ContractError::FundsDontMatchTerms {});
 
     let err = make_offer_helper(
         deps.as_mut(),
@@ -694,7 +700,7 @@ fn test_make_offer() {
         vec![coin(456, "luna"), coin(456, "luna")],
     )
     .unwrap_err();
-    assert_eq!(err, ContractError::MultipleCoins {});
+    assert_error(err, ContractError::MultipleCoins {});
 
     make_offer_helper(
         deps.as_mut(),
@@ -866,10 +872,10 @@ fn test_withdraw_refused() {
     withdraw_refused_offer_helper(deps.as_mut(), "anyone", "1").unwrap_err();
     withdraw_refused_offer_helper(deps.as_mut(), "anyone", "2").unwrap_err();
     let err = withdraw_refused_offer_helper(deps.as_mut(), "anyone", "87").unwrap_err();
-    assert_eq!(err, ContractError::OfferNotFound {});
+    assert_error(err, ContractError::OfferNotFound {});
 
     let err = accept_offer_helper(deps.as_mut(), "creator", "87").unwrap_err();
-    assert_eq!(err, ContractError::OfferNotFound {});
+    assert_error(err, ContractError::OfferNotFound {});
     accept_offer_helper(deps.as_mut(), "creator", "1").unwrap();
 
     withdraw_refused_offer_helper(deps.as_mut(), "anyone", "1").unwrap_err();
@@ -909,7 +915,7 @@ fn test_accept_cancelled_offer() {
 
     cancel_offer_helper(deps.as_mut(), "anyone", "1").unwrap();
     let err = accept_offer_helper(deps.as_mut(), "creator", "1").unwrap_err();
-    assert_eq!(
+    assert_error(
         err,
         ContractError::WrongOfferState {
             state: OfferState::Cancelled
@@ -920,6 +926,7 @@ fn test_accept_cancelled_offer() {
 #[test]
 fn test_normal_flow() {
     let mut deps = mock_dependencies();
+    let env = mock_env();
     init_helper(deps.as_mut());
 
     let terms = LoanTerms {
@@ -950,21 +957,10 @@ fn test_normal_flow() {
     accept_offer_helper(deps.as_mut(), "creator", "1").unwrap();
     // Loan starts
 
-    let env = mock_env();
-    let not_now_err =
-        withdraw_defaulted_loan_helper(deps.as_mut(), "anyone", "creator", 0, env.clone())
-            .unwrap_err();
-    assert_eq!(
-        not_now_err,
-        ContractError::WrongLoanState {
-            state: LoanState::Started
-        }
-    );
-
     let err =
         repay_borrowed_funds_helper(deps.as_mut(), "creator", 0, coins(456, "luna"), env.clone())
             .unwrap_err();
-    assert_eq!(err, ContractError::Std(
+    assert_error(err, ContractError::Std(
         StdError::generic_err("Fund sent do not match the loan terms (principle + interests). Needed : 506, Received : 456")
     ));
     let err = repay_borrowed_funds_helper(
@@ -975,11 +971,11 @@ fn test_normal_flow() {
         env.clone(),
     )
     .unwrap_err();
-    assert_eq!(err, ContractError::MultipleCoins {});
+    assert_error(err, ContractError::MultipleCoins {});
     let err =
         repay_borrowed_funds_helper(deps.as_mut(), "creator", 0, coins(456, "uust"), env.clone())
             .unwrap_err();
-    assert_eq!(
+    assert_error(
         err,
         ContractError::Std(StdError::generic_err(
             "You didn't send the right kind of funds",
@@ -1070,7 +1066,7 @@ fn test_defaulted_flow() {
     let err =
         repay_borrowed_funds_helper(deps.as_mut(), "creator", 0, coins(456, "luna"), env.clone())
             .unwrap_err();
-    assert_eq!(
+    assert_error(
         err,
         ContractError::WrongLoanState {
             state: LoanState::Defaulted {},
@@ -1080,7 +1076,7 @@ fn test_defaulted_flow() {
     let err =
         withdraw_defaulted_loan_helper(deps.as_mut(), "bad_person", "creator", 0, env.clone())
             .unwrap_err();
-    assert_eq!(err, ContractError::Unauthorized {});
+    assert_error(err, ContractError::Unauthorized {});
     withdraw_defaulted_loan_helper(deps.as_mut(), "anyone", "creator", 0, env.clone()).unwrap();
     withdraw_defaulted_loan_helper(deps.as_mut(), "anyone", "creator", 0, env).unwrap_err();
 }

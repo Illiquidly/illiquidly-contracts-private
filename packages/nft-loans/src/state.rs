@@ -46,6 +46,7 @@ pub struct OfferInfo {
     pub offer_id: u64,
     pub terms: LoanTerms,
     pub state: OfferState,
+    pub list_date: Timestamp,
     pub deposited_funds: Option<Coin>,
     pub comment: Option<String>,
 }

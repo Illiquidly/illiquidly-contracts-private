@@ -18,6 +18,8 @@ use p2p_trading_export::msg::ExecuteMsg as P2PExecuteMsg;
 use p2p_trading_export::state::AssetInfo;
 use utils::msg::into_cosmos_msg;
 
+use anyhow::{Result, bail};
+
 const COIN_DENOM: &str = "uluna";
 const ASSET_FEE_RATE: u128 = 60u128; // In thousands
 const FEE_MAX: u128 = 10_000_000u128;
@@ -71,7 +73,7 @@ pub fn execute(
     env: Env,
     info: MessageInfo,
     msg: ExecuteMsg,
-) -> Result<Response, ContractError> {
+) -> Result<Response> {
     match msg {
         ExecuteMsg::PayFeeAndWithdraw { trade_id } => {
             pay_fee_and_withdraw(deps, env, info, trade_id)
@@ -137,11 +139,11 @@ pub fn pay_fee_and_withdraw(
     _env: Env,
     info: MessageInfo,
     trade_id: u64,
-) -> Result<Response, ContractError> {
+) -> Result<Response> {
     // The fee can be paid in any Terra native currency.
     // It needs to be paid in a single currency
     if info.funds.len() != 1 {
-        return Err(ContractError::FeeNotPaid {});
+       bail!(ContractError::FeeNotPaid {});
     }
 
     let funds = info.funds[0].clone();
@@ -168,13 +170,13 @@ pub fn pay_fee_and_withdraw(
         if funds.amount + funds.amount * acceptable_fee_deviation / Uint128::from(1_000u128)
             < total_fee_amount
         {
-            return Err(ContractError::FeeNotPaidCorrectly {
+            bail!(ContractError::FeeNotPaidCorrectly {
                 required: total_fee_amount.u128(),
                 provided: funds.amount.u128(),
             });
         }
     } else {
-        return Err(ContractError::FeeNotPaid {});
+        bail!(ContractError::FeeNotPaid {});
     }
 
     // Then we distribute the funds to the fee_distributor contract
@@ -266,7 +268,7 @@ pub fn update_fee_rates(
     second_teer_rate: Option<Uint128>,
     third_teer_rate: Option<Uint128>,
     acceptable_fee_deviation: Option<Uint128>,
-) -> Result<Response, ContractError> {
+) -> Result<Response> {
     is_admin(deps.as_ref(), info.sender)?;
 
     FEE_RATES.update::<_, StdError>(deps.storage, |x| {
@@ -286,7 +288,7 @@ pub fn update_fee_rates(
     // We verify the rates are ordered
     let new_fee_rates = FEE_RATES.load(deps.storage)?;
     if new_fee_rates.second_teer_limit <= new_fee_rates.first_teer_limit {
-        return Err(ContractError::TeersNotOrdered {});
+        bail!(ContractError::TeersNotOrdered {});
     }
 
     Ok(Response::new().add_attribute("updated", "fee_rates"))

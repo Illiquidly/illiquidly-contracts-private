@@ -1,5 +1,6 @@
 use cosmwasm_std::{to_binary, Binary, Coin, CosmosMsg, StdResult, WasmMsg};
 use serde::Serialize;
+use anyhow::Result;
 
 pub fn is_valid_name(name: &str) -> bool {
     let bytes = name.as_bytes();
@@ -17,7 +18,7 @@ pub fn into_cosmos_msg<M: Serialize, T: Into<String>>(
     message: M,
     contract_addr: T,
     funds: Option<Vec<Coin>>,
-) -> StdResult<CosmosMsg> {
+) -> Result<CosmosMsg> {
     let msg = into_binary(message)?;
     let execute = WasmMsg::Execute {
         contract_addr: contract_addr.into(),
