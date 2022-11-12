@@ -82,7 +82,7 @@ pub fn add_new_offer(
     loan_id: u64,
     lender: Addr,
     terms: LoanTerms,
-    comment: Option<String>
+    comment: Option<String>,
 ) -> Result<(String, u64), ContractError> {
     // We add the new offer to the collateral object
     collateral.offer_amount += 1;
@@ -239,8 +239,11 @@ pub fn save_offer(
 }
 
 pub fn get_offer(storage: &dyn Storage, global_offer_id: &str) -> Result<OfferInfo, ContractError> {
-    let mut offer_info = lender_offers().load(storage, global_offer_id).map_err(|_|ContractError::OfferNotFound{})?;
-    let collateral_info = COLLATERAL_INFO.load(storage, (offer_info.borrower.clone(), offer_info.loan_id))?;
+    let mut offer_info = lender_offers()
+        .load(storage, global_offer_id)
+        .map_err(|_| ContractError::OfferNotFound {})?;
+    let collateral_info =
+        COLLATERAL_INFO.load(storage, (offer_info.borrower.clone(), offer_info.loan_id))?;
 
     // We check the status of the offer.
     // A refused offer isn't marked as such but depends on the overlying collateral info state

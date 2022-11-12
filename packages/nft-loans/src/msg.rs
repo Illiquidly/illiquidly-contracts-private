@@ -1,8 +1,8 @@
-use utils::state::AssetInfo;
 use crate::state::{BorrowerInfo, CollateralInfo, ContractInfo, LoanTerms, OfferInfo};
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{StdError, StdResult, Uint128};
 use utils::msg::is_valid_name;
+use utils::state::AssetInfo;
 
 #[cw_serde]
 pub struct MigrateMsg {}
@@ -35,13 +35,13 @@ pub enum ExecuteMsg {
     DepositCollaterals {
         tokens: Vec<AssetInfo>,
         terms: Option<LoanTerms>,
-        comment: Option<String>
+        comment: Option<String>,
     },
     /// Used to modify the loan terms and the associated comment
     ModifyCollaterals {
         loan_id: u64,
         terms: Option<LoanTerms>,
-        comment: Option<String>
+        comment: Option<String>,
     },
     /// Used to withdraw the collateral before the loan starts
     WithdrawCollaterals {
@@ -53,7 +53,7 @@ pub enum ExecuteMsg {
         borrower: String,
         loan_id: u64,
         terms: LoanTerms,
-        comment: Option<String>
+        comment: Option<String>,
     },
     CancelOffer {
         global_offer_id: String,
@@ -70,13 +70,9 @@ pub enum ExecuteMsg {
     AcceptLoan {
         borrower: String,
         loan_id: u64,
-        comment: Option<String>
+        comment: Option<String>,
     },
     RepayBorrowedFunds {
-        loan_id: u64,
-    },
-    ForceDefault {
-        borrower: String,
         loan_id: u64,
     },
 

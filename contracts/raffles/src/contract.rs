@@ -1505,8 +1505,6 @@ pub mod tests {
         assert_eq!(raffles.len(), 2);
     }
 
-
-
     #[test]
     fn test_multiple_tickets() {
         let mut deps = mock_dependencies();
@@ -1514,7 +1512,15 @@ pub mod tests {
         create_raffle(deps.as_mut()).unwrap();
 
         //Buy some tickets
-        buy_ticket_coin(deps.as_mut(), 0, "first", coin(30000, "uluna"), 0u64, Some(3)).unwrap();
+        buy_ticket_coin(
+            deps.as_mut(),
+            0,
+            "first",
+            coin(30000, "uluna"),
+            0u64,
+            Some(3),
+        )
+        .unwrap();
 
         // Update the randomness internally
         let mut raffle_info = RAFFLE_INFO.load(&deps.storage, 0).unwrap();

@@ -30,7 +30,7 @@ use utils::state::AssetInfo;
 use utils::state::Cw1155Coin;
 use utils::state::Cw721Coin;
 
-fn init_helper(deps: DepsMut) {
+pub fn init_helper(deps: DepsMut) {
     let instantiate_msg = InstantiateMsg {
         name: "nft-loan".to_string(),
         owner: None,
@@ -152,7 +152,7 @@ fn test_init_sanity() {
     );
 }
 
-fn add_collateral_helper(
+pub fn add_collateral_helper(
     deps: DepsMut,
     creator: &str,
     address: &str,
@@ -168,14 +168,14 @@ fn add_collateral_helper(
         env,
         info,
         ExecuteMsg::DepositCollaterals {
-            tokens: vec![if let Some(value) = value{
-                AssetInfo::Cw1155Coin(Cw1155Coin{
+            tokens: vec![if let Some(value) = value {
+                AssetInfo::Cw1155Coin(Cw1155Coin {
                     address: address.to_string(),
                     token_id: token_id.to_string(),
                     value,
                 })
-            }else{
-                AssetInfo::Cw721Coin(Cw721Coin{
+            } else {
+                AssetInfo::Cw721Coin(Cw721Coin {
                     address: address.to_string(),
                     token_id: token_id.to_string(),
                 })
@@ -195,7 +195,16 @@ fn set_terms_helper(
     let info = mock_info(borrower, &[]);
     let env = mock_env();
 
-    execute(deps, env, info, ExecuteMsg::ModifyCollaterals { loan_id, terms: Some(terms), comment: None })
+    execute(
+        deps,
+        env,
+        info,
+        ExecuteMsg::ModifyCollaterals {
+            loan_id,
+            terms: Some(terms),
+            comment: None,
+        },
+    )
 }
 
 fn make_offer_helper(
@@ -217,7 +226,7 @@ fn make_offer_helper(
             borrower: borrower.to_string(),
             loan_id,
             terms,
-            comment: None
+            comment: None,
         },
     )
 }
@@ -275,7 +284,7 @@ fn accept_loan_helper(
         ExecuteMsg::AcceptLoan {
             borrower: borrower.to_string(),
             loan_id,
-            comment: None
+            comment: None,
         },
     )
 }
@@ -399,7 +408,7 @@ fn test_add_collateral() {
     assert_eq!(
         coll_info,
         CollateralInfo {
-            associated_assets: vec![ AssetInfo::Cw721Coin(Cw721Coin {
+            associated_assets: vec![AssetInfo::Cw721Coin(Cw721Coin {
                 address: "nft".to_string(),
                 token_id: "59".to_string()
             })],
@@ -414,7 +423,7 @@ fn test_add_collateral() {
     assert_eq!(
         coll_info,
         CollateralInfo {
-            associated_assets: vec![ AssetInfo::Cw1155Coin(Cw1155Coin {
+            associated_assets: vec![AssetInfo::Cw1155Coin(Cw1155Coin {
                 address: "nft".to_string(),
                 token_id: "59".to_string(),
                 value: Uint128::from(459u128)
@@ -451,7 +460,7 @@ fn test_withdraw_collateral() {
     assert_eq!(
         coll_info,
         CollateralInfo {
-            associated_assets: vec![ AssetInfo::Cw721Coin(Cw721Coin {
+            associated_assets: vec![AssetInfo::Cw721Coin(Cw721Coin {
                 address: "nft".to_string(),
                 token_id: "58".to_string()
             })],
@@ -467,7 +476,7 @@ fn test_withdraw_collateral() {
     assert_eq!(
         coll_info,
         CollateralInfo {
-            associated_assets: vec![ AssetInfo::Cw721Coin(Cw721Coin {
+            associated_assets: vec![AssetInfo::Cw721Coin(Cw721Coin {
                 address: "nft".to_string(),
                 token_id: "59".to_string()
             })],
@@ -484,7 +493,7 @@ fn test_withdraw_collateral() {
         coll_info,
         CollateralInfo {
             terms: None,
-            associated_assets: vec![ AssetInfo::Cw1155Coin(Cw1155Coin {
+            associated_assets: vec![AssetInfo::Cw1155Coin(Cw1155Coin {
                 address: "nft".to_string(),
                 token_id: "59".to_string(),
                 value: Uint128::from(459u128)
@@ -560,7 +569,7 @@ fn test_accept_loan() {
         coll_info,
         CollateralInfo {
             terms: Some(terms),
-            associated_assets: vec![ AssetInfo::Cw721Coin(Cw721Coin {
+            associated_assets: vec![AssetInfo::Cw721Coin(Cw721Coin {
                 address: "nft".to_string(),
                 token_id: "58".to_string()
             })],
@@ -568,7 +577,7 @@ fn test_accept_loan() {
             active_offer: Some("1".to_string()),
             start_block: Some(12345),
             offer_amount: 1,
-            comment:None,
+            comment: None,
             list_date: mock_env().block.time
         }
     );
@@ -900,7 +909,12 @@ fn test_accept_cancelled_offer() {
 
     cancel_offer_helper(deps.as_mut(), "anyone", "1").unwrap();
     let err = accept_offer_helper(deps.as_mut(), "creator", "1").unwrap_err();
-    assert_eq!(err, ContractError::WrongOfferState { state: OfferState::Cancelled })
+    assert_eq!(
+        err,
+        ContractError::WrongOfferState {
+            state: OfferState::Cancelled
+        }
+    )
 }
 
 #[test]

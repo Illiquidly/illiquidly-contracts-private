@@ -14,7 +14,7 @@ pub enum ContractError {
     ContractBug {},
 
     #[error("Wrong asset deposited, only cw1155 and cw721 are authorized")]
-    WrongAssetDeposited{},
+    WrongAssetDeposited {},
 
     #[error("You need to send exactly one coin with this transaction")]
     MultipleCoins {},

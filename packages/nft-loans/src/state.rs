@@ -1,7 +1,7 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Coin, Uint128, Timestamp};
+use cosmwasm_std::{Addr, Coin, Timestamp, Uint128};
 
-use utils::state::{AssetInfo};
+use utils::state::AssetInfo;
 // We neep a map per user of all loans that are happening right now !
 // The info should be redondant and linked
 
@@ -14,7 +14,7 @@ pub struct CollateralInfo {
     pub offer_amount: u64,
     pub active_offer: Option<String>,
     pub start_block: Option<u64>,
-    pub comment: Option<String>
+    pub comment: Option<String>,
 }
 
 impl Default for CollateralInfo {
@@ -47,7 +47,7 @@ pub struct OfferInfo {
     pub terms: LoanTerms,
     pub state: OfferState,
     pub deposited_funds: Option<Coin>,
-    pub comment: Option<String>
+    pub comment: Option<String>,
 }
 
 #[cw_serde]

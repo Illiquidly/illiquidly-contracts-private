@@ -69,17 +69,21 @@ pub fn execute(
             comment,
         } => deposit_collaterals(deps, env, info, tokens, terms, comment),
         ExecuteMsg::ModifyCollaterals {
-            loan_id, 
+            loan_id,
             terms,
             comment,
         } => modify_collaterals(deps, env, info, loan_id, terms, comment),
-        ExecuteMsg::WithdrawCollaterals { loan_id } => withdraw_collateral(deps, env, info, loan_id),
-
-        ExecuteMsg::AcceptLoan { borrower, loan_id, comment } => {
-            accept_loan(deps, env, info, borrower, loan_id, comment)
+        ExecuteMsg::WithdrawCollaterals { loan_id } => {
+            withdraw_collateral(deps, env, info, loan_id)
         }
 
-        ExecuteMsg::AcceptOffer { global_offer_id} => {
+        ExecuteMsg::AcceptLoan {
+            borrower,
+            loan_id,
+            comment,
+        } => accept_loan(deps, env, info, borrower, loan_id, comment),
+
+        ExecuteMsg::AcceptOffer { global_offer_id } => {
             accept_offer(deps, env, info, global_offer_id)
         }
         ExecuteMsg::MakeOffer {
@@ -116,11 +120,6 @@ pub fn execute(
         }
 
         ExecuteMsg::SetFeeRate { fee_rate } => set_fee_rate(deps, env, info, fee_rate),
-
-        // Generic (will have to remove at the end of development)
-        _ => Err(ContractError::Std(StdError::generic_err(
-            "Ow whaou, please wait just a bit, it's not implemented yet !",
-        ))),
     }
 }
 
@@ -187,7 +186,7 @@ pub fn deposit_collaterals(
     info: MessageInfo,
     tokens: Vec<AssetInfo>,
     terms: Option<LoanTerms>,
-    comment: Option<String>
+    comment: Option<String>,
 ) -> Result<Response, ContractError> {
     let borrower = info.sender;
 
@@ -197,18 +196,19 @@ pub fn deposit_collaterals(
     let transfer_messages: Vec<CosmosMsg> = tokens
         .iter()
         .map(|token| match token {
-        AssetInfo::Cw721Coin(Cw721Coin { address, token_id }) => Ok(
-            into_cosmos_msg(
+            AssetInfo::Cw721Coin(Cw721Coin { address, token_id }) => Ok(into_cosmos_msg(
                 Cw721ExecuteMsg::TransferNft {
                     recipient: env.contract.address.clone().into(),
                     token_id: token_id.to_string(),
                 },
                 address,
                 None,
-            )?,
-        ),
-        AssetInfo::Cw1155Coin(Cw1155Coin { address, token_id, value }) => Ok(
-            into_cosmos_msg(
+            )?),
+            AssetInfo::Cw1155Coin(Cw1155Coin {
+                address,
+                token_id,
+                value,
+            }) => Ok(into_cosmos_msg(
                 Cw1155ExecuteMsg::SendFrom {
                     from: borrower.to_string(),
                     to: env.contract.address.clone().into(),
@@ -218,11 +218,10 @@ pub fn deposit_collaterals(
                 },
                 address,
                 None,
-            )?,
-        ),
-        _ => Err(ContractError::WrongAssetDeposited {  })
-    })
-    .collect::<Result<Vec<CosmosMsg>, ContractError>>()?;
+            )?),
+            _ => Err(ContractError::WrongAssetDeposited {}),
+        })
+        .collect::<Result<Vec<CosmosMsg>, ContractError>>()?;
 
     // We save the collateral info in our internal structure
     // First we update the number of collateral a user has deposited (to make sure the id assigned is unique)
@@ -264,26 +263,30 @@ pub fn modify_collaterals(
     info: MessageInfo,
     loan_id: u64,
     terms: Option<LoanTerms>,
-    comment: Option<String>
+    comment: Option<String>,
 ) -> Result<Response, ContractError> {
     let borrower = info.sender;
 
-    COLLATERAL_INFO.update(deps.storage, (borrower.clone(), loan_id), |collateral| match collateral{
-        None => Err(ContractError::LoanNotFound {  }),
-        Some(mut collateral) => {
-            is_loan_modifiable(&collateral)?;
+    COLLATERAL_INFO.update(
+        deps.storage,
+        (borrower.clone(), loan_id),
+        |collateral| match collateral {
+            None => Err(ContractError::LoanNotFound {}),
+            Some(mut collateral) => {
+                is_loan_modifiable(&collateral)?;
 
-            if terms.is_some(){
-                collateral.terms = terms;
-            }
-            if comment.is_some(){
-                collateral.comment = comment;
-            }
-            collateral.list_date = env.block.time;
+                if terms.is_some() {
+                    collateral.terms = terms;
+                }
+                if comment.is_some() {
+                    collateral.comment = comment;
+                }
+                collateral.list_date = env.block.time;
 
-            Ok(collateral)
-        }
-    })?;
+                Ok(collateral)
+            }
+        },
+    )?;
 
     Ok(Response::new()
         .add_attribute("action", "modify-collaterals")
@@ -305,11 +308,8 @@ pub fn withdraw_collateral(
     is_collateral_withdrawable(&collateral)?;
 
     // We start by creating the transfer message
-    let transfer_messages = _withdraw_loan(
-        collateral.clone(),
-        env.contract.address,
-        borrower.clone(),
-    )?;
+    let transfer_messages =
+        _withdraw_loan(collateral.clone(), env.contract.address, borrower.clone())?;
 
     // We update the internal state, the loan proposal is no longer valid
     collateral.state = LoanState::AssetWithdrawn;
@@ -348,7 +348,7 @@ fn _make_offer_raw(
         loan_id,
         info.sender, // lender
         terms,
-        comment
+        comment,
     )?;
     Ok(offer_id)
 }
@@ -362,13 +362,19 @@ pub fn make_offer(
     borrower: String,
     loan_id: u64,
     terms: LoanTerms,
-    comment: Option<String>
+    comment: Option<String>,
 ) -> Result<Response, ContractError> {
     // We query the loan info
 
     let borrower = deps.api.addr_validate(&borrower)?;
-    let (global_offer_id, _offer_id) =
-        _make_offer_raw(deps.storage, info.clone(), borrower.clone(), loan_id, terms, comment)?;
+    let (global_offer_id, _offer_id) = _make_offer_raw(
+        deps.storage,
+        info.clone(),
+        borrower.clone(),
+        loan_id,
+        terms,
+        comment,
+    )?;
 
     Ok(Response::new()
         .add_attribute("action", "make-offer")
@@ -400,10 +406,8 @@ pub fn cancel_offer(
     let borrower = offer_info.borrower.clone();
     let loan_id = offer_info.loan_id;
     let collateral = COLLATERAL_INFO.load(deps.storage, (borrower.clone(), loan_id))?;
-    // We can cancel an offer only if the Borrower is still searching for a loan
-    if collateral.state != LoanState::Published {
-        return Err(ContractError::Unauthorized {});
-    }
+    // We can cancel an offer only if the Borrower is still searching for a loan (the loan is modifyable)
+    is_loan_modifiable(&collateral)?;
 
     // The funds deposited for lending are withdrawn
     let withdraw_response = _withdraw_offer_unsafe(deps.storage, lender.clone(), &global_offer_id)?;
@@ -511,7 +515,7 @@ pub fn accept_loan(
     info: MessageInfo,
     borrower: String,
     loan_id: u64,
-    comment: Option<String>
+    comment: Option<String>,
 ) -> Result<Response, ContractError> {
     // We query the loan info
     let borrower_addr = deps.api.addr_validate(&borrower)?;
@@ -525,7 +529,7 @@ pub fn accept_loan(
         borrower_addr,
         loan_id,
         terms.clone(),
-        comment
+        comment,
     )?;
 
     // Then we make the borrower accept the loan
@@ -565,7 +569,9 @@ fn _accept_offer_raw(
         COLLATERAL_INFO.save(storage, (borrower.clone(), loan_id), &collateral)?;
         save_offer(storage, &global_offer_id, offer_info.clone())?;
     } else {
-        return Err(ContractError::WrongOfferState {state: offer_info.state});
+        return Err(ContractError::WrongOfferState {
+            state: offer_info.state,
+        });
     };
 
     // We transfer the funds directly when the offer is accepted
@@ -646,18 +652,17 @@ pub fn repay_borrowed_funds(
     let fee_depositor_payback = info.funds[0].amount - lender_payback;
 
     // The fee depositor needs to know which assets where involved in the transaction
-    let collateral_addresses = collateral.associated_assets.iter().map(|collateral| {
-        match collateral {
+    let collateral_addresses = collateral
+        .associated_assets
+        .iter()
+        .map(|collateral| match collateral {
             AssetInfo::Cw1155Coin(cw1155) => Ok(cw1155.address.clone()),
             AssetInfo::Cw721Coin(cw721) => Ok(cw721.address.clone()),
-            _ => {
-                Err(ContractError::Std(StdError::generic_err(
-                    "Unreachable error",
-                )))
-            }
-        }
-    })
-    .collect::<Result<Vec<String>, ContractError>>()?;
+            _ => Err(ContractError::Std(StdError::generic_err(
+                "Unreachable error",
+            ))),
+        })
+        .collect::<Result<Vec<String>, ContractError>>()?;
 
     Ok(Response::new()
         // We get the funds back to the lender
@@ -710,13 +715,12 @@ pub fn withdraw_defaulted_loan(
         return Err(ContractError::LoanAlreadyDefaulted {});
     }
 
-    // Saving the collateral state, the loan is defaulted, we can default it again
+    // Saving the collateral state, the loan is defaulted, we can't default it again
     collateral.state = LoanState::Defaulted;
     COLLATERAL_INFO.save(deps.storage, (borrower.clone(), loan_id), &collateral)?;
 
     // We create the collateral withdrawal message
-    let withdraw_messages = _withdraw_loan(collateral, env.contract.address,
-        offer.lender.clone())?;
+    let withdraw_messages = _withdraw_loan(collateral, env.contract.address, offer.lender.clone())?;
 
     Ok(Response::new()
         .add_messages(withdraw_messages)
@@ -726,8 +730,13 @@ pub fn withdraw_defaulted_loan(
         .add_attribute("loan_id", loan_id.to_string()))
 }
 
-pub fn _withdraw_loan(collateral: CollateralInfo, sender: Addr, recipient: Addr) -> StdResult<Vec<CosmosMsg>>{
-    collateral.associated_assets
+pub fn _withdraw_loan(
+    collateral: CollateralInfo,
+    sender: Addr,
+    recipient: Addr,
+) -> StdResult<Vec<CosmosMsg>> {
+    collateral
+        .associated_assets
         .iter()
         .map(|collateral| _withdraw_asset(collateral, sender.clone(), recipient.clone()))
         .collect()
@@ -735,29 +744,25 @@ pub fn _withdraw_loan(collateral: CollateralInfo, sender: Addr, recipient: Addr)
 
 pub fn _withdraw_asset(asset: &AssetInfo, sender: Addr, recipient: Addr) -> StdResult<CosmosMsg> {
     match asset {
-        AssetInfo::Cw1155Coin(cw1155) => {
-            into_cosmos_msg(
-                Cw1155ExecuteMsg::SendFrom {
-                    from: sender.to_string(),
-                    to: recipient.to_string(),
-                    token_id: cw1155.token_id.clone(),
-                    value: cw1155.value,
-                    msg: None,
-                },
-                cw1155.address.clone(),
-                None,
-            )
-        }
-        AssetInfo::Cw721Coin(cw721) => {
-            into_cosmos_msg(
-                Cw721ExecuteMsg::TransferNft {
-                    recipient: recipient.to_string(),
-                    token_id: cw721.token_id.clone(),
-                },
-                cw721.address.clone(),
-                None,
-            )
-        }
+        AssetInfo::Cw1155Coin(cw1155) => into_cosmos_msg(
+            Cw1155ExecuteMsg::SendFrom {
+                from: sender.to_string(),
+                to: recipient.to_string(),
+                token_id: cw1155.token_id.clone(),
+                value: cw1155.value,
+                msg: None,
+            },
+            cw1155.address.clone(),
+            None,
+        ),
+        AssetInfo::Cw721Coin(cw721) => into_cosmos_msg(
+            Cw721ExecuteMsg::TransferNft {
+                recipient: recipient.to_string(),
+                token_id: cw721.token_id.clone(),
+            },
+            cw721.address.clone(),
+            None,
+        ),
         _ => Err(StdError::generic_err("Unreachable error")),
     }
 }

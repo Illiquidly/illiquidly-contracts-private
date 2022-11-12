@@ -247,7 +247,11 @@ pub fn query_collaterals(
         .collect::<Result<Vec<CollateralResponse>>>()?;
 
     Ok(MultipleCollateralsResponse {
-        next_collateral: collaterals.last().map(|last| last.loan_id),
+        next_collateral: if collaterals.len() == limit {
+            collaterals.last().map(|last| last.loan_id)
+        } else {
+            None
+        },
         collaterals,
     })
 }
