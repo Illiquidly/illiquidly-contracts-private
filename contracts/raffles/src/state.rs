@@ -1,9 +1,9 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 use cosmwasm_std::Coin;
 use cw_storage_plus::{Item, Map};
 
 use cosmwasm_std::{
-    coins, Addr, BankMsg, CosmosMsg, Deps, Env, Response, StdError, Storage, SubMsg, Uint128,
+    coins, Addr, BankMsg, CosmosMsg, Deps, Env, Response, Storage, SubMsg, Uint128,
 };
 
 use crate::error::ContractError;
@@ -22,7 +22,8 @@ pub const USER_TICKETS: Map<(&Addr, u64), u32> = Map::new("user_tickets");
 
 /// This function is largely inspired (and even directly copied) from https://github.com/LoTerra/terrand-contract-step1/
 /// This function actually simply calls an external contract that checks the randomness origin
-/// This architecture was chosen because the imported libraries needed to verify signatures and very heavy and won't upload.
+/// This architecture was chosen because the imported libraries needed to verify signatures are very heavy
+/// and won't upload when combined with the current contract.
 /// Separating into 2 contracts seems to help with that
 /// For more info about randomness, visit : https://drand.love/
 pub fn assert_randomness_origin_and_order(
@@ -36,9 +37,9 @@ pub fn assert_randomness_origin_and_order(
 
     if let Some(local_randomness) = raffle_info.randomness {
         if randomness.round <= local_randomness.randomness_round {
-            return Err(anyhow!(ContractError::RandomnessNotAccepted {
+            bail!(ContractError::RandomnessNotAccepted {
                 current_round: local_randomness.randomness_round
-            }));
+            });
         }
     }
 
@@ -48,9 +49,9 @@ pub fn assert_randomness_origin_and_order(
         raffle_id,
         owner: owner.to_string(),
     };
-    let res = into_cosmos_msg(msg, contract_info.verify_signature_contract.to_string())?;
+    let verify_message = into_cosmos_msg(msg, contract_info.verify_signature_contract.to_string())?;
 
-    let msg = SubMsg::reply_on_success(res, 0);
+    let msg = SubMsg::reply_on_success(verify_message, 0);
     Ok(Response::new().add_submessage(msg))
 }
 
@@ -76,9 +77,11 @@ pub fn is_raffle_owner(
     }
 }
 
-/// Picking the winner of the raffle was inspried by https://github.com/scrtlabs/secret-raffle/
+/// Picking the winner of the raffle
+/// This function was inspired by https://github.com/scrtlabs/secret-raffle/
 /// We know the odds are not exactly perfect with this architecture
-/// --> that's not how you select a true random number from an interval, but 1/4_294_967_295 is quite small anyway
+/// --> that's not how you select a true random number from an interval, but n/4_294_967_295 will stay quite small anyway
+/// (with n the number of bought tickets)
 pub fn get_raffle_winner(
     deps: Deps,
     env: Env,
@@ -87,9 +90,9 @@ pub fn get_raffle_winner(
 ) -> Result<Addr> {
     // We initiate the random number generator
     if raffle_info.randomness.is_none() {
-        return Err(anyhow!(ContractError::WrongStateForClaim {
+        bail!(ContractError::WrongStateForClaim {
             status: get_raffle_state(env, raffle_info)
-        }));
+        });
     }
     let mut rng: Prng = Prng::new(&raffle_info.randomness.unwrap().randomness);
 
@@ -143,11 +146,11 @@ pub fn can_buy_ticket(env: Env, raffle_info: RaffleInfo) -> Result<()> {
     if get_raffle_state(env, raffle_info) == RaffleState::Started {
         Ok(())
     } else {
-        Err(anyhow!(ContractError::CantBuyTickets {}))
+        bail!(ContractError::CantBuyTickets {})
     }
 }
 
-/// Can only buy a ticket when the raffle has started and is not closed
+/// Computes the ticket cost for multiple tickets bought together
 pub fn ticket_cost(raffle_info: RaffleInfo, ticket_number: u32) -> Result<AssetInfo> {
     Ok(match raffle_info.raffle_ticket_price {
         AssetInfo::Coin(x) => AssetInfo::Coin(Coin {
@@ -158,7 +161,7 @@ pub fn ticket_cost(raffle_info: RaffleInfo, ticket_number: u32) -> Result<AssetI
             address: x.address,
             amount: Uint128::from(ticket_number) * x.amount,
         }),
-        _ => return Err(anyhow!(ContractError::WrongAssetType {})),
+        _ => bail!(ContractError::WrongAssetType {}),
     })
 }
 
@@ -201,9 +204,7 @@ fn _get_raffle_end_asset_messages(
                 };
                 into_cosmos_msg(message, cw1155.address.clone())
             }
-            _ => Err(anyhow!(StdError::generic_err(
-                "Unreachable, wrong asset type raffled"
-            ))),
+            _ => bail!(ContractError::Unreachable {}),
         })
         .collect()
 }
@@ -215,14 +216,20 @@ pub fn get_raffle_owner_finished_messages(
     raffle_info: RaffleInfo,
 ) -> Result<Vec<CosmosMsg>> {
     let contract_info = CONTRACT_INFO.load(storage)?;
+
+    // We start by splitting the fees between owner, treasury and radomness provider
+    let total_paid = match raffle_info.raffle_ticket_price.clone() {
+        AssetInfo::Cw20Coin(coin) => coin.amount,
+        AssetInfo::Coin(coin) => coin.amount,
+        _ => return Err(anyhow!(ContractError::WrongFundsType {})),
+    } * Uint128::from(raffle_info.number_of_tickets);
+    let rand_amount = total_paid * contract_info.rand_fee / Uint128::from(10_000u128);
+    let treasury_amount = total_paid * contract_info.raffle_fee / Uint128::from(10_000u128);
+    let owner_amount = total_paid - rand_amount - treasury_amount;
+
+    // Then we craft the messages needed for asset transfers
     match raffle_info.raffle_ticket_price {
         AssetInfo::Cw20Coin(coin) => {
-            // We start by splitting the fees between owner, treasury and radomness provider
-            let total_paid = coin.amount * Uint128::from(u128::from(raffle_info.number_of_tickets));
-            let rand_amount = total_paid * contract_info.rand_fee / Uint128::from(10_000u128);
-            let treasury_amount = total_paid * contract_info.raffle_fee / Uint128::from(10_000u128);
-            let owner_amount = total_paid - rand_amount - treasury_amount;
-
             let mut messages: Vec<CosmosMsg> = vec![];
             if rand_amount != Uint128::zero() {
                 messages.push(into_cosmos_msg(
@@ -254,12 +261,6 @@ pub fn get_raffle_owner_finished_messages(
             Ok(messages)
         }
         AssetInfo::Coin(coin) => {
-            // We start by splitting the fees between owner, treasury and radomness provider
-            let total_paid = coin.amount * Uint128::from(u128::from(raffle_info.number_of_tickets));
-            let rand_amount = total_paid * contract_info.rand_fee / Uint128::from(10_000u128);
-            let treasury_amount = total_paid * contract_info.raffle_fee / Uint128::from(10_000u128);
-            let owner_amount = total_paid - rand_amount - treasury_amount;
-
             let mut messages: Vec<CosmosMsg> = vec![];
             if rand_amount != Uint128::zero() {
                 messages.push(

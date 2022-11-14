@@ -1,5 +1,9 @@
+use crate::state::ContractInfo;
+use crate::state::RaffleInfo;
+use crate::state::RaffleState;
 use crate::state::{AssetInfo, RaffleOptionsMsg};
 use anyhow::Result;
+use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{to_binary, Binary, CosmosMsg, StdError, StdResult, Uint128, WasmMsg};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -44,7 +48,7 @@ pub struct InstantiateMsg {
     pub verify_signature_contract: String,
 }
 
-#[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
+#[cw_serde]
 pub struct MigrateMsg {}
 
 impl InstantiateMsg {
@@ -59,15 +63,14 @@ impl InstantiateMsg {
     }
 }
 
-#[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
+#[cw_serde]
 pub struct DrandRandomness {
     pub round: u64,
     pub previous_signature: Binary,
     pub signature: Binary,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-#[serde(rename_all = "snake_case")]
+#[cw_serde]
 pub enum ExecuteMsg {
     CreateRaffle {
         owner: Option<String>,
@@ -112,8 +115,7 @@ pub enum ExecuteMsg {
     },
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema, Default)]
-#[serde(rename_all = "snake_case")]
+#[cw_serde]
 pub struct QueryFilters {
     pub states: Option<Vec<String>>,
     pub owner: Option<String>,
@@ -121,31 +123,30 @@ pub struct QueryFilters {
     pub contains_token: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-#[serde(rename_all = "snake_case")]
+#[cw_serde]
+#[derive(QueryResponses)]
 pub enum QueryMsg {
+    #[returns(ContractInfo)]
     ContractInfo {},
-    RaffleInfo {
-        raffle_id: u64,
-    },
+    #[returns(RaffleResponse)]
+    RaffleInfo { raffle_id: u64 },
+    #[returns(AllRafflesResponse)]
     AllRaffles {
         start_after: Option<u64>,
         limit: Option<u32>,
         filters: Option<QueryFilters>,
     },
+    #[returns(Vec<String>)]
     AllTickets {
         raffle_id: u64,
         start_after: Option<u32>,
         limit: Option<u32>,
     },
-    TicketNumber {
-        owner: String,
-        raffle_id: u64,
-    },
+    #[returns(u32)]
+    TicketNumber { owner: String, raffle_id: u64 },
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-#[serde(rename_all = "snake_case")]
+#[cw_serde]
 pub enum VerifierExecuteMsg {
     Verify {
         randomness: DrandRandomness,
@@ -153,4 +154,20 @@ pub enum VerifierExecuteMsg {
         raffle_id: u64,
         owner: String,
     },
+}
+
+#[cw_serde]
+#[derive(QueryResponses)]
+pub enum VerifierQueryMsg {}
+
+#[cw_serde]
+pub struct RaffleResponse {
+    pub raffle_id: u64,
+    pub raffle_state: RaffleState,
+    pub raffle_info: Option<RaffleInfo>,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct AllRafflesResponse {
+    pub raffles: Vec<RaffleResponse>,
 }

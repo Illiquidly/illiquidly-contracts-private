@@ -18,12 +18,30 @@ impl Prng {
     }
 
     /// Return a random number (inclusive) between `from` and `to`
+    /// This is not the best algorithm but ut's good enough
     pub fn random_between(&mut self, from: u32, to: u32) -> u32 {
         if from > to {
             return 0;
         }
+        let x = self.rand_u32();
+        let interval_length = to - from + 1;
 
-        from + (self.rand_u32() % (to - from + 1))
+        // The algorithm as it is now is not perfect, it can become biased for a large number of bought tickets
+        // We don't think a large number of tickets will be purchased (compared to u32::max_value)
+        // To make the algorithm better, we could do somehting along the lines of :
+        // (comes from https://stackoverflow.com/questions/10984974/why-do-people-say-there-is-modulo-bias-when-using-a-random-number-generator)
+        /*
+            let u32_max = u32::max_value();
+            let limit = u32_max - u32_max % interval_length;
+            let x = loop {
+                let x = self.rand_u32();
+                if x < limit{
+                    break x;
+                }
+            };
+        */
+
+        from + (x % interval_length)
     }
 
     fn rand_u32(&mut self) -> u32 {

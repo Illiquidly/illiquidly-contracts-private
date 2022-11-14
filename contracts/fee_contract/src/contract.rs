@@ -18,7 +18,7 @@ use p2p_trading_export::msg::ExecuteMsg as P2PExecuteMsg;
 use p2p_trading_export::state::AssetInfo;
 use utils::msg::into_cosmos_msg;
 
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 
 const COIN_DENOM: &str = "uluna";
 const ASSET_FEE_RATE: u128 = 60u128; // In thousands
@@ -68,12 +68,7 @@ pub fn instantiate(
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn execute(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    msg: ExecuteMsg,
-) -> Result<Response> {
+pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> Result<Response> {
     match msg {
         ExecuteMsg::PayFeeAndWithdraw { trade_id } => {
             pay_fee_and_withdraw(deps, env, info, trade_id)
@@ -143,7 +138,7 @@ pub fn pay_fee_and_withdraw(
     // The fee can be paid in any Terra native currency.
     // It needs to be paid in a single currency
     if info.funds.len() != 1 {
-       bail!(ContractError::FeeNotPaid {});
+        bail!(ContractError::FeeNotPaid {});
     }
 
     let funds = info.funds[0].clone();

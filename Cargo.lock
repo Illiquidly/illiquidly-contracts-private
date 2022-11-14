@@ -968,6 +968,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "nft-loans-non-custodial"
+version = "0.9.0"
+dependencies = [
+ "anyhow",
+ "cosmwasm-schema 1.1.5",
+ "cosmwasm-std",
+ "cw-storage-plus 0.13.4",
+ "cw1155",
+ "cw2 0.13.4",
+ "cw20 0.13.4",
+ "cw20-base 0.13.4",
+ "cw721 0.13.2",
+ "fee-contract-export",
+ "fee-distributor-export",
+ "nft-loans-export",
+ "schemars",
+ "serde",
+ "thiserror",
+ "utils",
+]
+
+[[package]]
 name = "nft-oracle"
 version = "0.9.0"
 dependencies = [

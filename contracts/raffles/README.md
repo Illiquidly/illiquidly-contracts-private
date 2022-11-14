@@ -1,48 +1,69 @@
-# CW20 Basic
+This raffle contract is explained in details across the different implementation files in the (src)[src] directory.
 
-This is a basic implementation of a cw20 contract. It implements
-the [CW20 spec](../../packages/cw20/README.md) and is designed to
-be deployed as is, or imported into other contracts to easily build
-cw20-compatible tokens with custom logic.
+On thing we need to detail here is how you provide randomness to raffles when they are nearly finished.
+At any time during the raffle and before the end of the timeout, anyone can provide a randomness seed to the contract that will be used to draw the result of the raffle when it ends. The randomness has to be provided between the close timestamp of the raffle and the timeout timestamp : 
 
-Implements:
+```rust 
+	const close_timestamp = raffle_info
+	    .raffle_options
+	    .raffle_start_timestamp
+	    .plus_seconds(raffle_info.raffle_options.raffle_duration)
 
-- [x] CW20 Base
-- [x] Mintable extension
-- [x] Allowances extension
+	const timeout_timestamp = raffle_info
+	    .raffle_options
+	    .raffle_start_timestamp
+	    .plus_seconds(raffle_info.raffle_options.raffle_duration)
+	    .plus_seconds(raffle_info.raffle_options.raffle_timeout)
+```
+A randomness can still be provided after the timeout timestamp if no other randomness was provided.
+We ensure a non-predictable randomness is always provided by having a minimum of 2 minutes of `raffle_timeout` (the drand period is 30s) and having an API that provides randomness as soon as a raffle is closed.
 
-## Running this contract
 
-You will need Rust 1.44.1+ with `wasm32-unknown-unknown` target installed.
+The following script allows one to provide randomness from the drand.love source registered with the contract :
+using the  
 
-You can run unit tests on this via: 
+```typescript
 
-`cargo test`
+	// Actually this won't work exactly as is because of type enforcement. 
+	import { HttpCachingChain, HttpChainClient, fetchBeacon, ChainedBeacon } from "drand-client";
 
-Once you are happy with the content, you can compile it to wasm via:
+  async getBeacon() {
+    const chainHash = "8990e7a9aaed2ffed73dbd7092123d6f289930540d7651336225dc172e51b2ce"; // (hex encoded)
+    const publicKey =
+      "868f005eb8e6e4ca0a47c8a77ceaa5309a47978a7c71bc5cce96366b5d7a569937c529eeda66c7293784a9402801af31"; // (hex encoded)
+
+    const options = {
+      disableBeaconVerification: false, // `true` disables checking of signatures on beacons - faster but insecure!!!
+      noCache: true, // `true` disables caching when retrieving beacons for some providers
+      chainVerificationParams: { chainHash, publicKey }, // these are optional, but recommended! They are compared for parity against the `/info` output of a given node
+    };
+
+    // if you want to connect to a single chain to grab the latest beacon you can simply do the following
+    const chain = new HttpCachingChain("https://api.drand.sh", options);
+    const client = new HttpChainClient(chain, options);
+    return fetchBeacon(client);
+  }
+
+  async provideRandomness(raffleId: number){
+    const beacon = await this.getBeacon();
+
+	  const executeMsg = {
+	    update_randomness: {
+	      raffle_id: raffleId,
+	      randomness: {
+	        round: beacon.round,
+	        signature: Buffer.from(beacon.signature, "hex").toString("base64"),
+	        previous_signature: Buffer.from(beacon.previous_signature, "hex").toString(
+	          "base64",
+	        ),
+	      },
+	    },
+	  };
+
+
+  }
 
 ```
-RUSTFLAGS='-C link-arg=-s' cargo wasm
-cp ../../target/wasm32-unknown-unknown/release/cw20_base.wasm .
-ls -l cw20_base.wasm
-sha256sum cw20_base.wasm
-```
 
-Or for a production-ready (optimized) build, run a build command in the
-the repository root: https://github.com/CosmWasm/cw-plus#compiling.
-
-## Importing this contract
-
-You can also import much of the logic of this contract to build another
-ERC20-contract, such as a bonding curve, overiding or extending what you
-need.
-
-Basically, you just need to write your handle function and import 
-`cw20_base::contract::handle_transfer`, etc and dispatch to them.
-This allows you to use custom `ExecuteMsg` and `QueryMsg` with your additional
-calls, but then use the underlying implementation for the standard cw20
-messages you want to support. The same with `QueryMsg`. You *could* reuse `instantiate`
-as it, but it is likely you will want to change it. And it is rather simple.
-
-Look at [`cw20-staking`](https://github.com/CosmWasm/cw-tokens/tree/main/contracts/cw20-staking) for an example of how to "inherit"
-all this token functionality and combine it with custom logic.
+If you are the last randomness provider on the contract, you will get a reward when the raffle closes. 
+It will be a percentage of the raffle tickets bought by users 

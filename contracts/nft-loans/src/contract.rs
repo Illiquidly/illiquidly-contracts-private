@@ -3,7 +3,7 @@ use anyhow::bail;
 use anyhow::{anyhow, Result};
 use cosmwasm_std::{
     coins, entry_point, to_binary, Addr, BankMsg, Binary, CosmosMsg, Deps, DepsMut, Env,
-    MessageInfo, Response, StdError, StdResult, Storage, Uint128,
+    MessageInfo, Response, StdError, Storage, Uint128,
 };
 use cw1155::Cw1155ExecuteMsg;
 use cw721::Cw721ExecuteMsg;
@@ -57,12 +57,7 @@ pub fn instantiate(
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn execute(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    msg: ExecuteMsg,
-) -> Result<Response> {
+pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> Result<Response> {
     match msg {
         ExecuteMsg::DepositCollaterals {
             tokens,
@@ -326,7 +321,7 @@ pub fn withdraw_collateral(
 
 fn _make_offer_raw(
     storage: &mut dyn Storage,
-    env: Env, 
+    env: Env,
     info: MessageInfo,
     borrower: Addr,
     loan_id: u64,
@@ -663,7 +658,7 @@ pub fn repay_borrowed_funds(
         .map(|collateral| match collateral {
             AssetInfo::Cw1155Coin(cw1155) => Ok(cw1155.address.clone()),
             AssetInfo::Cw721Coin(cw721) => Ok(cw721.address.clone()),
-            _ => bail!(ContractError::Unreachable {  }),
+            _ => bail!(ContractError::Unreachable {}),
         })
         .collect::<Result<Vec<String>>>()?;
 
@@ -766,6 +761,6 @@ pub fn _withdraw_asset(asset: &AssetInfo, sender: Addr, recipient: Addr) -> Resu
             cw721.address.clone(),
             None,
         ),
-        _ => bail!(ContractError::Unreachable {  })
+        _ => bail!(ContractError::Unreachable {}),
     }
 }

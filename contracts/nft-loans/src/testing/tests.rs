@@ -1,10 +1,10 @@
-use anyhow::Result;
 use crate::contract::execute;
 use crate::contract::instantiate;
 use crate::error::ContractError;
 use crate::state::lender_offers;
 use crate::state::COLLATERAL_INFO;
 use crate::state::CONTRACT_INFO;
+use anyhow::Result;
 use cosmwasm_std::BankMsg;
 use cosmwasm_std::DepsMut;
 use cosmwasm_std::Env;
@@ -31,11 +31,8 @@ use utils::state::AssetInfo;
 use utils::state::Cw1155Coin;
 use utils::state::Cw721Coin;
 
-pub fn assert_error(err: anyhow::Error, contract_error: ContractError){
-    assert_eq!(
-        err.downcast::<ContractError>().unwrap(),
-        contract_error
-    )
+pub fn assert_error(err: anyhow::Error, contract_error: ContractError) {
+    assert_eq!(err.downcast::<ContractError>().unwrap(), contract_error)
 }
 
 pub fn init_helper(deps: DepsMut) {
@@ -239,11 +236,7 @@ fn make_offer_helper(
     )
 }
 
-fn cancel_offer_helper(
-    deps: DepsMut,
-    lender: &str,
-    global_offer_id: &str,
-) -> Result<Response> {
+fn cancel_offer_helper(deps: DepsMut, lender: &str, global_offer_id: &str) -> Result<Response> {
     let info = mock_info(lender, &[]);
     let env = mock_env();
 
@@ -257,11 +250,7 @@ fn cancel_offer_helper(
     )
 }
 
-fn refuse_offer_helper(
-    deps: DepsMut,
-    borrower: &str,
-    global_offer_id: &str,
-) -> Result<Response> {
+fn refuse_offer_helper(deps: DepsMut, borrower: &str, global_offer_id: &str) -> Result<Response> {
     let info = mock_info(borrower, &[]);
     let env = mock_env();
 
@@ -297,11 +286,7 @@ fn accept_loan_helper(
     )
 }
 
-fn accept_offer_helper(
-    deps: DepsMut,
-    borrower: &str,
-    global_offer_id: &str,
-) -> Result<Response> {
+fn accept_offer_helper(deps: DepsMut, borrower: &str, global_offer_id: &str) -> Result<Response> {
     let info = mock_info(borrower, &[]);
     let env = mock_env();
 
@@ -315,11 +300,7 @@ fn accept_offer_helper(
     )
 }
 
-fn withdraw_collateral_helper(
-    deps: DepsMut,
-    creator: &str,
-    loan_id: u64,
-) -> Result<Response> {
+fn withdraw_collateral_helper(deps: DepsMut, creator: &str, loan_id: u64) -> Result<Response> {
     let info = mock_info(creator, &[]);
     let env = mock_env();
 
@@ -514,10 +495,12 @@ fn test_withdraw_collateral() {
     let repay_err =
         repay_borrowed_funds_helper(deps.as_mut(), "creator", 0, coins(506, "luna"), mock_env())
             .unwrap_err();
-    assert_error(repay_err,
+    assert_error(
+        repay_err,
         ContractError::WrongLoanState {
-            state: LoanState::AssetWithdrawn
-        })
+            state: LoanState::AssetWithdrawn,
+        },
+    )
 }
 
 #[test]
@@ -653,8 +636,8 @@ fn test_repay_loan_early() {
     assert_error(
         repay_err,
         ContractError::WrongLoanState {
-            state: LoanState::Published
-        }
+            state: LoanState::Published,
+        },
     )
 }
 
@@ -918,8 +901,8 @@ fn test_accept_cancelled_offer() {
     assert_error(
         err,
         ContractError::WrongOfferState {
-            state: OfferState::Cancelled
-        }
+            state: OfferState::Cancelled,
+        },
     )
 }
 
@@ -979,7 +962,7 @@ fn test_normal_flow() {
         err,
         ContractError::Std(StdError::generic_err(
             "You didn't send the right kind of funds",
-        ))
+        )),
     );
 
     repay_borrowed_funds_helper(
@@ -1070,7 +1053,7 @@ fn test_defaulted_flow() {
         err,
         ContractError::WrongLoanState {
             state: LoanState::Defaulted {},
-        }
+        },
     );
 
     let err =

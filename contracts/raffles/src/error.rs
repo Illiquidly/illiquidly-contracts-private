@@ -10,8 +10,17 @@ pub enum ContractError {
     #[error("Unauthorized")]
     Unauthorized {},
 
+    #[error("Unreachable code, something weird happened")]
+    Unreachable {},
+
     #[error("An unplanned bug just happened :/")]
     ContractBug {},
+
+    #[error("Error when parsing a value for {0}")]
+    ParseError(String),
+
+    #[error("{0} not found in context")]
+    NotFoundError(String),
 
     #[error("This action is not allowed, the contract is locked")]
     ContractIsLocked {},

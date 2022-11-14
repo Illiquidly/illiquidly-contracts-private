@@ -2,10 +2,10 @@ use crate::state::RAFFLE_TICKETS;
 use anyhow::{anyhow, Result};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::{Api, Deps, Env, Order, StdResult};
+use raffles_export::msg::AllRafflesResponse;
+use raffles_export::msg::RaffleResponse;
 
 use cw_storage_plus::Bound;
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
 
 use crate::error::ContractError;
 use crate::state::{get_raffle_state, load_raffle, CONTRACT_INFO, RAFFLE_INFO, USER_TICKETS};
@@ -16,18 +16,6 @@ use raffles_export::state::{AssetInfo, ContractInfo, RaffleInfo, RaffleState};
 const MAX_LIMIT: u32 = 100;
 const DEFAULT_LIMIT: u32 = 10;
 const BASE_LIMIT: usize = 100;
-
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
-pub struct RaffleResponse {
-    pub raffle_id: u64,
-    pub raffle_state: RaffleState,
-    pub raffle_info: Option<RaffleInfo>,
-}
-
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
-pub struct AllRafflesResponse {
-    pub raffles: Vec<RaffleResponse>,
-}
 
 pub fn query_contract_info(deps: Deps) -> StdResult<ContractInfo> {
     CONTRACT_INFO.load(deps.storage)

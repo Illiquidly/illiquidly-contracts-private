@@ -1,4 +1,4 @@
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 use cosmwasm_std::StdResult;
 use cw_storage_plus::Index;
 use cw_storage_plus::IndexList;
@@ -79,7 +79,7 @@ pub fn is_owner(storage: &dyn Storage, sender: Addr) -> Result<ContractInfo> {
 #[allow(clippy::too_many_arguments)]
 pub fn add_new_offer(
     storage: &mut dyn Storage,
-    env: Env, 
+    env: Env,
     mut collateral: CollateralInfo,
     borrower: Addr,
     loan_id: u64,
@@ -145,11 +145,7 @@ pub fn is_loan_counterable(collateral: &CollateralInfo) -> Result<()> {
     }
 }
 
-pub fn can_repay_loan(
-    storage: &dyn Storage,
-    env: Env,
-    collateral: &CollateralInfo,
-) -> Result<()> {
+pub fn can_repay_loan(storage: &dyn Storage, env: Env, collateral: &CollateralInfo) -> Result<()> {
     if is_loan_defaulted(storage, env, collateral).is_ok() {
         bail!(ContractError::WrongLoanState {
             state: LoanState::Defaulted {},
@@ -187,10 +183,7 @@ pub fn is_loan_defaulted(
     }
 }
 
-pub fn get_active_loan(
-    storage: &dyn Storage,
-    collateral: &CollateralInfo,
-) -> Result<OfferInfo> {
+pub fn get_active_loan(storage: &dyn Storage, collateral: &CollateralInfo) -> Result<OfferInfo> {
     let global_offer_id = collateral
         .active_offer
         .as_ref()
@@ -198,11 +191,7 @@ pub fn get_active_loan(
     get_offer(storage, global_offer_id)
 }
 
-pub fn is_lender(
-    storage: &dyn Storage,
-    lender: Addr,
-    global_offer_id: &str,
-) -> Result<OfferInfo> {
+pub fn is_lender(storage: &dyn Storage, lender: Addr, global_offer_id: &str) -> Result<OfferInfo> {
     let offer = get_offer(storage, global_offer_id)?;
     if lender != offer.lender {
         bail!(ContractError::Unauthorized {});

@@ -3,7 +3,7 @@ use crate::state::{
     get_raffle_owner_messages, get_raffle_state, get_raffle_winner, get_raffle_winner_messages,
     is_raffle_owner, ticket_cost, CONTRACT_INFO, RAFFLE_INFO, RAFFLE_TICKETS, USER_TICKETS,
 };
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::{
     from_binary, Addr, Binary, CosmosMsg, DepsMut, Env, MessageInfo, Response, StdResult, Uint128,
@@ -20,19 +20,27 @@ use cw721::Cw721ExecuteMsg;
 use raffles_export::msg::{into_cosmos_msg, DrandRandomness, ExecuteMsg};
 
 /// Create a new raffle by depositing assets.
-/// The raffle has many options, to make it most accessible :
+/// The raffle has many options, to make it most accessible.
 /// Args :
-/// owner: The address that will receive the funds when the raffle is ended. Default value : create raffle transaction sender
-/// asset : The asset set up for auction. It can be a CW721 standard asset or a CW1155 standard asset.
+///
+/// `owner`: The address that will receive the funds when the raffle is ended. Default value : create raffle transaction sender
+///
+/// `asset` : The asset set up for auction. It can be a CW721 standard asset or a CW1155 standard asset.
 /// This asset will be deposited with this function. Don't forget to pre-approve the contract for this asset to be able to create a raffle
 /// ReceiveNFT or Receive_CW1155 is used for people that hate approvals
-/// raffle_start_timestamp : Block Timestamp from which the users can buy tickets Default : current block time
-/// raffle_duration : time in seconds from the raffle_start_timestamp during which users can buy tickets. Default : contract.minimum_raffle_duration
+///
+/// `raffle_start_timestamp` : Block Timestamp from which the users can buy tickets Default : current block time
+///
+/// `raffle_duration` : time in seconds from the raffle_start_timestamp during which users can buy tickets. Default : contract.minimum_raffle_duration
+///
 /// raffle_timeout : time in seconds from the end of the raffle duration during which users can add randomness. Default : contract.minimum_raffle_timeout
-/// comment: A simple comment to add to the raffle (because we're not machines) : Default : ""
-/// raffle_ticket_price : The needed tokens (native or CW20) needed to buy a raffle ticket
+///
+/// `comment`: A simple comment to add to the raffle (because we're not machines) : Default : ""
+///
+/// `raffle_ticket_price`: The needed tokens (native or CW20) needed to buy a raffle ticket
 /// If you want to have free tickets, specify a 0 amount on a native token (any denom)
-/// max_participant_number: maximum number of participants to the raffle. Default : contract_info.max_participant_number
+///
+/// `max_participant_number`: maximum number of participants to the raffle. Default : contract_info.max_participant_number
 #[allow(clippy::too_many_arguments)]
 pub fn execute_create_raffle(
     deps: DepsMut,
@@ -46,7 +54,7 @@ pub fn execute_create_raffle(
     let contract_info = CONTRACT_INFO.load(deps.storage)?;
 
     if contract_info.lock {
-        return Err(anyhow!(ContractError::ContractIsLocked {}));
+        bail!(ContractError::ContractIsLocked {});
     }
 
     // First we physcially transfer all the assets
@@ -125,7 +133,7 @@ pub fn _create_raffle(
         None => Ok(RaffleInfo {
             owner,
             assets: all_assets.clone(),
-            raffle_ticket_price: raffle_ticket_price.clone(),
+            raffle_ticket_price: raffle_ticket_price.clone(), // No checks for the assetInfo type, the worst thing that can happen is an error when trying to buy a raffle ticket
             number_of_tickets: 0u32,
             randomness: None,
             winner: None,
@@ -141,7 +149,8 @@ pub fn _create_raffle(
     Ok(raffle_id)
 }
 
-/// Cancels a raffle if no ticket was bought
+/// Cancels a raffle
+/// This function is only accessible if no raffle ticket was bought on the raffle
 pub fn execute_cancel_raffle(
     deps: DepsMut,
     env: Env,
@@ -152,7 +161,7 @@ pub fn execute_cancel_raffle(
 
     // We then verify there are not tickets bought
     if raffle_info.number_of_tickets != 0 {
-        return Err(anyhow!(ContractError::RaffleAlreadyStarted {}));
+        bail!(ContractError::RaffleAlreadyStarted {});
     }
 
     // Then notify the raffle is ended
@@ -167,7 +176,10 @@ pub fn execute_cancel_raffle(
         .add_attribute("raffle_id", raffle_id.to_string()))
 }
 
-/// Cancels a raffle if no ticket was bought
+/// Modify the raffle characteristics
+/// A parameter is only modified if it is specified in the called message
+/// If None is provided, nothing changes for the parameter
+/// This function is only accessible if no raffle ticket was bought on the raffle
 pub fn execute_modify_raffle(
     deps: DepsMut,
     _env: Env,
@@ -180,7 +192,7 @@ pub fn execute_modify_raffle(
     let contract_info = CONTRACT_INFO.load(deps.storage)?;
     // We then verify there are not tickets bought
     if raffle_info.number_of_tickets != 0 {
-        return Err(anyhow!(ContractError::RaffleAlreadyStarted {}));
+        bail!(ContractError::RaffleAlreadyStarted {});
     }
 
     // Then modify the raffle characteristics
@@ -201,13 +213,16 @@ pub fn execute_modify_raffle(
         .add_attribute("raffle_id", raffle_id.to_string()))
 }
 
-/// Buy a ticket for a specific raffle
-/// Argument description :
-/// raffle_id: The id of the raffle you want to buy a ticket to/
-/// assets : the assets you want to deposit against a raffle ticket.
+/// Buy a ticket for a specific raffle.
+///
+/// `raffle_id`: The id of the raffle you want to buy a ticket to/
+///
+/// `assets` : the assets you want to deposit against a raffle ticket.
 /// These assets can either be a native coin or a CW20 token
 /// These must correspond to the raffle_info.raffle_ticket_price exactly
-pub fn execute_buy_ticket(
+/// This function needs the sender to approve token transfer (for CW20 tokens) priori to the transaction
+/// The next function provides a receiver message implementation if you prefer
+pub fn execute_buy_tickets(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
@@ -228,19 +243,20 @@ pub fn execute_buy_ticket(
         // or verify the sent coins match the message coins
         AssetInfo::Coin(coin) => {
             if coin.amount != Uint128::zero() && info.funds.len() != 1 {
-                return Err(anyhow!(ContractError::AssetMismatch {}));
+                bail!(ContractError::AssetMismatch {});
             }
             if coin.amount != Uint128::zero() && info.funds[0].denom != coin.denom
                 || info.funds[0].amount != coin.amount
             {
-                return Err(anyhow!(ContractError::AssetMismatch {}));
+                bail!(ContractError::AssetMismatch {});
             }
             vec![]
         }
-        _ => return Err(anyhow!(ContractError::WrongAssetType {})),
+        _ => bail!(ContractError::WrongAssetType {}),
     };
+
     // Then we verify the funds sent match the raffle conditions and we save the ticket that was bought
-    _buy_ticket(
+    _buy_tickets(
         deps,
         env,
         info.sender.clone(),
@@ -285,7 +301,7 @@ pub fn execute_receive(
                         && amount_received == amount
                     {
                         // The asset is a match, we can create the raffle object and return
-                        _buy_ticket(
+                        _buy_tickets(
                             deps,
                             env,
                             sender.clone(),
@@ -309,10 +325,10 @@ pub fn execute_receive(
     }
 }
 
-/// Create a new raffle tickets and assigns it to the sender
-/// Internal function that doesn't check anything and buy a ticket
-/// The arguments are described on the create_raffle function above.
-pub fn _buy_ticket(
+/// Creates new raffle tickets and assigns them to the sender
+/// Internal function that doesn't check anything and buys multiple tickets
+/// The arguments are described on the execute_buy_tickets function above.
+pub fn _buy_tickets(
     deps: DepsMut,
     env: Env,
     owner: Addr,
@@ -324,10 +340,10 @@ pub fn _buy_ticket(
 
     // We first check the sent assets match the raffle assets
     if ticket_cost(raffle_info.clone(), ticket_number)? != assets {
-        return Err(anyhow!(ContractError::PaiementNotSufficient {
+        bail!(ContractError::PaiementNotSufficient {
             assets_wanted: raffle_info.raffle_ticket_price,
             assets_received: assets
-        }));
+        });
     }
 
     // We then check the raffle is in the right state
@@ -339,22 +355,22 @@ pub fn _buy_ticket(
             .load(deps.storage, (&owner, raffle_id))
             .unwrap_or(0);
         if current_ticket_number + ticket_number > max_ticket_per_address {
-            return Err(anyhow!(ContractError::TooMuchTicketsForUser {
+            bail!(ContractError::TooMuchTicketsForUser {
                 max: max_ticket_per_address,
                 nb_before: current_ticket_number,
                 nb_after: current_ticket_number + ticket_number
-            }));
+            });
         }
     }
 
     // Then we check there are some ticket left to buy
     if let Some(max_participant_number) = raffle_info.raffle_options.max_participant_number {
         if raffle_info.number_of_tickets + ticket_number > max_participant_number {
-            return Err(anyhow!(ContractError::TooMuchTickets {
+            bail!(ContractError::TooMuchTickets {
                 max: max_participant_number,
                 nb_before: raffle_info.number_of_tickets,
                 nb_after: raffle_info.number_of_tickets + ticket_number
-            }));
+            });
         }
     };
 
@@ -392,13 +408,11 @@ pub fn execute_update_randomness(
     // We check the raffle can receive randomness (good state)
     let raffle_info = RAFFLE_INFO.load(deps.storage, raffle_id)?;
     let raffle_state = get_raffle_state(env, raffle_info);
-    println!("{:?}", raffle_state);
     if raffle_state != RaffleState::Closed {
-        return Err(anyhow!(ContractError::WrongStateForRandmness {
+        bail!(ContractError::WrongStateForRandmness {
             status: raffle_state
-        }));
+        });
     }
-
     // We assert the randomness is correct
     assert_randomness_origin_and_order(deps.as_ref(), info.sender, raffle_id, randomness)
 }
@@ -406,8 +420,8 @@ pub fn execute_update_randomness(
 /// Claim and end a raffle
 /// This function can be called by anyone
 /// This function has 4 purposes :
-/// 1. Compute the winner of a raffle and save it in the contract
-/// 2. Send the Asset to the winner
+/// 1. Compute the winner of a raffle (using the last provided randomness) and save it in the contract
+/// 2. Send the raffle assets to the winner
 /// 3. Send the accumulated ticket prices to the raffle owner
 /// 4. Send the fees (a cut of the accumulated ticket prices) to the treasury and the randomness provider
 pub fn execute_claim(
@@ -422,9 +436,9 @@ pub fn execute_claim(
     // We make sure the raffle is ended
     let raffle_state = get_raffle_state(env.clone(), raffle_info.clone());
     if raffle_state != RaffleState::Finished {
-        return Err(anyhow!(ContractError::WrongStateForClaim {
+        bail!(ContractError::WrongStateForClaim {
             status: raffle_state
-        }));
+        });
     }
 
     // If there was no participant, the winner is the raffle owner and we pay no fees whatsoever
@@ -437,7 +451,7 @@ pub fn execute_claim(
     }
     RAFFLE_INFO.save(deps.storage, raffle_id, &raffle_info)?;
 
-    // We send the asset to the winner
+    // We send the assets to the winner
     let winner_transfer_messages = get_raffle_winner_messages(env.clone(), raffle_info.clone())?;
     let funds_transfer_messages =
         get_raffle_owner_finished_messages(deps.storage, env, raffle_info.clone())?;

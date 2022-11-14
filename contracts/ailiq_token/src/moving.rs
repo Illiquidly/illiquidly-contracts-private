@@ -1,6 +1,6 @@
 use crate::error::ContractError;
 #[cfg(not(feature = "library"))]
-use anyhow::{anyhow, Result, bail};
+use anyhow::{anyhow, bail, Result};
 use cosmwasm_std::{
     BankMsg, Coin, DepsMut, Env, MessageInfo, Response, StdResult, Storage, Uint128,
 };
@@ -251,11 +251,7 @@ pub fn redeem(
 }
 
 /// Mint new tokens without checks (eveyone can mint)
-pub fn _execute_mint(
-    deps: DepsMut,
-    recipient: String,
-    amount: Uint128,
-) -> Result<()> {
+pub fn _execute_mint(deps: DepsMut, recipient: String, amount: Uint128) -> Result<()> {
     if amount == Uint128::zero() {
         bail!(ContractError::InvalidZeroAmount {});
     }

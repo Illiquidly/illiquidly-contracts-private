@@ -1,8 +1,9 @@
 import { Address } from '../terra_utils';
 import { env, add_uploaded_token, add_contract } from '../env_helper';
 import { Numeric } from '@terra-money/terra.js';
+import { asyncAction } from '../utils/js/asyncAction';
 function getContractLog(response: any) {
-  return response.logs[0].eventsByType.from_contract;
+  return response.logs[0].eventsByType.wasm;
 }
 
 /// Here we want to upload the p2p contract and add the fee contract
@@ -15,8 +16,12 @@ async function main() {
   let lender = new Address(env['mnemonics'][2]);
   // Uploading the contract code
   let loan = borrower.getContract(env.contracts.loan);
-  let loan_lender = lender.getContract(env.contracts.loan);
+  let loan_anyone = lender.getContract(env.contracts.loan);
   let fee_distributor = handler.getContract(env.contracts.fee_distributor);
+
+
+  // Here we make sure we have an NFT ready for the transaction to pass
+  // If we don't have one, we simply mint a new one
   let cw721_tokens = env['cw721'];
   let cw721_token_names = Object.keys(cw721_tokens);
   let nft = handler.getContract(cw721_tokens[cw721_token_names[0]]);
@@ -36,7 +41,9 @@ async function main() {
     token_id = response.tokens[0];
   }
 
-  // We save the initial balances
+
+
+  // We save the initial balances, to make sure the loans were fully processed
   let balance_borrower_before: Numeric.Output = (
     await borrower.terra.bank.balance(borrower.getAddress())
   )[0].get('uluna')!.amount;
@@ -44,48 +51,55 @@ async function main() {
     await lender.terra.bank.balance(lender.getAddress())
   )[0].get('uluna')!.amount;
 
+
   // We start the flow !!
+  // We approve the contract
   response = await borrower_nft.execute.approve({
     spender: loan.address,
     token_id: token_id
   });
   console.log('Approved nft');
 
-  response = await loan.execute.deposit_collateral({
-    address: nft.address,
-    token_id: token_id
+
+  // And deposit the collateral for a loan to be approved
+  response = await loan.execute.deposit_collaterals({
+    tokens: [{
+      cw721_coin:{
+        address: nft.address,
+        token_id: token_id
+      }
+    }]
   });
   console.log('Deposited Collateral', token_id);
   let loan_id = parseInt(getContractLog(response).loan_id[0]);
   // As we deposit the collateral, the token shouldn't be available anymore to the borrower
   let token_ids_left = await nft.query.tokens({ owner: borrower.getAddress() });
   console.log("tokens left", token_ids_left);
+
   
-  response = await loan_lender.execute.make_offer(
+  response = await loan_anyone.execute.make_offer(
     {
       borrower: borrower.getAddress(),
       loan_id: loan_id,
       terms: {
         principle: {
-          amount: '500',
+          amount: '5000000',
           denom: 'uluna'
         },
         interest: '50',
-        duration_in_blocks: 0
+        duration_in_blocks: 1
       }
     },
-    '500uluna'
+    '5000000uluna'
   );
-  let offer_id = parseInt(getContractLog(response).offer_id[0]);
+  let global_offer_id = getContractLog(response).global_offer_id[0];
   let balance_lender_after: Numeric.Output = (
     await lender.terra.bank.balance(lender.getAddress())
   )[0].get('uluna')!.amount;
 
   console.log('Offer made, gave funds to the contract --> ', balance_lender_before.sub(balance_lender_after))
-
   response = await loan.execute.accept_offer({
-    loan_id: loan_id,
-    offer_id: offer_id
+    global_offer_id
   });
   console.log('Offer accepted');
 
@@ -95,25 +109,29 @@ async function main() {
   balance_lender_after = (
     await lender.terra.bank.balance(lender.getAddress())
   )[0].get('uluna')!.amount;
-  console.log('Borrower balance difference : ', balance_borrower_after.sub(balance_borrower_before));
-  console.log('Lender balance difference', balance_lender_after.sub(balance_lender_before));
+  console.log('Borrower balance difference when offer is accepted : ', balance_borrower_after.sub(balance_borrower_before));
+  console.log('Lender balance difference when offer is accepted', balance_lender_after.sub(balance_lender_before));
 
 
   console.log("Sleeping for some time to make sure the loan is defaulted")
 
   await new Promise(r => setTimeout(r, 500));
 
-  console.log("Trying to redeem the loan, but the time elapsed is too big, this should fail")
-  // Finally my precious NFT
-  await loan.execute.repay_borrowed_funds(
+  // Finally my precious NFT (and no, you can't repay anymore, the time is elapsed...)
+  const [err, _] = await asyncAction(loan.execute.repay_borrowed_funds(
     {
       loan_id: loan_id
     },
-    '550uluna'
-  );
+    '5000050uluna'
+  ));
+  if(!err){
+    throw "Repaying the loan should fail"
+  }else{
+    console.log("Repaying the loan failed")
+  }
 
 
-  await loan_lender.execute.withdraw_defaulted_loan({
+  await loan_anyone.execute.withdraw_defaulted_loan({
     borrower: borrower.getAddress(),
     loan_id
   })

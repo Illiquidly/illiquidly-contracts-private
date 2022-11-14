@@ -1,15 +1,13 @@
+use cosmwasm_schema::cw_serde;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::{
     entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult,
 };
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
-
-use raffles_export::msg::{DrandRandomness, VerifierExecuteMsg};
 
 use drand_verify::{derive_randomness, g1_from_variable, verify};
+use raffles_export::msg::{DrandRandomness, VerifierExecuteMsg};
 
-#[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
+#[cw_serde]
 pub struct EmptyMsg {}
 
 #[cfg_attr(not(feature = "library"), entry_point)]
