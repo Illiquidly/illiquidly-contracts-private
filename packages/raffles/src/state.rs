@@ -1,9 +1,10 @@
 use std::convert::TryInto;
 use strum_macros;
 
-use cosmwasm_std::{coin, Addr, Binary, Coin, Env, Timestamp, Uint128};
+use cosmwasm_std::{coin, Addr, Binary, Coin, Env, Timestamp, Uint128, Decimal};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use utils::state::OwnerStruct;
 
 /*
 pub const MINIMUM_RAFFLE_DURATION: u64 = 3600; // A raffle last at least 1 hour
@@ -14,7 +15,8 @@ pub const MAXIMUM_PARTICIPANT_NUMBER: u64 = 1000;
 
 pub const MINIMUM_RAFFLE_DURATION: u64 = 1;
 pub const MINIMUM_RAFFLE_TIMEOUT: u64 = 120; // The raffle timeout is a least 2 minutes
-pub const MINIMUM_RAND_FEE: u128 = 1; // The randomness provider gets at least 1/10_000 of the total raffle price
+pub const DECIMAL_FRACTIONAL: u128 = 1_000_000_000_000_000_000u128; // 1*10**18
+pub const MINIMUM_RAND_FEE: Decimal = Decimal::raw(DECIMAL_FRACTIONAL/10_000u128); // The randomness provider gets at least 1/10_000 of the total raffle price
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -105,13 +107,13 @@ pub enum RaffleState {
 #[serde(rename_all = "snake_case")]
 pub struct ContractInfo {
     pub name: String,
-    pub owner: Addr,
+    pub owner: OwnerStruct,
     pub fee_addr: Addr,
     pub last_raffle_id: Option<u64>,
     pub minimum_raffle_duration: u64, // The minimum interval in which users can buy raffle tickets
     pub minimum_raffle_timeout: u64, // The minimum interval during which users can provide entropy to the contract
-    pub raffle_fee: Uint128, // in 10_000, the percentage of the resulting ticket-tokens that will go to the treasury
-    pub rand_fee: Uint128, // in 10_000, the percentage of the resulting ticket-tokens that will go to the entropy provider
+    pub raffle_fee: Decimal, // The percentage of the resulting ticket-tokens that will go to the treasury
+    pub rand_fee: Decimal, // The percentage of the resulting ticket-tokens that will go to the entropy provider
     pub lock: bool,        // Wether the contract can accept new raffles
     pub drand_url: String, // The drand provider url (to find the right entropy provider)
     pub verify_signature_contract: Addr, // The contract that can verify the entropy signature
@@ -152,7 +154,8 @@ impl RaffleOptions {
         Self {
             raffle_start_timestamp: raffle_options
                 .raffle_start_timestamp
-                .unwrap_or(env.block.time),
+                .unwrap_or(env.block.time)
+                .max(env.block.time),
             raffle_duration: raffle_options
                 .raffle_duration
                 .unwrap_or(contract_info.minimum_raffle_duration)
@@ -186,7 +189,8 @@ impl RaffleOptions {
         Self {
             raffle_start_timestamp: raffle_options
                 .raffle_start_timestamp
-                .unwrap_or(current_options.raffle_start_timestamp),
+                .unwrap_or(current_options.raffle_start_timestamp)
+                .max(current_options.raffle_start_timestamp),
             raffle_duration: raffle_options
                 .raffle_duration
                 .unwrap_or(current_options.raffle_duration)
@@ -236,3 +240,4 @@ pub struct RaffleInfo {
     pub is_cancelled: bool,
     pub raffle_options: RaffleOptions,
 }
+
