@@ -37,7 +37,7 @@ pub fn instantiate(
     _env: Env,
     info: MessageInfo,
     msg: InstantiateMsg,
-) -> Result<Response, ContractError> {
+) -> Result<Response> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
     // Verify the contract name
@@ -73,12 +73,7 @@ pub fn instantiate(
         verify_signature_contract: deps.api.addr_validate(&msg.verify_signature_contract)?,
     };
 
-    // Check the fee distribution
-    if data.raffle_fee + data.rand_fee > Decimal::one(){
-        return Err(ContractError::Std(StdError::generic_err(
-            "The Total Fee rate should be lower than 1"
-        )))
-    }
+    data.validate_fee()?;
 
     CONTRACT_INFO.save(deps.storage, &data)?;
     Ok(Response::default()
@@ -252,6 +247,7 @@ pub fn execute_change_parameter(
         _ => return Err(anyhow!(ContractError::ParameterNotFound {})),
     }
 
+    contract_info.validate_fee()?;
     CONTRACT_INFO.save(deps.storage, &contract_info)?;
 
     Ok(Response::new()

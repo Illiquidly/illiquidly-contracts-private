@@ -24,7 +24,7 @@ impl InstantiateMsg {
             ));
         }
         // Check the fee distribution
-        if self.fee_rate > Decimal::one(){
+        if self.fee_rate >= Decimal::one(){
             return Err(StdError::generic_err(
                 "The Fee rate should be lower than 1"
             ))

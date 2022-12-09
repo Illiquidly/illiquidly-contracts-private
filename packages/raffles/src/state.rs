@@ -1,7 +1,7 @@
 use std::convert::TryInto;
 use strum_macros;
-
-use cosmwasm_std::{coin, Addr, Binary, Coin, Env, Timestamp, Uint128, Decimal};
+use anyhow::{Result, bail};
+use cosmwasm_std::{coin, Addr, Binary, Coin, Env, Timestamp, Uint128, Decimal, StdError};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use utils::state::OwnerStruct;
@@ -119,6 +119,20 @@ pub struct ContractInfo {
     pub verify_signature_contract: Addr, // The contract that can verify the entropy signature
     pub random_pubkey: Binary, // The public key of the randomness provider, to verify entropy origin
 }
+
+
+impl ContractInfo{
+    pub fn validate_fee(&self) -> Result<()>{
+        // Check the fee distribution
+        if self.raffle_fee + self.rand_fee >= Decimal::one(){
+            bail!(StdError::generic_err(
+                "The Total Fee rate should be lower than 1"
+            ))
+        }
+        Ok(())
+    }
+}
+
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "snake_case")]

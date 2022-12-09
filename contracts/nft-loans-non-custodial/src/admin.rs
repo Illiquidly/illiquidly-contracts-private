@@ -75,7 +75,7 @@ pub fn set_fee_rate(
     let mut contract_info = is_owner(deps.storage, info.sender)?;
 
     // Check the fee distribution
-    if new_fee_rate > Decimal::one(){
+    if new_fee_rate >= Decimal::one(){
         bail!(StdError::generic_err(
             "The Fee rate should be lower than 1"
         ))
